@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { commands } from '../core/commands';
 import { de } from './de';
 import { commandTitles, en } from './en';
+import { documentName } from './index';
 
 /** All texts of a dictionary by dotted path. */
 function texts(node: unknown, path = ''): [string, unknown][] {
@@ -39,5 +40,13 @@ describe('i18n', () => {
     expect(en.status.andMore(2)).toBe(' and 2 more');
     expect(de.dialogs.quitText(['A'])).toBe('„A“ hat ungespeicherte Änderungen. Beim Beenden gehen sie verloren.');
     expect(en.dialogs.quitText(['A', 'B'])).toBe('2 documents have unsaved changes: A, B. They will be lost if you quit.');
+  });
+
+  it('shows documents that still carry the default name under the translated label', () => {
+    expect(documentName({ name: 'Untitled', filePath: null }, de)).toBe('Unbenannt');
+    expect(documentName({ name: 'Untitled.002', filePath: null }, de)).toBe('Unbenannt.002');
+    expect(documentName({ name: 'Untitled', filePath: null }, en)).toBe('Untitled');
+    expect(documentName({ name: 'Untitled', filePath: 'C:/a/Untitled.tessel' }, de)).toBe('Untitled');
+    expect(documentName({ name: 'Untitled house', filePath: null }, de)).toBe('Untitled house');
   });
 });

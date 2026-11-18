@@ -1,3 +1,4 @@
+import { own } from '../state';
 import type { DocState, Modifier, PolyMesh, SceneObject, Transform } from '../types';
 import { array } from './array';
 import { boolean, initManifold, manifoldReady, relativeMatrix } from './boolean';
@@ -19,7 +20,7 @@ function dependsOn(state: DocState, fromId: string, toId: string, seen = new Set
   if (fromId === toId) return true;
   if (seen.has(fromId)) return false;
   seen.add(fromId);
-  return (state.objects[fromId]?.modifiers ?? []).some(
+  return (own(state.objects, fromId)?.modifiers ?? []).some(
     (m) => m.type === 'boolean' && m.enabled && m.targetId !== null && dependsOn(state, m.targetId, toId, seen),
   );
 }
@@ -27,7 +28,7 @@ function dependsOn(state: DocState, fromId: string, toId: string, seen = new Set
 function resolveTarget(state: DocState, object: SceneObject, targetId: string | null): Target {
   if (targetId === null) return 'No target object is set';
   if (targetId === object.id) return 'An object cannot be its own boolean target';
-  const target = state.objects[targetId];
+  const target = own(state.objects, targetId);
   if (!target) return `The target object "${targetId}" does not exist`;
   if (dependsOn(state, targetId, object.id)) return 'The boolean targets form a cycle (the target depends on this object)';
   return { transform: target.transform, evaluated: evaluateObject(state, targetId) };
@@ -97,7 +98,7 @@ function isValid(entry: CacheEntry | undefined, state: DocState, object: SceneOb
  * resolved; until then they are skipped with an error, and the next call after it returns a new result.
  */
 export function evaluateObject(state: DocState, objectId: string): Evaluated {
-  const object = state.objects[objectId];
+  const object = own(state.objects, objectId);
   if (!object) throw new Error(`Object "${objectId}" does not exist`);
   const enabled = object.modifiers.filter((m) => m.enabled);
   if (enabled.length === 0) {

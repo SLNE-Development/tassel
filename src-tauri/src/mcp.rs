@@ -27,10 +27,13 @@ const PATH: &str = "/mcp";
 
 const INSTRUCTIONS: &str = "Tessel is a desktop 3D editor for polygon modeling; this server controls the running editor \
 window, so the user sees every change you make live. Start with app_get_state to learn which documents are open, \
-what is selected and where the camera is. Every editor action is a tool (scene_*, view_*, document_*, history_*), \
-and each change is one undo step. Conventions: Y is up, units are meters, rotations are Euler XYZ in degrees. \
-Call view_screenshot to see the result of your work. Use file_save / file_open for .tessel project files and \
-file_export for .glb / .gltf (absolute paths), and batch to run several tool calls in one request.";
+what is selected and where the camera is. Every editor action is a tool (scene_*, mesh_*, uv_*, material_*, \
+texture_*, group_*, modifier_*, view_*, document_*, history_*), and each change is one undo step. Conventions: Y is \
+up, units are meters, rotations are Euler XYZ in degrees. Call view_screenshot to see the result of your work. \
+Files (absolute paths): file_save / file_open for .tessel project files; file_export writes .glb, .gltf, .obj \
+(+ .mtl and textures), .stl, .ply or .usdz; file_import reads .glb, .gltf, .obj, .stl, .ply or .fbx models and \
+.png / .jpg / .webp images as textures. Prefer these file tools over export_file / import_file / texture_get, \
+which pass whole files through the conversation. Use batch to run several tool calls in one request.";
 
 pub fn url() -> String {
   format!("http://127.0.0.1:{PORT}{PATH}")

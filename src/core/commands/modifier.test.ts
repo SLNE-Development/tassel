@@ -419,7 +419,7 @@ describe('project files', () => {
       { id: 'm', enabled: true, type: 'mirror', axes: { x: true, y: false, z: false }, mergeDistance: 0.001 },
       { id: 'b', enabled: true, type: 'boolean', operation: 'difference', targetId: null },
     ]);
-    expect(() => parseProject(file({ modifiers: [{ id: 'm', type: 'twist' }] }))).toThrow(/Keine gültige Tessel-Datei/);
-    expect(() => parseProject(file({ modifiers: [{ id: 'm', type: 'subdivision', levels: 50 }] }))).toThrow(/Keine gültige Tessel-Datei/);
+    expect(() => parseProject(file({ modifiers: [{ id: 'm', type: 'twist' }] }))).toThrow(/Not a valid Tessel file/);
+    expect(() => parseProject(file({ modifiers: [{ id: 'm', type: 'subdivision', levels: 50 }] }))).toThrow(/Not a valid Tessel file/);
   });
 });

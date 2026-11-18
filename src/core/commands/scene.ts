@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { boundingBox, meshStats } from '../mesh/polymesh';
 import { evaluateObject, initModifiers } from '../modifiers/evaluate';
 import { createPrimitive, primitiveShape, primitiveTypes } from '../mesh/primitives';
-import { newId, uniqueName } from '../state';
+import { newId, own, uniqueName } from '../state';
 import type { DocState, SceneObject } from '../types';
 import { defineCommand, docState, updateDocState, vec3 } from './registry';
 
@@ -17,7 +17,7 @@ const primitiveNames: Record<(typeof primitiveTypes)[number], string> = {
 };
 
 function requireObject(state: DocState, id: string): SceneObject {
-  const obj = state.objects[id];
+  const obj = own(state.objects, id);
   if (!obj) throw new Error(`Object "${id}" does not exist`);
   return obj;
 }
@@ -104,8 +104,8 @@ export const sceneCommands = [
     run(ctx, p) {
       const { type, name, position, rotation, scale, groupId, materialId, ...shape } = p;
       const state = docState(ctx);
-      if (groupId !== null && !state.groups[groupId]) throw new Error(`Group "${groupId}" does not exist`);
-      if (materialId !== null && !state.materials[materialId]) throw new Error(`Material "${materialId}" does not exist`);
+      if (groupId !== null && !own(state.groups, groupId)) throw new Error(`Group "${groupId}" does not exist`);
+      if (materialId !== null && !own(state.materials, materialId)) throw new Error(`Material "${materialId}" does not exist`);
       const mesh = createPrimitive(type, shape);
       const obj: SceneObject = {
         id: newId(),

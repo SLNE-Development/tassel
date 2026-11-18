@@ -1,17 +1,17 @@
 import { z } from 'zod';
 import { groupWithDescendants, objectsInGroup } from '../groups';
-import { newId, uniqueName } from '../state';
+import { newId, own, uniqueName } from '../state';
 import type { DocState, Group } from '../types';
 import { defineCommand, docState, updateDocState } from './registry';
 
 function requireGroup(state: DocState, id: string): Group {
-  const group = state.groups[id];
+  const group = own(state.groups, id);
   if (!group) throw new Error(`Group "${id}" does not exist`);
   return group;
 }
 
 function requireObjects(state: DocState, ids: readonly string[]): void {
-  for (const id of ids) if (!state.objects[id]) throw new Error(`Object "${id}" does not exist`);
+  for (const id of ids) if (!own(state.objects, id)) throw new Error(`Object "${id}" does not exist`);
 }
 
 function groupNames(state: DocState, exceptId?: string): string[] {

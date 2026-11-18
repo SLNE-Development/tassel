@@ -1,18 +1,18 @@
 import { z } from 'zod';
 import { defaultMaterial, materialFields } from '../materials';
-import { newId, uniqueName } from '../state';
+import { newId, own, uniqueName } from '../state';
 import { textureSlots } from '../types';
 import type { DocState, Material, TextureSlot } from '../types';
 import { defineCommand, docState, updateDocState } from './registry';
 
 function requireMaterial(state: DocState, id: string): Material {
-  const material = state.materials[id];
+  const material = own(state.materials, id);
   if (!material) throw new Error(`Material "${id}" does not exist`);
   return material;
 }
 
 function requireObjects(state: DocState, ids: readonly string[]): void {
-  for (const id of ids) if (!state.objects[id]) throw new Error(`Object "${id}" does not exist`);
+  for (const id of ids) if (!own(state.objects, id)) throw new Error(`Object "${id}" does not exist`);
 }
 
 function materialNames(state: DocState, exceptId?: string): string[] {
@@ -83,7 +83,7 @@ export const materialCommands = [
         const textureId = mapChanges?.[slot];
         if (textureId === undefined) continue;
         if (textureId === null) delete maps[slot];
-        else if (!state.textures[textureId]) throw new Error(`Texture "${textureId}" does not exist`);
+        else if (!own(state.textures, textureId)) throw new Error(`Texture "${textureId}" does not exist`);
         else maps[slot] = textureId;
       }
       const given = Object.fromEntries(Object.entries(fields).filter(([, value]) => value !== undefined));

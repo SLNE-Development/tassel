@@ -1,0 +1,313 @@
+import {
+  CanvasTexture,
+  DoubleSide,
+  LinearSRGBColorSpace,
+  MeshStandardMaterial,
+  PMREMGenerator,
+  RepeatWrapping,
+  SRGBColorSpace,
+  Texture as GpuTexture,
+  type HemisphereLight,
+  type Scene,
+  type WebGPURenderer,
+} from 'three/webgpu';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { textureSlots } from '../core/types';
+import type { AppState, DocState, Material, SceneObject, Texture, TextureSlot } from '../core/types';
+import { textureBlob } from './textureImage';
+
+/*
+ * Texture orientation: document UVs have v pointing up, so v = 0 is the BOTTOM row of the image.
+ * Images are flipped vertically while decoding (`imageOrientation: 'flipY'`) and uploaded with
+ * `flipY = false`: ImageBitmaps ignore three's flipY on the WebGL2 backend, so flipping at decode
+ * time is the one way that behaves the same on both backends. Normal maps are read in the OpenGL
+ * convention (green = up), like glTF.
+ */
+
+const ANISOTROPY = 4;
+/**
+ * In material shading the environment replaces the hemisphere light. At this intensity it adds
+ * about as much diffuse light as that did, so colours come out as bright as in solid shading.
+ */
+const ENVIRONMENT_INTENSITY = 0.25;
+
+type MapProperty = 'map' | 'normalMap' | 'roughnessMap' | 'metalnessMap' | 'emissiveMap' | 'aoMap';
+
+/** Which three.js material property each slot binds to, and whether the image holds colours (sRGB). */
+const slotBinding: Record<TextureSlot, { property: MapProperty; color: boolean }> = {
+  baseColor: { property: 'map', color: true },
+  normal: { property: 'normalMap', color: false },
+  // Our scalar maps are greyscale images, so whichever channel three reads holds the value.
+  roughness: { property: 'roughnessMap', color: false },
+  metallic: { property: 'metalnessMap', color: false },
+  emissive: { property: 'emissiveMap', color: true },
+  occlusion: { property: 'aoMap', color: false },
+};
+
+interface Decoded {
+  /** Null while decoding (or if the image could not be decoded). */
+  bitmap: ImageBitmap | null;
+  srgb: GpuTexture | null;
+  linear: GpuTexture | null;
+  disposed: boolean;
+}
+
+interface Variant {
+  material: MeshStandardMaterial;
+  /** The document material whose values `material` currently shows. */
+  source: Material | null;
+}
+
+function configure<T extends GpuTexture>(texture: T, color: boolean): T {
+  texture.colorSpace = color ? SRGBColorSpace : LinearSRGBColorSpace;
+  texture.wrapS = RepeatWrapping;
+  texture.wrapT = RepeatWrapping;
+  texture.anisotropy = ANISOTROPY;
+  return texture;
+}
+
+/** Same surface options as the clay: double sided, and pushed back so edge overlays do not z-fight. */
+function surface(): MeshStandardMaterial {
+  return new MeshStandardMaterial({ side: DoubleSide, fog: false, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 });
+}
+
+/** A numbered, coloured grid: shows stretching, mirroring and which way is up. A1 is at u = 0, v = 0. */
+function checkerCanvas(): HTMLCanvasElement {
+  const cells = 8;
+  const size = 1024;
+  const cell = size / cells;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const g = canvas.getContext('2d')!;
+  g.textAlign = 'center';
+  g.textBaseline = 'middle';
+  g.font = `600 ${cell * 0.3}px "Segoe UI", system-ui, sans-serif`;
+  for (let row = 0; row < cells; row++) {
+    for (let column = 0; column < cells; column++) {
+      const light = (row + column) % 2 === 0;
+      // The hue runs along u, the lightness rises a little along v.
+      const hue = (column / cells) * 360;
+      g.fillStyle = `hsl(${hue} ${light ? 38 : 46}% ${(light ? 68 : 40) + row * 1.5}%)`;
+      // Canvas y points down; row 0 (v = 0) is at the bottom.
+      const x = column * cell;
+      const y = size - (row + 1) * cell;
+      g.fillRect(x, y, cell, cell);
+      g.fillStyle = light ? 'rgb(20 24 26 / 0.8)' : 'rgb(255 255 255 / 0.88)';
+      g.fillText(`${String.fromCharCode(65 + column)}${row + 1}`, x + cell / 2, y + cell / 2);
+    }
+  }
+  g.strokeStyle = 'rgb(20 24 26 / 0.55)';
+  g.lineWidth = 2;
+  for (let i = 0; i <= cells; i++) {
+    g.beginPath();
+    g.moveTo(i * cell, 0);
+    g.lineTo(i * cell, size);
+    g.moveTo(0, i * cell);
+    g.lineTo(size, i * cell);
+    g.stroke();
+  }
+  return canvas;
+}
+
+/**
+ * What objects are surfaced with when they do not show the clay: their PBR material in `material`
+ * shading, or the UV checker in the UV workspace. Owns the GPU textures (one decode per document
+ * `Texture` object) and the three.js materials (one per document material id and variant, updated
+ * in place when the document material changes, so scrubbing and undo never compile a shader).
+ */
+export class SurfaceMaterials {
+  private readonly textures = new Map<Texture, Decoded>();
+  private readonly materials = new Map<string, { plain: Variant | null; mapped: Variant | null }>();
+  private environment: GpuTexture | null = null;
+  private checker: MeshStandardMaterial | null = null;
+  private renderer: WebGPURenderer | null = null;
+  private sweptDocs: AppState['docs'] | null = null;
+  /** Intensity of the hemisphere light without the environment. */
+  private ambientIntensity: number | null = null;
+
+  /** `onLoad` is called when a texture has been decoded and the scene should be drawn again. */
+  constructor(private readonly onLoad: () => void) {
+    if (import.meta.env.DEV) (window as unknown as { __tesselSurfaces: unknown }).__tesselSurfaces = this;
+  }
+
+  /** Builds the image-based lighting; `applyLighting` switches it on. Needs an initialised renderer. */
+  init(renderer: WebGPURenderer): void {
+    this.renderer = renderer;
+    const pmrem = new PMREMGenerator(renderer);
+    const room = new RoomEnvironment();
+    this.environment = pmrem.fromScene(room, 0.04).texture;
+    room.dispose();
+    pmrem.dispose();
+  }
+
+  /**
+   * Material shading is lit by the environment as well, so that metals have something to reflect
+   * and roughness shows; it takes the place of the `ambient` hemisphere light. Every other look
+   * (solid, wireframe, the UV checker) keeps the plain studio lights, exactly as without materials.
+   */
+  applyLighting(app: AppState, scene: Scene, ambient: HemisphereLight): void {
+    this.ambientIntensity ??= ambient.intensity;
+    const on = app.shading === 'material' && app.workspace !== 'uv';
+    scene.environment = on ? this.environment : null;
+    scene.environmentIntensity = ENVIRONMENT_INTENSITY;
+    ambient.intensity = on ? 0 : this.ambientIntensity;
+  }
+
+  /** The material `obj` is drawn with, or null for the clay. `hasUvs` refers to the rendered (evaluated) mesh. */
+  pick(app: AppState, state: DocState, obj: SceneObject, hasUvs: boolean): MeshStandardMaterial | null {
+    if (app.workspace === 'uv') return hasUvs ? this.checkerMaterial() : null;
+    if (app.shading !== 'material') return null;
+    const material = obj.materialId === null ? undefined : state.materials[obj.materialId];
+    if (!material) return null;
+    return this.material(material, hasUvs ? state.textures : null);
+  }
+
+  private checkerMaterial(): MeshStandardMaterial {
+    if (!this.checker) {
+      this.checker = surface();
+      this.checker.roughness = 0.9;
+      this.checker.map = configure(new CanvasTexture(checkerCanvas()), true);
+    }
+    return this.checker;
+  }
+
+  /** `textures`: the document's textures for an object with UVs, null to render the scalar values only. */
+  private material(source: Material, textures: DocState['textures'] | null): MeshStandardMaterial {
+    let entry = this.materials.get(source.id);
+    if (!entry) this.materials.set(source.id, (entry = { plain: null, mapped: null }));
+    const variant = (entry[textures ? 'mapped' : 'plain'] ??= { material: surface(), source: null });
+    const material = variant.material;
+    if (variant.source !== source) {
+      variant.source = source;
+      material.color.set(source.baseColor);
+      material.metalness = source.metallic;
+      material.roughness = source.roughness;
+      material.emissive.set(source.emissive);
+      material.emissiveIntensity = source.emissiveStrength;
+      material.normalScale.setScalar(source.normalScale);
+    }
+    if (textures) {
+      // Checked on every sync: a texture may have finished decoding since.
+      for (const slot of textureSlots) {
+        const { property, color } = slotBinding[slot];
+        const id = source.maps[slot];
+        const texture = id === undefined ? undefined : textures[id];
+        const next = texture ? this.gpuTexture(texture, color) : null;
+        const current = material[property];
+        if (current === next) continue;
+        // A map appearing or going away changes the shader; swapping one image for another does not.
+        if ((current === null) !== (next === null)) material.needsUpdate = true;
+        material[property] = next;
+      }
+    }
+    return material;
+  }
+
+  /** The GPU texture for a document texture, or null while its image is still being decoded. */
+  private gpuTexture(texture: Texture, color: boolean): GpuTexture | null {
+    let decoded = this.textures.get(texture);
+    if (!decoded) {
+      const entry: Decoded = { bitmap: null, srgb: null, linear: null, disposed: false };
+      this.textures.set(texture, (decoded = entry));
+      createImageBitmap(textureBlob(texture), { imageOrientation: 'flipY', premultiplyAlpha: 'none', colorSpaceConversion: 'none' }).then(
+        (bitmap) => {
+          if (entry.disposed) return bitmap.close();
+          entry.bitmap = bitmap;
+          this.onLoad();
+        },
+        (error) => console.error(`Viewport: texture "${texture.name}" could not be decoded`, error),
+      );
+    }
+    if (!decoded.bitmap) return null;
+    const key = color ? 'srgb' : 'linear';
+    if (!decoded[key]) {
+      const gpu = configure(new GpuTexture(decoded.bitmap), color);
+      gpu.flipY = false;
+      gpu.needsUpdate = true;
+      decoded[key] = gpu;
+    }
+    return decoded[key];
+  }
+
+  /**
+   * Frees what no open document uses any more: three materials whose document material is gone,
+   * and textures that no material assigned to an object refers to. Looks at all open documents,
+   * so switching tabs does not decode everything again. Call after every sync.
+   */
+  sweep(app: AppState): void {
+    if (app.docs === this.sweptDocs) return;
+    this.sweptDocs = app.docs;
+    const docs = Object.values(app.docs);
+    for (const [id, entry] of this.materials) {
+      if (docs.some((doc) => doc.state.materials[id])) continue;
+      entry.plain?.material.dispose();
+      entry.mapped?.material.dispose();
+      this.materials.delete(id);
+    }
+    if (this.textures.size === 0) return;
+    const used = new Set<Texture>();
+    for (const { state } of docs) {
+      const seen = new Set<string>();
+      for (const obj of Object.values(state.objects)) {
+        if (obj.materialId === null || seen.has(obj.materialId)) continue;
+        seen.add(obj.materialId);
+        for (const id of Object.values(state.materials[obj.materialId]?.maps ?? {})) {
+          if (state.textures[id]) used.add(state.textures[id]);
+        }
+      }
+    }
+    const freed = new Set<GpuTexture>();
+    for (const [texture, decoded] of this.textures) {
+      if (used.has(texture)) continue;
+      this.textures.delete(texture);
+      if (decoded.srgb) freed.add(decoded.srgb);
+      if (decoded.linear) freed.add(decoded.linear);
+      this.releaseTexture(decoded);
+    }
+    if (freed.size === 0) return;
+    // No material may keep pointing at a disposed texture (three would upload it again).
+    for (const entry of this.materials.values()) {
+      const material = entry.mapped?.material;
+      if (!material) continue;
+      for (const { property } of Object.values(slotBinding)) {
+        const bound = material[property];
+        if (bound && freed.has(bound)) {
+          material[property] = null;
+          material.needsUpdate = true;
+        }
+      }
+    }
+  }
+
+  private releaseTexture(decoded: Decoded): void {
+    decoded.disposed = true;
+    decoded.srgb?.dispose();
+    decoded.linear?.dispose();
+    decoded.bitmap?.close();
+  }
+
+  /** Counts for leak checks in development. */
+  stats() {
+    const decoded = [...this.textures.values()];
+    return {
+      documentTextures: decoded.length,
+      gpuTextures: decoded.reduce((n, d) => n + (d.srgb ? 1 : 0) + (d.linear ? 1 : 0), 0),
+      materials: [...this.materials.values()].reduce((n, e) => n + (e.plain ? 1 : 0) + (e.mapped ? 1 : 0), 0),
+      rendererTextures: this.renderer?.info.memory.textures ?? 0,
+    };
+  }
+
+  dispose(): void {
+    for (const entry of this.materials.values()) {
+      entry.plain?.material.dispose();
+      entry.mapped?.material.dispose();
+    }
+    this.materials.clear();
+    this.textures.forEach((decoded) => this.releaseTexture(decoded));
+    this.textures.clear();
+    this.checker?.map?.dispose();
+    this.checker?.dispose();
+    this.environment?.dispose();
+  }
+}

@@ -1,12 +1,13 @@
 import { isTauri } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { useApp } from '../app/store';
+import { documentName } from '../i18n';
 import { notifyError } from './toast';
 import { useUi } from './uiStore';
 
 export function dirtyDocNames(): string[] {
   const app = useApp.getState();
-  return app.docOrder.map((id) => app.docs[id]).filter((d) => d.dirty).map((d) => d.name);
+  return app.docOrder.map((id) => app.docs[id]).filter((d) => d.dirty).map((d) => documentName(d));
 }
 
 /** Asks before the window closes while any document has unsaved changes. */

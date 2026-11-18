@@ -43,6 +43,7 @@ export const de = {
     tool: 'Werkzeug',
     workspace: 'Arbeitsbereich',
     command: 'Befehl',
+    uv: 'UV',
   },
 
   /** Titles of the UI actions: menus, tooltips, command palette. */
@@ -171,6 +172,48 @@ export const de = {
     sidebar: 'Szene und Eigenschaften',
   },
 
+  documents: {
+    /** Shown for documents that still carry core's default name and have no file. */
+    untitled: 'Unbenannt',
+  },
+
+  preferences: {
+    title: 'Einstellungen',
+    reset: 'Auf Standard zurücksetzen',
+    appearance: 'Darstellung',
+    theme: 'Design',
+    themes: {
+      dark: 'Dunkel',
+      light: 'Hell',
+      system: 'System',
+    },
+    accent: 'Akzentfarbe',
+    accents: {
+      brass: 'Messing',
+      copper: 'Kupfer',
+      patina: 'Patina',
+      steel: 'Stahlblau',
+      heather: 'Heide',
+      moss: 'Moos',
+    },
+    accentCustom: 'Eigene Farbe wählen',
+    uiScale: 'GUI-Skalierung',
+    fontScale: 'Schriftgröße',
+    language: 'Sprache',
+    languageLabel: 'Sprache der Oberfläche',
+    viewport: 'Ansichtsfenster',
+    showGrid: 'Raster',
+    showAxes: 'Achsen',
+    fieldOfView: 'Sichtfeld',
+    orbitSpeed: 'Orbit-Geschwindigkeit',
+    zoomSpeed: 'Zoom-Geschwindigkeit',
+    invertZoom: 'Zoom umkehren',
+    editing: 'Bearbeiten',
+    undoSteps: 'Undo-Schritte',
+    undoStepsField: 'Schritte',
+    undoStepsHint: 'je Dokument',
+  },
+
   topBar: {
     workspace: 'Arbeitsbereich',
     documents: 'Dokumente',
@@ -194,7 +237,6 @@ export const de = {
     /** "Die Szene ist leer. [Umschalt+A] fügt ein Objekt hinzu, [Strg+K] öffnet alle Befehle." */
     emptyScene: { before: 'Die Szene ist leer. ', between: ' fügt ein Objekt hinzu, ', after: ' öffnet alle Befehle.' },
     upcoming: {
-      uv: { phase: 'kommt in Phase 3', text: 'Hier wickelst du Netze ab und ordnest ihre UV-Inseln an.' },
       paint: { phase: 'kommt in Phase 4', text: 'Hier malst du Farbe und Material direkt auf das Modell.' },
     },
     untilThen: 'Bis dahin findest du alles Fertige unter Modellieren.',
@@ -217,6 +259,34 @@ export const de = {
     show: (name: string) => `${name} einblenden`,
     /** "Noch keine Objekte. Mit [Umschalt+A] fügst du das erste hinzu." */
     empty: { before: 'Noch keine Objekte. Mit ', after: ' fügst du das erste hinzu.' },
+  },
+
+  /** Groups in the outliner: rows, context menu, actions. */
+  grouping: {
+    /** Name of a new group. */
+    defaultName: 'Gruppe',
+    group: 'Gruppieren',
+    ungroup: 'Gruppe auflösen',
+    newEmpty: 'Neue leere Gruppe',
+    rename: 'Umbenennen',
+    duplicate: 'Duplizieren',
+    hide: 'Ausblenden',
+    show: 'Einblenden',
+    delete: 'Löschen',
+    deleteGroup: 'Gruppe löschen',
+    moveTo: 'In Gruppe verschieben',
+    topLevel: 'Oberste Ebene',
+    expand: (name: string) => `${name} aufklappen`,
+    collapse: (name: string) => `${name} zuklappen`,
+    /** Accessible name of a group row: "Räder, Gruppe, 4 Objekte". */
+    rowLabel: (name: string, count: number) => `${name}, Gruppe, ${num(count)} ${count === 1 ? 'Objekt' : 'Objekte'}`,
+    /** Label of a drag with several rows. */
+    items: (n: number) => `${num(n)} Elemente`,
+    noGroup: 'Keine Gruppe ausgewählt',
+    noGroupHint: 'Wähle ein Objekt aus, das in einer Gruppe liegt.',
+    deleteTitle: (name: string) => `„${name}“ löschen?`,
+    deleteText: (count: number) =>
+      `Die Gruppe enthält ${count === 1 ? 'ein Objekt, das' : `${num(count)} Objekte, die`} mit gelöscht ${count === 1 ? 'wird' : 'werden'}. Mit „Gruppe auflösen“ bleiben sie erhalten.`,
   },
 
   properties: {
@@ -284,6 +354,56 @@ export const de = {
     noTarget: 'Kein weiteres Objekt',
   },
 
+  /** The material section of the properties panel. */
+  materials: {
+    title: 'Material',
+    none: 'Kein Material',
+    pick: 'Material wählen',
+    empty: 'Ohne Material zeigt das Objekt neutralen Ton. Ein Material gibt ihm Farbe, Glanz und Texturen.',
+    usedBy: (objects: number) => (objects === 0 ? 'unbenutzt' : `${num(objects)} ${objects === 1 ? 'Objekt' : 'Objekte'}`),
+    new: 'Neu',
+    duplicate: 'Duplizieren',
+    unassign: 'Zuweisung entfernen',
+    delete: 'Löschen',
+    deleteTitle: 'Material löschen?',
+    deleteText: (name: string, others: number) =>
+      `„${name}“ wird noch von ${others === 1 ? 'einem weiteren Objekt' : `${num(others)} weiteren Objekten`} verwendet. Ohne das Material ${others === 1 ? 'zeigt es' : 'zeigen sie'} wieder neutralen Ton.`,
+    name: 'Materialname',
+    baseColor: 'Grundfarbe',
+    metallic: 'Metallisch',
+    roughness: 'Rauheit',
+    emissive: 'Emission',
+    emissiveStrength: 'Emissionsstärke',
+    strength: 'Stärke',
+    normalScale: 'Normalenstärke',
+    pickColor: (label: string) => `${label} wählen`,
+    hex: (label: string) => `${label} als Hex-Wert`,
+    maps: 'Texturen',
+    slots: {
+      baseColor: 'Grundfarbe',
+      normal: 'Normal',
+      roughness: 'Rauheit',
+      metallic: 'Metallisch',
+      emissive: 'Emission',
+      occlusion: 'Umgebungsverdeckung',
+    },
+    noTexture: 'Keine Textur',
+    slotTexture: (slot: string, texture: string) => `Textur für ${slot}: ${texture}`,
+    noTextures: 'Noch keine Texturen im Dokument',
+    loadImage: 'Bild laden…',
+    loadImageFor: (slot: string) => `Bild für ${slot} laden`,
+    clearSlot: 'Textur entfernen',
+    clearSlotFor: (slot: string) => `Textur für ${slot} entfernen`,
+    removeUnused: (textures: number) => `${num(textures)} ${textures === 1 ? 'unbenutzte Textur' : 'unbenutzte Texturen'} löschen`,
+    pixels: (width: number, height: number) => `${width} × ${height}`,
+    noUvs: 'Objekt hat keine UVs – im Arbeitsbereich UV abwickeln',
+    unwrap: 'Jetzt abwickeln',
+    unsupported: (file: string) => `„${file}“ ist kein PNG-, JPEG- oder WebP-Bild.`,
+    tooLarge: (file: string, megabytes: number) => `„${file}“ ist zu groß. Bilder dürfen höchstens ${num(megabytes)} MB haben.`,
+    tooManyPixels: (file: string, limit: number) => `„${file}“ ist zu groß. Bilder dürfen höchstens ${num(limit)} Pixel breit und hoch sein.`,
+    unreadable: (file: string) => `„${file}“ lässt sich nicht als Bild lesen.`,
+  },
+
   /** The panel with the parameters of the operation that just ran. */
   lastAction: {
     title: 'Letzte Aktion',
@@ -317,6 +437,9 @@ export const de = {
       levels: 'Stufen',
       angle: 'Winkel',
       smooth: 'Glätten',
+      method: 'Methode',
+      margin: 'Rand',
+      axis: 'Achse',
     },
     /** Names of enum values, by value. */
     values: {
@@ -326,7 +449,51 @@ export const de = {
       vertices: 'Eckpunkte',
       edges: 'Kanten',
       faces: 'Flächen',
+      smart: 'Smart',
+      box: 'Würfel',
+      planar: 'Planar',
+      cylinder: 'Zylinder',
+      sphere: 'Kugel',
+      x: 'X',
+      y: 'Y',
+      z: 'Z',
     },
+  },
+
+  /** The UV workspace: UV editor, its tools and the UV menu. */
+  uv: {
+    menu: 'UV',
+    editor: 'UV-Editor',
+    tools: 'UV-Werkzeuge',
+    canvasLabel: (name: string) => `UVs von „${name}“`,
+    divider: 'Aufteilung zwischen UV-Editor und 3D-Ansicht',
+    unwrap: 'Abwickeln',
+    unwrapWith: (method: string) => `Abwickeln: ${method}`,
+    methods: { smart: 'Smart', box: 'Würfel', planar: 'Planar', cylinder: 'Zylinder', sphere: 'Kugel' },
+    pack: 'UVs packen',
+    rotate: 'UVs drehen',
+    rotateLeft: 'UVs 90° nach links drehen',
+    rotateRight: 'UVs 90° nach rechts drehen',
+    flipHorizontal: 'UVs horizontal spiegeln',
+    flipVertical: 'UVs vertikal spiegeln',
+    clear: 'UVs löschen',
+    fit: 'Einpassen',
+    background: 'Hintergrund',
+    backgrounds: { texture: 'Textur', checker: 'Schachbrett', none: 'Keiner' },
+    noObject: 'Kein Objekt aktiv',
+    noObjectHint: 'Wähle ein Objekt aus, um seine UVs zu sehen.',
+    noUvs: (name: string) => `„${name}“ hat noch keine UVs`,
+    noUvsHint: 'Wickle das Netz ab, damit Texturen darauf Platz finden.',
+    lostUvs: (name: string) => `„${name}“ hat keine UVs mehr`,
+    unwrapHint: 'Methode, Winkel und Rand stellst du danach unter „Letzte Aktion“ ein.',
+    noUvsChip: 'Keine UVs',
+    dropped: 'UVs durch Netzänderung entfernt',
+    droppedTip: 'Eine Netzoperation hat die Topologie geändert, dabei gingen die UVs verloren. Wickle das Netz neu ab.',
+    charts: (n: number) => `${num(n)} ${n === 1 ? 'Insel' : 'Inseln'}`,
+    coverage: (percent: number) => `${num(percent)} % belegt`,
+    clickToEdit: 'Klick auf eine Fläche wählt sie aus',
+    clearTitle: 'UVs löschen?',
+    clearText: (name: string) => `Die UVs von „${name}“ werden entfernt. Texturen seines Materials sind dann nicht mehr zu sehen.`,
   },
 
   controls: {
@@ -356,6 +523,24 @@ export const de = {
           : `${num(names.length)} Dokumente haben ungespeicherte Änderungen: ${names.join(', ')}.`
       } Beim Beenden gehen sie verloren.`,
     quitWithoutSaving: 'Beenden ohne Speichern',
+  },
+
+  /** File formats: import and export actions, file dialogs and their toasts. */
+  files: {
+    project: 'Tessel-Projekt',
+    models: '3D-Modelle',
+    desktopOnly: 'Nur in der Desktop-App verfügbar',
+    unsupported: (name: string) => `„${name}“ hat kein unterstütztes Dateiformat.`,
+    import: 'Importieren…',
+    exportAs: (format: string) => `Als ${format} exportieren`,
+    /** Format names: file dialog filters, export actions and toasts. */
+    formats: { glb: 'glTF Binär', gltf: 'glTF', obj: 'Wavefront OBJ', stl: 'STL', ply: 'PLY', usdz: 'USDZ' },
+    /** Entries of the export submenu that the menu area does not have. */
+    menu: { obj: 'OBJ (Wavefront)', stl: 'STL (3D-Druck)', ply: 'PLY', usdz: 'USDZ (AR)' },
+    written: (format: string) => `${format}-Datei geschrieben`,
+    imported: 'Importiert',
+    importedObjects: (n: number) => `${num(n)} ${n === 1 ? 'Objekt' : 'Objekte'} hinzugefügt`,
+    importNotes: (n: number) => (n === 1 ? 'Hinweis zum Import' : `${num(n)} Hinweise zum Import`),
   },
 
   toasts: {

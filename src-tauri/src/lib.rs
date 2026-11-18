@@ -31,8 +31,10 @@ pub fn run() {
       bridge::mcp_respond,
       bridge::mcp_status,
       files::read_text_file,
+      files::read_binary_file,
       files::write_text_file,
       files::write_binary_file,
+      files::write_obj_export,
     ])
     .run(tauri::generate_context!())
     .expect("error while running Tessel");

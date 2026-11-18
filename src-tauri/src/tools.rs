@@ -1,6 +1,7 @@
 //! Tool dispatch: frontend commands plus the native tools that touch the file system.
 
 use std::path::Path;
+use std::time::Duration;
 
 use serde_json::{Map, Value, json};
 
@@ -19,7 +20,12 @@ pub struct ToolOutput {
   pub is_error: bool,
 }
 
-const EXPORT_FORMATS: &str = ".glb (binary glTF, one self-contained file) and .gltf (glTF JSON with embedded buffers)";
+const EXPORT_FORMATS: &str = ".glb (binary glTF, one self-contained file), .gltf (glTF JSON, everything embedded), \
+  .obj (Wavefront OBJ with .mtl and texture images next to it), .stl, .ply and .usdz";
+const IMPORT_FORMATS: &str =
+  ".glb, .gltf, .obj, .stl, .ply and .fbx (3D models), or .png, .jpg and .webp (an image as a texture)";
+/// Parsing or writing a large file in the editor can take a while.
+const FILE_TIMEOUT: Duration = Duration::from_secs(180);
 
 pub fn native_tools() -> Vec<NativeTool> {
   vec![
@@ -55,18 +61,49 @@ pub fn native_tools() -> Vec<NativeTool> {
     },
     NativeTool {
       name: "file_export",
-      description: "Export the active document to a glTF 2.0 file on disk for use in other tools and game engines. \
-        The file extension chooses the format: .glb (binary, one self-contained file - usually what you want) or \
-        .gltf (JSON text). Set selectionOnly to export just the selected objects. Missing parent folders are \
-        created; an existing file is overwritten. This does not save the project - use file_save for that.",
+      description: "Export the active document to a 3D file on disk for use in other tools and game engines. \
+        The file extension chooses the format: .glb (binary glTF 2.0, one self-contained file with materials, \
+        textures, UVs and the group hierarchy - usually what you want), .gltf (the same as JSON text with everything \
+        embedded as base64), .obj (Wavefront OBJ: polygons stay polygons; the material library <name>.mtl and the \
+        texture images <name>_<texture>.png are written into the same folder), .stl (binary, triangles only, for 3D \
+        printing), .ply (binary, triangles with normals and UVs) or .usdz (USD archive for AR viewers). Exported are \
+        the visible objects as they look after their modifiers; .obj, .stl and .ply have no transforms, so they are \
+        written in world space. Set selectionOnly to export just the selected objects. Missing parent folders are \
+        created; existing files are overwritten. Returns the files written. This does not save the project - use \
+        file_save for that.",
       input_schema: json!({
         "type": "object",
         "properties": {
-          "path": { "type": "string", "description": "Absolute path of the exported file, ending in .glb or .gltf." },
+          "path": {
+            "type": "string",
+            "description": "Absolute path of the exported file, ending in .glb, .gltf, .obj, .stl, .ply or .usdz."
+          },
           "selectionOnly": {
             "type": "boolean",
             "default": false,
             "description": "Export only the selected objects instead of the whole document."
+          }
+        },
+        "required": ["path"],
+        "additionalProperties": false
+      }),
+    },
+    NativeTool {
+      name: "file_import",
+      description: "Import a file from disk into the active document. A 3D model (.glb, .gltf, .obj, .stl, .ply, .fbx) \
+        adds its meshes as new objects, with materials, embedded textures and the node hierarchy (as groups) where \
+        the format has them, as one undo step; the new objects are selected. Only the one file is read: an .obj \
+        comes in without its .mtl (materials are created by name with default values), and a .gltf must be \
+        self-contained (use .glb otherwise). Triangle formats arrive as triangle meshes; FBX files are converted \
+        to Y up and meters. An image (.png, .jpg, .jpeg, .webp) is added as a texture; put it on a material with \
+        material_update { id, maps: { baseColor: textureId } }. Files up to 192 MB. Returns the ids and names of \
+        what was added, and warnings about anything that was skipped.",
+      input_schema: json!({
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Absolute path of the file to import: .glb, .gltf, .obj, .stl, .ply, .fbx, or an image (.png, .jpg, .jpeg, .webp)."
           }
         },
         "required": ["path"],
@@ -120,6 +157,7 @@ async fn call_single(bridge: &Bridge, tool: &str, args: Value) -> Result<Value, 
     "file_save" => file_save(bridge, &args).await,
     "file_open" => file_open(bridge, &args).await,
     "file_export" => file_export(bridge, &args).await,
+    "file_import" => file_import(bridge, &args).await,
     "batch" => Err("batch cannot be nested inside batch".into()),
     _ => match bridge.find_command(tool) {
       Some(command) => bridge.call(&command.command_id(), args).await,
@@ -172,7 +210,8 @@ fn require_absolute(path: &str) -> Result<(), String> {
   if Path::new(path).is_absolute() {
     Ok(())
   } else {
-    Err(format!("\"{path}\" is not an absolute path. Pass a full path such as C:\\Models\\chair.tessel."))
+    let extension = Some(files::extension(path)).filter(|e| !e.is_empty()).unwrap_or_else(|| "tessel".into());
+    Err(format!("\"{path}\" is not an absolute path. Pass a full path such as C:\\Models\\chair.{extension}."))
   }
 }
 
@@ -242,32 +281,103 @@ async fn file_open(bridge: &Bridge, args: &Value) -> Result<Value, String> {
   Ok(result)
 }
 
+fn file_name(path: &str) -> String {
+  Path::new(path)
+    .file_name()
+    .map(|s| s.to_string_lossy().into_owned())
+    .unwrap_or_default()
+}
+
 async fn file_export(bridge: &Bridge, args: &Value) -> Result<Value, String> {
   let path = str_arg(args, "path").ok_or("\"path\" is required")?;
   require_absolute(path)?;
-  let binary = match files::extension(path).as_str() {
-    "glb" => true,
-    "gltf" => false,
-    "" => return Err(format!("\"{path}\" has no file extension. Supported export formats: {EXPORT_FORMATS}.")),
-    other => return Err(format!("Cannot export to .{other}. Supported export formats: {EXPORT_FORMATS}.")),
-  };
+  let format = files::extension(path);
+  if format.is_empty() {
+    return Err(format!("\"{path}\" has no file extension. Supported export formats: {EXPORT_FORMATS}."));
+  }
+  if !files::EXPORT_EXTENSIONS.contains(&format.as_str()) {
+    return Err(format!("Cannot export to .{format}. Supported export formats: {EXPORT_FORMATS}."));
+  }
   let selection_only = args.get("selectionOnly").and_then(Value::as_bool).unwrap_or(false);
 
-  let exported = bridge
-    .call("export.gltf", json!({ "binary": binary, "selectionOnly": selection_only }))
+  let params = json!({ "format": format, "selectionOnly": selection_only, "name": file_stem(path) });
+  let exported = bridge.call_with_timeout("export.file", params, FILE_TIMEOUT).await?;
+
+  let mut written = vec![file_name(path)];
+  let bytes = if format == "obj" {
+    let text = field(&exported, "text", "export.file")?;
+    let side_files: Vec<files::SideFile> = match exported.get("files") {
+      Some(list) => serde_json::from_value(list.clone())
+        .map_err(|e| format!("The editor returned invalid side files from export.file: {e}"))?,
+      None => Vec::new(),
+    };
+    written = files::write_obj_bundle(
+      path,
+      text,
+      field(&exported, "mtlName", "export.file")?,
+      field(&exported, "mtl", "export.file")?,
+      &side_files,
+    )
     .await?;
-  let bytes = if binary {
-    files::decode_base64(field(&exported, "base64", "export.gltf")?)?
+    text.len()
+  } else if let Some(text) = exported.get("text").and_then(Value::as_str) {
+    files::write_bytes(path, text.as_bytes()).await?;
+    text.len()
   } else {
-    field(&exported, "text", "export.gltf")?.as_bytes().to_vec()
+    let bytes = files::decode_base64(field(&exported, "base64", "export.file")?)?;
+    files::write_bytes(path, &bytes).await?;
+    bytes.len()
   };
-  files::write_bytes(path, &bytes).await?;
 
   Ok(json!({
     "exported": true,
     "path": path,
-    "format": if binary { "glb" } else { "gltf" },
-    "bytes": bytes.len(),
+    "format": format,
+    "bytes": bytes,
+    "files": written,
     "selectionOnly": selection_only
   }))
+}
+
+async fn file_import(bridge: &Bridge, args: &Value) -> Result<Value, String> {
+  let path = str_arg(args, "path").ok_or("\"path\" is required")?;
+  require_absolute(path)?;
+  let format = files::extension(path);
+  let is_image = files::IMAGE_EXTENSIONS.contains(&format.as_str());
+  if format.is_empty() {
+    return Err(format!("\"{path}\" has no file extension. Supported import formats: {IMPORT_FORMATS}."));
+  }
+  if !is_image && !files::IMPORT_EXTENSIONS.contains(&format.as_str()) {
+    let hint = if format == "tessel" { " Use file_open for .tessel project files." } else { "" };
+    return Err(format!("Cannot import .{format} files. Supported import formats: {IMPORT_FORMATS}.{hint}"));
+  }
+  let bytes = files::read_bytes_limited(path).await?;
+  if bytes.is_empty() {
+    return Err(format!("\"{path}\" is empty"));
+  }
+
+  let imported = if is_image {
+    let (mime_type, width, height) = files::image_info(&bytes)
+      .ok_or_else(|| format!("\"{path}\" is not a PNG, JPEG or WebP image (its content does not match)"))?;
+    let params = json!({
+      "name": file_name(path),
+      "mimeType": mime_type,
+      "data": files::encode_base64(&bytes),
+      "width": width,
+      "height": height
+    });
+    let texture = bridge.call_with_timeout("texture.add", params, FILE_TIMEOUT).await?;
+    json!({ "texture": texture, "width": width, "height": height })
+  } else {
+    let params = json!({ "format": format, "name": file_name(path), "base64": files::encode_base64(&bytes) });
+    bridge.call_with_timeout("import.file", params, FILE_TIMEOUT).await?
+  };
+
+  let mut result = json!({ "imported": true, "path": path, "format": format, "bytes": bytes.len() });
+  if let (Some(result), Some(imported)) = (result.as_object_mut(), imported.as_object()) {
+    for (key, value) in imported {
+      result.insert(key.clone(), value.clone());
+    }
+  }
+  Ok(result)
 }

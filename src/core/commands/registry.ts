@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { activeDoc, withDoc } from '../state';
+import { activeDoc, own, withDoc } from '../state';
 import type { AppState, DocState, Services } from '../types';
 
 export interface CommandContext {
@@ -45,7 +45,7 @@ export function updateDocState(ctx: CommandContext, update: (state: DocState) =>
     const doc = activeDoc(app);
     const next = update(doc.state);
     // Edit mode cannot outlive its object (deleted, or removed by undoing its creation elsewhere).
-    const state = next.edit && !next.objects[next.edit.objectId] ? { ...next, edit: null } : next;
+    const state = next.edit && !own(next.objects, next.edit.objectId) ? { ...next, edit: null } : next;
     return withDoc(app, { ...doc, state });
   });
 }

@@ -208,13 +208,60 @@ export interface ViewportService {
   frame(ids: readonly string[]): void;
 }
 
+export const exportFormats = ['glb', 'gltf', 'obj', 'stl', 'ply', 'usdz'] as const;
+export type ExportFormat = (typeof exportFormats)[number];
+
+export const importFormats = ['glb', 'gltf', 'obj', 'stl', 'ply', 'fbx'] as const;
+export type ImportFormat = (typeof importFormats)[number];
+
+/** An exported file: binary formats as base64, text formats as text. OBJ comes with its material library and images. */
+export interface ExportResult {
+  base64?: string;
+  text?: string;
+  /** OBJ only: the material library, to be written next to the .obj as `mtlName`. */
+  mtl?: string;
+  mtlName?: string;
+  /** OBJ only: the texture images the .mtl refers to, to be written next to it. */
+  files?: { name: string; base64: string }[];
+}
+
 /** Implemented by src/io, registered at startup. */
 export interface ExportService {
-  /** Returns GLB as base64 (binary) or glTF JSON text. `ids` limits the export to these objects. */
-  gltf(state: DocState, opts: { binary: boolean; ids?: readonly string[] }): Promise<string>;
+  /**
+   * Writes the visible objects (limited to `ids` if given) in the given format. `name` is the file name
+   * without extension, used where a format refers to its side files (OBJ: .mtl and image names).
+   */
+  export(state: DocState, opts: { format: ExportFormat; ids?: readonly string[]; name?: string }): Promise<ExportResult>;
+}
+
+/** What an importer read from a file: plain data that `import.file` adds to the document. Indices refer to the arrays here. */
+export interface ImportedScene {
+  objects: {
+    name: string;
+    mesh: PolyMesh;
+    transform: Transform;
+    smooth: boolean;
+    /** Index into `materials`, or null. */
+    material: number | null;
+    /** Index into `groups`, or null at top level. */
+    group: number | null;
+  }[];
+  /** Parents come before their children. */
+  groups: { name: string; parent: number | null }[];
+  materials: (Omit<Material, 'id' | 'maps'> & { maps: Partial<Record<TextureSlot, number>> })[];
+  textures: Omit<Texture, 'id'>[];
+  /** Things the file had that were not imported, in English. */
+  warnings: string[];
+}
+
+/** Implemented by src/io, registered at startup. */
+export interface ImportService {
+  /** Parses a file. Throws an Error with a clear English message if it cannot be read. */
+  import(file: { format: ImportFormat; name: string; base64?: string; text?: string }): Promise<ImportedScene>;
 }
 
 export interface Services {
   viewport: ViewportService | null;
   exporter: ExportService | null;
+  importer?: ImportService | null;
 }

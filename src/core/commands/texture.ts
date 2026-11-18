@@ -1,12 +1,12 @@
 import { z } from 'zod';
 import { MAX_TEXTURE_BASE64, MAX_TEXTURE_SIZE, textureBytes, textureDataProblem, textureUsers } from '../materials';
-import { newId, uniqueName } from '../state';
+import { newId, own, uniqueName } from '../state';
 import { textureMimeTypes, textureSlots } from '../types';
 import type { DocState, Texture } from '../types';
 import { defineCommand, docState, updateDocState } from './registry';
 
 function requireTexture(state: DocState, id: string): Texture {
-  const texture = state.textures[id];
+  const texture = own(state.textures, id);
   if (!texture) throw new Error(`Texture "${id}" does not exist`);
   return texture;
 }

@@ -84,6 +84,11 @@ impl Bridge {
 
   /// Runs a frontend command by its dotted id and waits for the result.
   pub async fn call(&self, command: &str, params: Value) -> Reply {
+    self.call_with_timeout(command, params, CALL_TIMEOUT).await
+  }
+
+  /// Like `call`, for commands that may take longer than the usual limit (reading and writing files).
+  pub async fn call_with_timeout(&self, command: &str, params: Value, timeout: Duration) -> Reply {
     if self.commands.read().unwrap().is_empty() {
       return Err(
         "The Tessel editor window has not finished starting (no commands registered yet). Try again in a moment."
@@ -104,14 +109,14 @@ impl Bridge {
       return Err(format!("Could not reach the Tessel editor window: {e}"));
     }
 
-    match tokio::time::timeout(CALL_TIMEOUT, rx).await {
+    match tokio::time::timeout(timeout, rx).await {
       Ok(Ok(reply)) => reply,
       Ok(Err(_)) => Err(format!("The editor dropped the request for \"{command}\".")),
       Err(_) => {
         self.pending.lock().unwrap().remove(&request_id);
         Err(format!(
           "The editor did not answer \"{command}\" within {} seconds.",
-          CALL_TIMEOUT.as_secs()
+          timeout.as_secs()
         ))
       }
     }

@@ -20,6 +20,9 @@ const shown: Record<string, (params: Record<string, unknown>) => readonly string
     }[params.type as string] ?? []),
     'position',
   ],
+  'uv.unwrap': (params) => ['method', ...({ smart: ['angle', 'margin'], box: ['margin'] }[params.method as string] ?? ['axis'])],
+  'uv.pack': () => ['margin'],
+  'uv.transform': () => ['rotate'],
 };
 
 type Field =
@@ -99,7 +102,7 @@ export function LastOpPanel() {
   return (
     <section
       aria-label={t.lastAction.title}
-      className="anim-pop absolute bottom-3 left-3 flex max-h-[calc(100%-4.5rem)] w-56 flex-col rounded-lg border border-line-strong bg-overlay/95 shadow-pop backdrop-blur-sm"
+      className="anim-pop absolute bottom-3 left-3 flex max-h-[calc(100%-4.5rem)] w-56 max-w-[calc(100%-1.5rem)] flex-col rounded-lg border border-line-strong bg-overlay/95 shadow-pop backdrop-blur-sm"
     >
       <header className="flex h-8 shrink-0 items-center justify-between gap-2 pr-2.5 pl-3">
         <h2 className="min-w-0 truncate text-[calc(12.5px*var(--font-scale))] font-semibold text-text">{title}</h2>

@@ -106,14 +106,14 @@ export function repairMaterials(
     const maps: Partial<Record<TextureSlot, string>> = {};
     for (const slot of textureSlots) {
       const textureId = material.maps[slot];
-      if (textureId !== undefined && textureId in textures) maps[slot] = textureId;
+      if (textureId !== undefined && Object.hasOwn(textures, textureId)) maps[slot] = textureId;
     }
     const intact = Object.keys(maps).length === Object.keys(material.maps).length;
     fixedMaterials[material.id] = intact ? material : { ...material, maps };
   }
   const fixedObjects: Record<string, SceneObject> = {};
   for (const obj of Object.values(objects)) {
-    const dangling = obj.materialId !== null && !(obj.materialId in fixedMaterials);
+    const dangling = obj.materialId !== null && !(Object.hasOwn(fixedMaterials, obj.materialId));
     fixedObjects[obj.id] = dangling ? { ...obj, materialId: null } : obj;
   }
   return { objects: fixedObjects, materials: fixedMaterials };

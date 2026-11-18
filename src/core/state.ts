@@ -21,8 +21,14 @@ export function createDoc(name: string, state: DocState = emptyDocState, filePat
   return { id: newId(), name, filePath, dirty: false, state, past: [], future: [] };
 }
 
+/**
+ * Name of documents nobody has named yet. Core knows no UI language: the UI shows such a document under its
+ * translated "untitled" label (`documentName` in src/i18n) until it is renamed or saved.
+ */
+export const DEFAULT_DOC_NAME = 'Untitled';
+
 export function createAppState(): AppState {
-  const doc = createDoc('Unbenannt');
+  const doc = createDoc(DEFAULT_DOC_NAME);
   return {
     preferences: defaultPreferences,
     docs: { [doc.id]: doc },
@@ -55,4 +61,12 @@ export function withDoc(app: AppState, doc: Doc): AppState {
 
 export function addDoc(app: AppState, doc: Doc): AppState {
   return { ...withDoc(app, doc), docOrder: [...app.docOrder, doc.id], activeDocId: doc.id };
+}
+
+/**
+ * Looks up an id in a record of the document. Unlike `record[id]` this never returns something
+ * inherited from Object.prototype, so ids such as "toString" or "constructor" simply do not exist.
+ */
+export function own<T>(record: Readonly<Record<string, T>>, id: string): T | undefined {
+  return Object.hasOwn(record, id) ? record[id] : undefined;
 }

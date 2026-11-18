@@ -841,7 +841,7 @@ describe('project files', () => {
   });
 
   it('still rejects malformed group data', () => {
-    const invalid = /^Keine gültige Tessel-Datei: /;
+    const invalid = /^Not a valid Tessel file: /;
     expect(() => parseProject(project([], {}))).toThrow(invalid);
     expect(() => parseProject(project([], [{ id: '', name: 'G' }]))).toThrow(invalid);
     expect(() => parseProject(project([], [{ id: 'g' }]))).toThrow(invalid);

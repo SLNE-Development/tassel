@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { applyModifier, evaluateObject, initModifiers } from '../modifiers/evaluate';
 import { modifierCommandParams, modifierParams } from '../modifiers/schema';
-import { newId } from '../state';
+import { newId, own } from '../state';
 import { modifierTypes, type DocState, type Modifier, type ModifierType, type SceneObject } from '../types';
 import { defineCommand, docState, updateDocState, type CommandContext } from './registry';
 
@@ -13,7 +13,7 @@ type TypeParams = { [K in keyof typeof modifierCommandParams]?: z.infer<(typeof 
 function requireObject(state: DocState, objectId: string | undefined): SceneObject {
   const id = objectId ?? state.activeId;
   if (!id) throw new Error('No objectId given and there is no active object');
-  const object = state.objects[id];
+  const object = own(state.objects, id);
   if (!object) throw new Error(`Object "${id}" does not exist`);
   return object;
 }
@@ -37,7 +37,7 @@ function mergeParams(state: DocState, object: SceneObject, type: ModifierType, c
   }
   if (type === 'boolean' && given.targetId != null) {
     if (given.targetId === object.id) throw new Error('An object cannot be its own boolean target');
-    if (!state.objects[given.targetId]) throw new Error(`Target object "${given.targetId}" does not exist`);
+    if (!own(state.objects, given.targetId)) throw new Error(`Target object "${given.targetId}" does not exist`);
   }
   return merged;
 }
@@ -60,7 +60,7 @@ async function modifierError(ctx: CommandContext, objectId: string, modifier: Mo
     }
   }
   const state = docState(ctx);
-  if (!state.objects[objectId]) return {};
+  if (!own(state.objects, objectId)) return {};
   const error = evaluateObject(state, objectId).errors[modifier.id];
   return error ? { error } : {};
 }

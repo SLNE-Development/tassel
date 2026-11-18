@@ -29,7 +29,7 @@ import {
   selectMore,
   type MeshSelection,
 } from '../mesh/selection';
-import { activeDoc } from '../state';
+import { activeDoc, own } from '../state';
 import { elementModes, type DocState, type Edge, type EditState, type ElementMode, type PolyMesh } from '../types';
 import { defineCommand, docState, updateDocState, vec3, type CommandContext } from './registry';
 
@@ -106,7 +106,7 @@ function enterEdit(ctx: CommandContext, objectId: string | undefined) {
   const state = docState(ctx);
   const id = objectId ?? state.activeId;
   if (!id) throw new Error('No object given and there is no active object to edit');
-  const obj = state.objects[id];
+  const obj = own(state.objects, id);
   if (!obj) throw new Error(`Object "${id}" does not exist`);
   let edit = state.edit;
   if (edit?.objectId !== id) {

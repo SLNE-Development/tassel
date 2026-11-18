@@ -1,11 +1,13 @@
 import { execute, selectDocState, useApp } from '../app/store';
-import { exportGltf, openProject, saveProject } from '../bridge/files';
+import { exportFile, importFile, openProject, saveProject } from '../bridge/files';
 import { primitiveTypes } from '../core/mesh/primitives';
-import { elementModes, shadings, tools, viewPresets, workspaces, type ViewPreset } from '../core/types';
+import { elementModes, shadings, tools, viewPresets, workspaces, type ExportFormat, type ViewPreset } from '../core/types';
 import { getT, type Dictionary } from '../i18n';
+import { groupSelection, newEmptyGroup, ungroupSelection } from './groupActions';
 import { runOp } from './live';
 import { notifyError, notifyInfo, notifySuccess } from './toast';
 import { useUi } from './uiStore';
+import { uvActions } from './uv/uvActions';
 
 /**
  * A UI action: something the user can trigger from a menu, a shortcut or the command palette.
@@ -118,8 +120,16 @@ export async function saveActiveDoc(saveAs = false): Promise<boolean> {
   return saved;
 }
 
-async function exportActiveDoc(binary: boolean) {
-  if (await exportGltf({ binary })) notifySuccess(getT().toasts.exported, binary ? getT().toasts.glbWritten : getT().toasts.gltfWritten);
+async function exportActiveDoc(format: ExportFormat) {
+  if (await exportFile(format)) notifySuccess(getT().toasts.exported, getT().files.written(getT().files.formats[format]));
+}
+
+async function importIntoActiveDoc() {
+  const result = await importFile();
+  if (!result) return;
+  notifySuccess(getT().files.imported, getT().files.importedObjects(result.objects.length));
+  // What the file had but could not be imported; the texts come from the command, like error messages.
+  if (result.warnings.length > 0) notifyInfo(getT().files.importNotes(result.warnings.length), result.warnings.join(' '));
 }
 
 export const actions: readonly Action[] = [
@@ -128,8 +138,12 @@ export const actions: readonly Action[] = [
   action({ id: 'file.open', title: (t) => t.actions.open, group: 'file', keys: ['Ctrl+O'], inInputs: true, run: () => openProject() }),
   action({ id: 'file.save', title: (t) => t.actions.save, group: 'file', keys: ['Ctrl+S'], inInputs: true, run: () => saveActiveDoc() }),
   action({ id: 'file.save_as', title: (t) => t.actions.saveAs, group: 'file', keys: ['Ctrl+Shift+S'], inInputs: true, run: () => saveActiveDoc(true) }),
-  action({ id: 'file.export_glb', title: (t) => t.actions.exportGlb, group: 'file', command: 'export.gltf', run: () => exportActiveDoc(true) }),
-  action({ id: 'file.export_gltf', title: (t) => t.actions.exportGltf, group: 'file', run: () => exportActiveDoc(false) }),
+  action({ id: 'file.import', title: (t) => t.files.import, group: 'file', command: 'import.file', run: importIntoActiveDoc }),
+  action({ id: 'file.export_glb', title: (t) => t.actions.exportGlb, group: 'file', command: 'export.gltf', run: () => exportActiveDoc('glb') }),
+  action({ id: 'file.export_gltf', title: (t) => t.actions.exportGltf, group: 'file', command: 'export.file', run: () => exportActiveDoc('gltf') }),
+  ...(['obj', 'stl', 'ply', 'usdz'] as const).map((format) =>
+    action({ id: `file.export_${format}`, title: (t) => t.files.exportAs(t.files.formats[format]), group: 'file', run: () => exportActiveDoc(format) }),
+  ),
   action({ id: 'file.close', title: (t) => t.actions.close, group: 'file', command: 'document.close', run: () => requestCloseDoc(useApp.getState().activeDocId) }),
 
   // Bearbeiten
@@ -139,6 +153,9 @@ export const actions: readonly Action[] = [
   action({ id: 'edit.delete', when: 'object', title: (t) => t.actions.delete, group: 'edit', keys: ['X', 'Delete'], command: 'scene.delete_objects', run: onSelection(() => execute('scene.delete_objects')) }),
   action({ id: 'edit.select_all', when: 'object', title: (t) => t.actions.selectAll, group: 'edit', keys: ['A'], command: 'scene.select_all', run: () => execute('scene.select_all') }),
   action({ id: 'edit.deselect', when: 'object', title: (t) => t.actions.deselect, group: 'edit', keys: ['Alt+A'], run: () => execute('scene.select', { ids: [] }) }),
+  action({ id: 'edit.group', when: 'object', title: (t) => t.grouping.group, group: 'edit', keys: ['Ctrl+G'], command: 'group.create', run: groupSelection }),
+  action({ id: 'edit.ungroup', when: 'object', title: (t) => t.grouping.ungroup, group: 'edit', keys: ['Ctrl+Shift+G'], command: 'group.ungroup', run: ungroupSelection }),
+  action({ id: 'edit.new_group', when: 'object', title: (t) => t.grouping.newEmpty, group: 'edit', run: () => newEmptyGroup() }),
 
   // Modus
   action({ id: 'mode.toggle', title: (t) => t.actions.toggleEditMode, group: 'mode', keys: ['Tab'], command: 'edit.toggle', run: toggleEditMode }),
@@ -176,6 +193,9 @@ export const actions: readonly Action[] = [
   meshSelect('mesh.select_linked', (t) => t.actions.selectLinked, ['Ctrl+L']),
   meshSelect('mesh.select_more', (t) => t.actions.selectMore, ['Ctrl+NumpadAdd']),
   meshSelect('mesh.select_less', (t) => t.actions.selectLess, ['Ctrl+NumpadSubtract']),
+
+  // UV
+  ...uvActions(action),
 
   // Hinzufügen
   action({ id: 'add.menu', title: (t) => t.actions.addMenu, group: 'add', keys: ['Shift+A'], hidden: true, run: () => useUi.setState({ addMenuOpen: true }) }),

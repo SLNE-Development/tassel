@@ -19,8 +19,14 @@ export class MeshGeometry {
     this.solid = new BufferGeometry();
     this.solid.setAttribute('position', new BufferAttribute(soup.positions, 3));
     this.solid.setAttribute('normal', new BufferAttribute(soup.normals, 3));
+    if (soup.uvs) this.solid.setAttribute('uv', new BufferAttribute(soup.uvs, 2));
     this.solid.computeBoundingBox();
     this.solid.computeBoundingSphere();
+  }
+
+  /** Whether the mesh is unwrapped, i.e. `solid` has a `uv` attribute and can show texture maps. */
+  get hasUvs(): boolean {
+    return this.solid.hasAttribute('uv');
   }
 
   private edges(): Float32Array {

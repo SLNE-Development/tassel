@@ -7,6 +7,10 @@ import { shortcutLabel } from './actions';
 import { workspaceIcons } from './labels';
 import { LastOpPanel } from './LastOpPanel';
 import { ModeSwitch } from './ModeSwitch';
+import { SplitDivider } from './uv/SplitDivider';
+import { UvEditor } from './uv/UvEditor';
+import { UvOverlays } from './uv/UvMenu';
+import { useUvUi } from './uv/uvStore';
 
 // Never re-rendered by UI state: it takes no props and its parent passes none.
 const ViewportHost = memo(function ViewportHost() {
@@ -38,7 +42,7 @@ function EmptyHint() {
   );
 }
 
-function Placeholder({ workspace }: { workspace: Exclude<Workspace, 'modeling'> }) {
+function Placeholder({ workspace }: { workspace: Exclude<Workspace, 'modeling' | 'uv'> }) {
   const t = useT();
   const info = t.viewport.upcoming[workspace];
   const title = t.workspaces[workspace];
@@ -57,19 +61,30 @@ function Placeholder({ workspace }: { workspace: Exclude<Workspace, 'modeling'> 
 
 export function Centre() {
   const workspace = useApp((s) => s.workspace);
+  const split = useUvUi((s) => s.split);
+  const uv = workspace === 'uv';
   return (
     <main className="relative min-h-0 min-w-0 overflow-hidden bg-ink">
-      {/* The viewport stays mounted in every workspace so its camera and the screenshot service survive. */}
-      <ViewportHost />
-      {workspace === 'modeling' ? (
-        <>
-          <EmptyHint />
-          <ModeSwitch />
-          <LastOpPanel />
-        </>
-      ) : (
-        <Placeholder workspace={workspace} />
+      {uv && (
+        <div className="absolute inset-y-0 left-0" style={{ width: `${split * 100}%` }}>
+          <UvEditor />
+        </div>
       )}
+      {/* The 3D view: everything in modelling, the right part next to the UV editor. Its overlays stay inside it. */}
+      <div className="absolute inset-y-0 right-0 overflow-hidden" style={{ left: uv ? `${split * 100}%` : 0 }}>
+        {/* The viewport stays mounted in every workspace so its camera and the screenshot service survive. */}
+        <ViewportHost />
+        {workspace === 'modeling' && <EmptyHint />}
+        {workspace !== 'paint' && (
+          <>
+            <ModeSwitch />
+            <LastOpPanel />
+          </>
+        )}
+      </div>
+      {uv && <SplitDivider />}
+      {workspace === 'paint' && <Placeholder workspace={workspace} />}
+      <UvOverlays />
     </main>
   );
 }

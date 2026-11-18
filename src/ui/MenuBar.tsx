@@ -6,7 +6,9 @@ import { primitiveTypes } from '../core/mesh/primitives';
 import { elementModes, shadings, viewPresets } from '../core/types';
 import { useT } from '../i18n';
 import { shortcutLabel } from './actions';
+import { groupToUngroup } from './groupActions';
 import { meshToolIcons, primitiveIcons } from './labels';
+import { UvMenuItems } from './uv/UvMenu';
 import { ActionItem, MenuLabel, MenuPopup, MenuSeparator, RadioActionItem, Submenu } from './menu';
 
 function TopMenu({ title, disabled, children }: { title: string; disabled?: boolean; children: ReactNode }) {
@@ -28,6 +30,7 @@ function EditItems() {
   const hasSelection = useApp((s) => selectActiveDoc(s).state.selection.length > 0);
   const hasObjects = useApp((s) => selectActiveDoc(s).state.order.length > 0);
   const editing = useApp((s) => selectActiveDoc(s).state.edit !== null);
+  const canUngroup = useApp(() => groupToUngroup() !== null);
   const t = useT();
   return (
     <>
@@ -46,6 +49,9 @@ function EditItems() {
       ) : (
         <>
           <ActionItem id="edit.delete" disabled={!hasSelection} />
+          <MenuSeparator />
+          <ActionItem id="edit.group" disabled={!hasSelection} />
+          <ActionItem id="edit.ungroup" disabled={!canUngroup} />
           <MenuSeparator />
           <ActionItem id="edit.select_all" disabled={!hasObjects} />
           <ActionItem id="edit.deselect" disabled={!hasSelection} />
@@ -165,12 +171,16 @@ export function MenuBar() {
       <TopMenu title={t.menu.file}>
         <ActionItem id="file.new" />
         <ActionItem id="file.open" />
+        <ActionItem id="file.import" />
         <MenuSeparator />
         <ActionItem id="file.save" />
         <ActionItem id="file.save_as" />
         <Submenu title={t.menu.export}>
           <ActionItem id="file.export_glb" title={t.menu.exportGlb} />
           <ActionItem id="file.export_gltf" title={t.menu.exportGltf} />
+          {(['obj', 'stl', 'ply', 'usdz'] as const).map((format) => (
+            <ActionItem key={format} id={`file.export_${format}`} title={t.files.menu[format]} />
+          ))}
         </Submenu>
         <MenuSeparator />
         <ActionItem id="preferences.open" />
@@ -184,6 +194,9 @@ export function MenuBar() {
         <AddItems />
       </TopMenu>
       <MeshMenu />
+      <TopMenu title={t.uv.menu}>
+        <UvMenuItems />
+      </TopMenu>
       <TopMenu title={t.menu.view}>
         <ViewItems />
       </TopMenu>

@@ -48,6 +48,8 @@ import { ElementPicker } from './editPick';
 import { DEFAULT_SPHERE, fitClipPlanes, fitDistance, placeCamera, viewDirection } from './framing';
 import { GeometryStore, type MeshGeometry } from './geometry';
 import { GroundGrid } from './grid';
+import { rotateAbout, scaleAbout } from './groupTransform';
+import { SurfaceMaterials } from './surfaces';
 import { VIEWPORT_PALETTES } from './theme';
 
 /** 0 = not selected, 1 = selected, 2 = active. */
@@ -70,6 +72,8 @@ interface Entry {
 
 type Drag =
   | { kind: 'object'; start: Map<string, Vector3>; origin: Vector3 }
+  /** Several objects rotated or scaled as a unit about `pivot` (world space); `start` are their transforms before. */
+  | { kind: 'group'; start: Map<string, Transform>; pivot: Vector3 }
   /** `pivot` is the gizmo position at the start, in the object's local space. */
   | { kind: 'edit'; view: EditView; pivot: Vector3 };
 
@@ -140,8 +144,16 @@ export class ViewportEngine {
   private readonly clayDim: MeshStandardMaterial;
   private readonly wireDim = new LineBasicMaterial({ fog: false });
   private readonly editMaterials = new EditMaterials();
+  /** PBR materials and the UV checker; a texture that finishes decoding asks for another sync. */
+  private readonly ambient = new HemisphereLight('#e4e9f2', '#3a3632', 1.5);
+  private readonly surfaces = new SurfaceMaterials(() => {
+    this.needsSync = true;
+    this.invalidate();
+  });
   /** The gizmo attaches to this in edit mode; a child of the edited object's group. */
   private readonly pivot = new Object3D();
+  /** The rotate / scale gizmo attaches to this when several objects are selected: the centre of their bounding box. */
+  private readonly groupPivot = new Object3D();
   /** Rectangle of a box selection in progress. */
   private readonly boxElement = document.createElement('div');
 
@@ -172,7 +184,7 @@ export class ViewportEngine {
     this.scene.add(this.grid.object, this.content, this.lightRig);
 
     // Soft studio lighting. The rig follows the camera so every view direction is lit the same way.
-    this.scene.add(new HemisphereLight('#e4e9f2', '#3a3632', 1.5));
+    this.scene.add(this.ambient);
     const key = new DirectionalLight('#fff3e4', 2.4);
     key.position.set(-3, 5, 4);
     const fill = new DirectionalLight('#a9bfe6', 0.7);
@@ -252,6 +264,7 @@ export class ViewportEngine {
       this.backend = (this.renderer.backend as { isWebGPUBackend?: boolean }).isWebGPUBackend ? 'webgpu' : 'webgl2';
       // Lets the UI (and tests) see which backend is in use.
       this.container.dataset.backend = this.backend;
+      this.surfaces.init(this.renderer);
       this.resize();
     });
     this.ready.catch((error) => console.error('Viewport: renderer could not be initialised', error));
@@ -279,6 +292,7 @@ export class ViewportEngine {
     this.geometries.dispose();
     this.grid.dispose();
     this.editMaterials.dispose();
+    this.surfaces.dispose();
     [
       ...this.clay,
       this.clayDim,
@@ -433,8 +447,11 @@ export class ViewportEngine {
       const mesh = evaluateObject(state, id).mesh;
       if (entry.geometry.mesh !== mesh || entry.geometry.smooth !== obj.smooth) this.swapGeometry(entry, mesh, obj.smooth);
       const highlight: Highlight = id === state.activeId ? 2 : selected.has(id) ? 1 : 0;
-      this.applyLook(entry, app.shading, highlight, edit !== null);
+      const surface = this.surfaces.pick(app, state, obj, entry.geometry.hasUvs);
+      this.applyLook(entry, app.shading, highlight, edit !== null, surface);
     }
+    this.surfaces.sweep(app);
+    this.surfaces.applyLighting(app, this.scene, this.ambient);
 
     // The gizmo: on the active object, or in edit mode on the selected elements.
     let target: Object3D | null = null;
@@ -450,6 +467,9 @@ export class ViewportEngine {
         if (this.pivot.parent !== entry.group) entry.group.add(this.pivot);
         target = this.pivot;
       }
+    } else if (app.tool !== 'move' && state.selection.length > 1) {
+      // Several objects rotate and scale as a unit.
+      if (this.placeGroupPivot(state.selection)) target = this.groupPivot;
     } else {
       const active = state.activeId ? this.entries.get(state.activeId) : undefined;
       if (active && active.obj.visible) target = active.group;
@@ -462,6 +482,59 @@ export class ViewportEngine {
     } else if (this.gizmo.object) {
       this.gizmo.detach();
     }
+  }
+
+  /**
+   * Puts the group pivot, unrotated and unscaled, at the centre of the world-space bounding box of the
+   * visible objects among `ids` (the box around their own boxes). False if none of them is visible.
+   */
+  private placeGroupPivot(ids: readonly string[]): boolean {
+    const box = new Box3();
+    const part = new Box3();
+    for (const id of ids) {
+      const entry = this.entries.get(id);
+      if (!entry || !entry.obj.visible) continue;
+      const geometry = entry.solid.geometry;
+      if (!geometry.boundingBox) geometry.computeBoundingBox();
+      entry.group.updateWorldMatrix(true, false);
+      box.union(part.copy(geometry.boundingBox!).applyMatrix4(entry.group.matrixWorld));
+    }
+    if (box.isEmpty()) return false;
+    box.getCenter(this.groupPivot.position);
+    this.groupPivot.quaternion.identity();
+    this.groupPivot.scale.setScalar(1);
+    if (!this.groupPivot.parent) this.scene.add(this.groupPivot);
+    return true;
+  }
+
+  /** The transforms a group drag gives the objects it started with, for the gizmo's current state. */
+  private groupDragTransforms(drag: Extract<Drag, { kind: 'group' }>): Map<string, Transform> {
+    const { quaternion, scale } = this.groupPivot;
+    const result = new Map<string, Transform>();
+    for (const [id, t] of drag.start) {
+      result.set(id, this.gizmo.mode === 'rotate' ? rotateAbout(t, drag.pivot, quaternion) : scaleAbout(t, drag.pivot, scale));
+    }
+    return result;
+  }
+
+  /** Commits a group drag as one `scene.set_transform` with every object that changed. */
+  private commitGroupDrag(drag: Extract<Drag, { kind: 'group' }>): void {
+    const state = this.docState();
+    const items: { id: string; position?: Vec3; rotation?: Vec3; scale?: Vec3 }[] = [];
+    for (const [id, next] of this.groupDragTransforms(drag)) {
+      const t = state?.objects[id]?.transform;
+      if (!t) continue;
+      const item: (typeof items)[number] = { id };
+      if (!sameVec3(next.position, t.position)) item.position = next.position;
+      if (!sameVec3(next.rotation, t.rotation)) item.rotation = next.rotation;
+      if (!sameVec3(next.scale, t.scale)) item.scale = next.scale;
+      if (item.position || item.rotation || item.scale) items.push(item);
+    }
+    if (items.length === 0) return this.resetTransforms();
+    execute('scene.set_transform', { items }).catch((error) => {
+      console.error(error);
+      this.resetTransforms();
+    });
   }
 
   /** Local-space bounding box of the selected elements, or null if nothing is selected. */
@@ -512,11 +585,12 @@ export class ViewportEngine {
   }
 
   /** `dim`: another object is being edited; this one steps back and shows no selection. */
-  private applyLook(entry: Entry, shading: Shading, highlight: Highlight, dim: boolean): void {
+  private applyLook(entry: Entry, shading: Shading, highlight: Highlight, dim: boolean, surface: MeshStandardMaterial | null = null): void {
     const wireframe = shading === 'wireframe';
     if (dim) highlight = 0;
     entry.solid.visible = !wireframe;
-    entry.solid.material = dim ? this.clayDim : this.clay[highlight];
+    // `surface`: the object's PBR material or the UV checker instead of the clay (see surfaces.ts).
+    entry.solid.material = dim ? this.clayDim : (surface ?? this.clay[highlight]);
 
     // All edges: the object itself in wireframe shading, a faint overlay on selected solid objects.
     if (wireframe || highlight > 0) {
@@ -738,6 +812,13 @@ export class ViewportEngine {
       this.drag = { kind: 'edit', view, pivot: this.pivot.position.clone() };
       return;
     }
+    if (this.gizmo.object === this.groupPivot) {
+      if (!state) return;
+      const transforms = new Map<string, Transform>();
+      for (const id of state.selection) if (this.entries.has(id)) transforms.set(id, state.objects[id].transform);
+      this.drag = { kind: 'group', start: transforms, pivot: this.groupPivot.position.clone() };
+      return;
+    }
     const active = state?.activeId ? this.entries.get(state.activeId) : undefined;
     if (!state || !active) return;
     const start = new Map<string, Vector3>();
@@ -763,6 +844,13 @@ export class ViewportEngine {
       this.drag.view.preview(matrix);
       return;
     }
+    if (this.drag.kind === 'group') {
+      for (const [id, t] of this.groupDragTransforms(this.drag)) {
+        const entry = this.entries.get(id);
+        if (entry) applyTransform(entry.group, t);
+      }
+      return;
+    }
     if (this.gizmo.mode !== 'translate') return;
     const delta = active.position.clone().sub(this.drag.origin);
     for (const [id, start] of this.drag.start) {
@@ -780,6 +868,10 @@ export class ViewportEngine {
     this.invalidate();
     if (drag.kind === 'edit') {
       this.commitEditDrag(drag.view, drag.pivot);
+      return;
+    }
+    if (drag.kind === 'group') {
+      this.commitGroupDrag(drag);
       return;
     }
     const state = this.docState();

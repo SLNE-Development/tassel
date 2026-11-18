@@ -1,16 +1,16 @@
 import { Plus, X } from 'lucide-react';
 import { memo, useEffect, useRef } from 'react';
 import { useApp } from '../app/store';
-import { useT } from '../i18n';
+import { documentName, useT } from '../i18n';
 import { dispatch, requestCloseDoc, runAction, shortcutLabel } from './actions';
 import { Tip } from './Tip';
 
 const DocTab = memo(function DocTab({ id }: { id: string }) {
-  const name = useApp((s) => s.docs[id]?.name ?? '');
+  const t = useT();
+  const name = useApp((s) => (s.docs[id] ? documentName(s.docs[id], t) : ''));
   const dirty = useApp((s) => s.docs[id]?.dirty ?? false);
   const active = useApp((s) => s.activeDocId === id);
   const ref = useRef<HTMLDivElement>(null);
-  const t = useT();
 
   useEffect(() => {
     if (active) ref.current?.scrollIntoView({ block: 'nearest', inline: 'nearest' });

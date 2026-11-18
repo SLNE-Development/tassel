@@ -5,7 +5,7 @@ import { execute, services, useApp } from './app/store';
 import { startMcpBridge } from './bridge/mcp';
 import { initModifiers } from './core/modifiers/evaluate';
 import { syncDocumentLanguage } from './i18n';
-import { gltfExporter } from './io/gltf';
+import { createExporter, createImporter } from './io';
 import { App } from './ui/App';
 import { installCloseGuard } from './ui/closeGuard';
 import { notifyError } from './ui/toast';
@@ -13,7 +13,8 @@ import './index.css';
 
 initPreferences();
 syncDocumentLanguage();
-services.exporter = gltfExporter;
+services.exporter = createExporter();
+services.importer = createImporter();
 startMcpBridge().catch(notifyError);
 installCloseGuard();
 // Boolean modifiers need their WASM kernel; everything else works without waiting for it.

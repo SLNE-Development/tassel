@@ -1,5 +1,6 @@
 import { useApp } from '../app/store';
 import type { Language } from '../core/preferences';
+import { DEFAULT_DOC_NAME } from '../core/state';
 import { de, type Dictionary } from './de';
 import { commandTitles, en } from './en';
 
@@ -20,6 +21,18 @@ export function getT(): Dictionary {
 /** A registry command's title in the current UI language. Commands carry their German title themselves. */
 export function commandTitle(def: { id: string; title: string }): string {
   return useApp.getState().preferences.language === 'en' ? (commandTitles[def.id] ?? def.title) : def.title;
+}
+
+const defaultDocName = new RegExp(`^${DEFAULT_DOC_NAME}(\\.\\d{3})?$`);
+
+/**
+ * A document's name as the UI shows it. Core names new documents with a language-neutral default
+ * ("Untitled", "Untitled.001", ...); until such a document is renamed or saved it appears under the
+ * translated label instead, and follows the UI language.
+ */
+export function documentName(doc: { name: string; filePath: string | null }, t: Dictionary = getT()): string {
+  if (doc.filePath !== null || !defaultDocName.test(doc.name)) return doc.name;
+  return t.documents.untitled + doc.name.slice(DEFAULT_DOC_NAME.length);
 }
 
 /** Keeps `<html lang>` in step with the UI language (screen readers, hyphenation). */

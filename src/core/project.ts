@@ -21,16 +21,16 @@ const textureSchema = z
     height: z.number(),
   })
   .superRefine((texture, ctx) => {
-    const fail = (message: string) => ctx.addIssue({ code: 'custom', message: `Textur "${texture.name}": ${message}` });
+    const fail = (message: string) => ctx.addIssue({ code: 'custom', message: `texture "${texture.name}": ${message}` });
     const validSize = (n: number) => Number.isInteger(n) && n >= 1 && n <= MAX_TEXTURE_SIZE;
     if (!validSize(texture.width) || !validSize(texture.height)) {
-      fail(`Breite und Höhe müssen ganze Zahlen von 1 bis ${MAX_TEXTURE_SIZE} sein`);
+      fail(`width and height must be integers from 1 to ${MAX_TEXTURE_SIZE}`);
     }
     const problem = textureDataProblem(texture.mimeType, texture.data);
-    if (problem === 'empty') fail('enthält keine Bilddaten');
-    else if (problem === 'tooLarge') fail('Bilddaten sind größer als 64 MB');
-    else if (problem === 'notBase64') fail('Bilddaten sind kein gültiges Base64');
-    else if (problem === 'signature') fail(`Bilddaten sind kein Bild vom Typ ${texture.mimeType}`);
+    if (problem === 'empty') fail('has no image data');
+    else if (problem === 'tooLarge') fail('image data is larger than 64 MB');
+    else if (problem === 'notBase64') fail('image data is not valid base64');
+    else if (problem === 'signature') fail(`image data is not an image of type ${texture.mimeType}`);
   });
 
 const materialSchema = z.object({
@@ -88,33 +88,33 @@ export function parseProject(json: string): { name: string; state: DocState } {
   try {
     raw = JSON.parse(json);
   } catch {
-    throw new Error('Datei ist kein gültiges JSON');
+    throw new Error('File is not valid JSON');
   }
   const parsed = projectSchema.safeParse(raw);
-  if (!parsed.success) throw new Error(`Keine gültige Tessel-Datei: ${parsed.error.issues[0]?.message ?? 'unbekannt'}`);
+  if (!parsed.success) throw new Error(`Not a valid Tessel file: ${parsed.error.issues[0]?.message ?? 'unknown'}`);
   const objects: Record<string, SceneObject> = {};
   const order: string[] = [];
   for (const obj of parsed.data.objects) {
-    const id = obj.id in objects ? newId() : obj.id;
+    const id = Object.hasOwn(objects, obj.id) ? newId() : obj.id;
     objects[id] = { ...obj, id };
     order.push(id);
   }
   const groups: Record<string, Group> = {};
   const groupOrder: string[] = [];
   for (const group of parsed.data.groups) {
-    const id = group.id in groups ? newId() : group.id;
+    const id = Object.hasOwn(groups, group.id) ? newId() : group.id;
     groups[id] = { ...group, id };
     groupOrder.push(id);
   }
   // A duplicate texture or material id gets a new id (and so loses its references) instead of being dropped.
   const textures: Record<string, Texture> = {};
   for (const texture of parsed.data.textures) {
-    const id = texture.id in textures ? newId() : texture.id;
+    const id = Object.hasOwn(textures, texture.id) ? newId() : texture.id;
     textures[id] = { ...texture, id };
   }
   const materials: Record<string, Material> = {};
   for (const material of parsed.data.materials) {
-    const id = material.id in materials ? newId() : material.id;
+    const id = Object.hasOwn(materials, material.id) ? newId() : material.id;
     materials[id] = { ...material, id };
   }
   // Broken references are repaired rather than rejected: the geometry is what matters.

@@ -1,7 +1,7 @@
 import { AlertDialog } from '@base-ui/react/alert-dialog';
 import type { ReactNode } from 'react';
 import { execute, useApp } from '../app/store';
-import { useT } from '../i18n';
+import { documentName, useT } from '../i18n';
 import { saveActiveDoc } from './actions';
 import { dirtyDocNames, quitNow } from './closeGuard';
 import { notifyError } from './toast';
@@ -45,9 +45,9 @@ function Confirm({
 
 function CloseDocDialog() {
   const id = useUi((s) => s.closeDocId);
-  const name = useApp((s) => (id ? s.docs[id]?.name : undefined));
-  const close = () => useUi.setState({ closeDocId: null });
   const t = useT();
+  const name = useApp((s) => (id && s.docs[id] ? documentName(s.docs[id], t) : undefined));
+  const close = () => useUi.setState({ closeDocId: null });
 
   const discard = () => {
     close();

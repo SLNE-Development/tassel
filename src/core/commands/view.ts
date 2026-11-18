@@ -121,25 +121,4 @@ export const viewCommands = [
       viewport(ctx).frame(p.ids ?? docState(ctx).selection);
     },
   }),
-
-  defineCommand({
-    id: 'export.gltf',
-    title: 'Als glTF exportieren',
-    description:
-      'Export the active document as glTF and return the data (GLB as base64, or glTF JSON text). Usually you want the file_export tool instead, which writes the file to disk.',
-    params: z.object({
-      binary: z.boolean().default(true).describe('true = GLB, false = glTF JSON'),
-      selectionOnly: z.boolean().default(false),
-    }),
-    async run(ctx, p) {
-      if (!ctx.services.exporter) throw new Error('The exporter is not ready yet');
-      const state = docState(ctx);
-      if (p.selectionOnly && state.selection.length === 0) throw new Error('Nothing is selected');
-      const data = await ctx.services.exporter.gltf(state, {
-        binary: p.binary,
-        ids: p.selectionOnly ? state.selection : undefined,
-      });
-      return p.binary ? { format: 'glb', base64: data } : { format: 'gltf', text: data };
-    },
-  }),
 ];

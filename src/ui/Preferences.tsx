@@ -4,61 +4,21 @@ import { Check, Pipette, RotateCcw, X } from 'lucide-react';
 import { useState, type ReactNode } from 'react';
 import { useApp } from '../app/store';
 import { defaultPreferences, type Preferences as PreferenceValues } from '../core/preferences';
+import { useT } from '../i18n';
 import { dispatch } from './actions';
 import { Segmented, Switch } from './controls';
 import { ScrubField } from './ScrubField';
 import { useUi } from './uiStore';
 
-// All texts of this dialog, in German. To be moved into the i18n dictionary.
-const text = {
-  title: 'Einstellungen',
-  close: 'Schließen',
-  reset: 'Auf Standard zurücksetzen',
-
-  appearance: 'Darstellung',
-  theme: 'Design',
-  themeDark: 'Dunkel',
-  themeLight: 'Hell',
-  themeSystem: 'System',
-  accent: 'Akzentfarbe',
-  accentBrass: 'Messing',
-  accentCopper: 'Kupfer',
-  accentPatina: 'Patina',
-  accentSteel: 'Stahlblau',
-  accentHeather: 'Heide',
-  accentMoss: 'Moos',
-  accentCustom: 'Eigene Farbe wählen',
-  uiScale: 'GUI-Skalierung',
-  fontScale: 'Schriftgröße',
-
-  language: 'Sprache',
-  languageLabel: 'Sprache der Oberfläche',
-  languageGerman: 'Deutsch',
-  languageEnglish: 'English',
-
-  viewport: 'Ansichtsfenster',
-  showGrid: 'Raster',
-  showAxes: 'Achsen',
-  fieldOfView: 'Sichtfeld',
-  orbitSpeed: 'Orbit-Geschwindigkeit',
-  zoomSpeed: 'Zoom-Geschwindigkeit',
-  invertZoom: 'Zoom umkehren',
-
-  editing: 'Bearbeiten',
-  undoSteps: 'Undo-Schritte',
-  undoStepsField: 'Schritte',
-  undoStepsHint: 'je Dokument',
-};
-
 const set = (changes: Partial<PreferenceValues>) => void dispatch('preferences.set', changes);
 
 const accentPresets = [
-  { color: '#e9b949', name: text.accentBrass },
-  { color: '#e08a5b', name: text.accentCopper },
-  { color: '#5fb5a3', name: text.accentPatina },
-  { color: '#6aa3e8', name: text.accentSteel },
-  { color: '#b79ae6', name: text.accentHeather },
-  { color: '#9cc25a', name: text.accentMoss },
+  { color: '#e9b949', key: 'brass' },
+  { color: '#e08a5b', key: 'copper' },
+  { color: '#5fb5a3', key: 'patina' },
+  { color: '#6aa3e8', key: 'steel' },
+  { color: '#b79ae6', key: 'heather' },
+  { color: '#9cc25a', key: 'moss' },
 ] as const;
 
 // Discrete steps: the dialog itself rescales under the pointer, so a slider would chase its own thumb.
@@ -86,9 +46,9 @@ function Row({ label, children }: { label: string; children: ReactNode }) {
 
 // Miniature of the shell in each theme. These are pictures of the themes, so the colours are fixed.
 const themeTiles = [
-  { value: 'dark', title: text.themeDark, stage: '#14181a', panel: '#232a2e', accent: '#e9b949' },
-  { value: 'light', title: text.themeLight, stage: '#cdccc3', panel: '#f6f5f0', accent: '#8c6f2c' },
-  { value: 'system', title: text.themeSystem, stage: '', panel: '', accent: '' },
+  { value: 'dark', stage: '#14181a', panel: '#232a2e', accent: '#e9b949' },
+  { value: 'light', stage: '#cdccc3', panel: '#f6f5f0', accent: '#8c6f2c' },
+  { value: 'system', stage: '', panel: '', accent: '' },
 ] as const;
 
 function ThemeMiniature({ stage, panel, accent }: { stage: string; panel: string; accent: string }) {
@@ -101,8 +61,9 @@ function ThemeMiniature({ stage, panel, accent }: { stage: string; panel: string
 }
 
 function ThemePicker({ value }: { value: PreferenceValues['theme'] }) {
+  const t = useT().preferences;
   return (
-    <div role="radiogroup" aria-label={text.theme} className="grid w-full grid-cols-3 gap-2">
+    <div role="radiogroup" aria-label={t.theme} className="grid w-full grid-cols-3 gap-2">
       {themeTiles.map((tile) => {
         const active = tile.value === value;
         return (
@@ -125,7 +86,7 @@ function ThemePicker({ value }: { value: PreferenceValues['theme'] }) {
                 <ThemeMiniature {...tile} />
               )}
             </span>
-            <span className="truncate px-1 py-1">{tile.title}</span>
+            <span className="truncate px-1 py-1">{t.themes[tile.value]}</span>
           </button>
         );
       })}
@@ -134,11 +95,12 @@ function ThemePicker({ value }: { value: PreferenceValues['theme'] }) {
 }
 
 function AccentPicker({ value }: { value: string }) {
+  const t = useT().preferences;
   const custom = !accentPresets.some((preset) => preset.color === value.toLowerCase());
   const swatch = 'relative flex size-6 shrink-0 items-center justify-center rounded-full ring-1 ring-black/20 ring-inset';
   const selected = 'outline-2 outline-offset-2 outline-text';
   return (
-    <div role="radiogroup" aria-label={text.accent} className="flex flex-wrap items-center justify-end gap-2.5">
+    <div role="radiogroup" aria-label={t.accent} className="flex flex-wrap items-center justify-end gap-2.5">
       {accentPresets.map((preset) => {
         const active = preset.color === value.toLowerCase();
         return (
@@ -146,8 +108,8 @@ function AccentPicker({ value }: { value: string }) {
             key={preset.color}
             role="radio"
             aria-checked={active}
-            aria-label={preset.name}
-            title={preset.name}
+            aria-label={t.accents[preset.key]}
+            title={t.accents[preset.key]}
             className={`${swatch} ${active ? selected : ''}`}
             style={{ background: preset.color }}
             onClick={() => !active && set({ accentColor: preset.color })}
@@ -157,14 +119,14 @@ function AccentPicker({ value }: { value: string }) {
         );
       })}
       <label
-        title={text.accentCustom}
+        title={t.accentCustom}
         className={`${swatch} cursor-pointer focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-accent ${custom ? selected : 'bg-ink text-dim hover:text-text'}`}
         style={custom ? { background: value } : undefined}
       >
         <Pipette size={12} strokeWidth={2} color={custom ? '#1b1604' : undefined} />
         <input
           type="color"
-          aria-label={text.accentCustom}
+          aria-label={t.accentCustom}
           className="absolute inset-0 size-full cursor-pointer opacity-0"
           value={value}
           onChange={(event) => set({ accentColor: event.currentTarget.value })}
@@ -229,22 +191,23 @@ function PreferenceSlider({
 }
 
 function PreferencesBody() {
+  const t = useT().preferences;
   const preferences = useApp((s) => s.preferences);
   const decimal = (value: number) => value.toLocaleString(preferences.language, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const isDefault = (Object.keys(defaultPreferences) as (keyof PreferenceValues)[]).every((key) => preferences[key] === defaultPreferences[key]);
   return (
     <>
       <div className="min-h-0 flex-1 overflow-y-auto">
-        <Section title={text.appearance}>
-          <span className="self-start pt-1.5 text-[calc(12.5px*var(--font-scale))] text-dim">{text.theme}</span>
+        <Section title={t.appearance}>
+          <span className="self-start pt-1.5 text-[calc(12.5px*var(--font-scale))] text-dim">{t.theme}</span>
           <ThemePicker value={preferences.theme} />
-          <Row label={text.accent}>
+          <Row label={t.accent}>
             <AccentPicker value={preferences.accentColor} />
           </Row>
-          <Row label={text.uiScale}>
+          <Row label={t.uiScale}>
             <div className="min-w-0 flex-1">
               <Segmented
-                label={text.uiScale}
+                label={t.uiScale}
                 value={preferences.uiScale}
                 options={uiScales.map((scale) => ({ value: scale, title: String(Math.round(scale * 100)), ariaLabel: percent(scale) }))}
                 onChange={(uiScale) => set({ uiScale })}
@@ -252,20 +215,21 @@ function PreferencesBody() {
             </div>
             <span className="w-12 shrink-0 text-right text-[calc(12.5px*var(--font-scale))] text-text tnum">{percent(preferences.uiScale)}</span>
           </Row>
-          <Row label={text.fontScale}>
-            <PreferenceSlider label={text.fontScale} value={preferences.fontScale} min={0.85} max={1.3} step={0.05} format={percent} onChange={(fontScale) => set({ fontScale })} />
+          <Row label={t.fontScale}>
+            <PreferenceSlider label={t.fontScale} value={preferences.fontScale} min={0.85} max={1.3} step={0.05} format={percent} onChange={(fontScale) => set({ fontScale })} />
           </Row>
         </Section>
 
-        <Section title={text.language}>
-          <Row label={text.languageLabel}>
+        <Section title={t.language}>
+          <Row label={t.languageLabel}>
             <div className="min-w-0 flex-1">
               <Segmented
-                label={text.language}
+                label={t.language}
                 value={preferences.language}
+                // The names of the languages stay in their own language.
                 options={[
-                  { value: 'de', title: text.languageGerman },
-                  { value: 'en', title: text.languageEnglish },
+                  { value: 'de', title: 'Deutsch' },
+                  { value: 'en', title: 'English' },
                 ]}
                 onChange={(language) => set({ language })}
               />
@@ -273,36 +237,36 @@ function PreferencesBody() {
           </Row>
         </Section>
 
-        <Section title={text.viewport}>
-          <Row label={text.showGrid}>
-            <Switch checked={preferences.showGrid} label={text.showGrid} onChange={(showGrid) => set({ showGrid })} />
+        <Section title={t.viewport}>
+          <Row label={t.showGrid}>
+            <Switch checked={preferences.showGrid} label={t.showGrid} onChange={(showGrid) => set({ showGrid })} />
           </Row>
-          <Row label={text.showAxes}>
-            <Switch checked={preferences.showAxes} label={text.showAxes} onChange={(showAxes) => set({ showAxes })} />
+          <Row label={t.showAxes}>
+            <Switch checked={preferences.showAxes} label={t.showAxes} onChange={(showAxes) => set({ showAxes })} />
           </Row>
-          <Row label={text.fieldOfView}>
-            <PreferenceSlider live label={text.fieldOfView} value={preferences.fieldOfView} min={20} max={100} step={1} format={(v) => `${v}°`} onChange={(fieldOfView) => set({ fieldOfView })} />
+          <Row label={t.fieldOfView}>
+            <PreferenceSlider live label={t.fieldOfView} value={preferences.fieldOfView} min={20} max={100} step={1} format={(v) => `${v}°`} onChange={(fieldOfView) => set({ fieldOfView })} />
           </Row>
-          <Row label={text.orbitSpeed}>
-            <PreferenceSlider live label={text.orbitSpeed} value={preferences.orbitSpeed} min={0.25} max={3} step={0.05} format={(v) => `${decimal(v)}×`} onChange={(orbitSpeed) => set({ orbitSpeed })} />
+          <Row label={t.orbitSpeed}>
+            <PreferenceSlider live label={t.orbitSpeed} value={preferences.orbitSpeed} min={0.25} max={3} step={0.05} format={(v) => `${decimal(v)}×`} onChange={(orbitSpeed) => set({ orbitSpeed })} />
           </Row>
-          <Row label={text.zoomSpeed}>
-            <PreferenceSlider live label={text.zoomSpeed} value={preferences.zoomSpeed} min={0.25} max={3} step={0.05} format={(v) => `${decimal(v)}×`} onChange={(zoomSpeed) => set({ zoomSpeed })} />
+          <Row label={t.zoomSpeed}>
+            <PreferenceSlider live label={t.zoomSpeed} value={preferences.zoomSpeed} min={0.25} max={3} step={0.05} format={(v) => `${decimal(v)}×`} onChange={(zoomSpeed) => set({ zoomSpeed })} />
           </Row>
-          <Row label={text.invertZoom}>
-            <Switch checked={preferences.invertZoom} label={text.invertZoom} onChange={(invertZoom) => set({ invertZoom })} />
+          <Row label={t.invertZoom}>
+            <Switch checked={preferences.invertZoom} label={t.invertZoom} onChange={(invertZoom) => set({ invertZoom })} />
           </Row>
         </Section>
 
-        <Section title={text.editing}>
-          <Row label={text.undoSteps}>
-            <span className="text-[calc(12px*var(--font-scale))] text-faint">{text.undoStepsHint}</span>
+        <Section title={t.editing}>
+          <Row label={t.undoSteps}>
+            <span className="text-[calc(12px*var(--font-scale))] text-faint">{t.undoStepsHint}</span>
             <div className="w-32 shrink-0">
               <ScrubField
                 wide
                 integer
-                label={text.undoStepsField}
-                ariaLabel={text.undoSteps}
+                label={t.undoStepsField}
+                ariaLabel={t.undoSteps}
                 color="var(--faint)"
                 value={preferences.undoSteps}
                 step={1}
@@ -322,7 +286,7 @@ function PreferencesBody() {
           onClick={() => void dispatch('preferences.reset')}
         >
           <RotateCcw size={14} strokeWidth={1.75} />
-          {text.reset}
+          {t.reset}
         </button>
       </footer>
     </>
@@ -331,6 +295,7 @@ function PreferencesBody() {
 
 /** The preferences dialog. Every control writes its preference right away; there is nothing to confirm. */
 export function Preferences() {
+  const t = useT();
   const open = useUi((s) => s.preferencesOpen);
   return (
     <Dialog.Root open={open} onOpenChange={(preferencesOpen) => useUi.setState({ preferencesOpen })}>
@@ -338,8 +303,8 @@ export function Preferences() {
         <Dialog.Backdrop className="fixed inset-0 z-40 bg-scrim" />
         <Dialog.Popup className="anim-pop fixed inset-0 z-50 m-auto flex h-fit max-h-[calc(100%-2rem)] w-[min(33rem,calc(100%-2rem))] flex-col overflow-hidden rounded-xl border border-line-strong bg-overlay shadow-pop outline-none">
           <header className="flex shrink-0 items-center border-b border-line py-2.5 pr-2.5 pl-5">
-            <Dialog.Title className="font-display text-[calc(15px*var(--font-scale))] font-semibold text-text">{text.title}</Dialog.Title>
-            <Dialog.Close aria-label={text.close} className="ml-auto flex size-7 items-center justify-center rounded-md text-dim hover:bg-raised hover:text-text">
+            <Dialog.Title className="font-display text-[calc(15px*var(--font-scale))] font-semibold text-text">{t.preferences.title}</Dialog.Title>
+            <Dialog.Close aria-label={t.common.close} className="ml-auto flex size-7 items-center justify-center rounded-md text-dim hover:bg-raised hover:text-text">
               <X size={15} strokeWidth={1.75} />
             </Dialog.Close>
           </header>

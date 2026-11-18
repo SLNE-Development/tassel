@@ -7,6 +7,7 @@ import { useT } from '../i18n';
 import { dispatch, shortcutLabel } from './actions';
 import { Switch } from './controls';
 import { useLiveEdit } from './live';
+import { Materials } from './Materials';
 import { Modifiers } from './Modifiers';
 import { ScrubField } from './ScrubField';
 import { elementCounts } from './StatusBar';
@@ -179,6 +180,7 @@ function ObjectProperties({ id }: { id: string }) {
           </div>
         </div>
       )}
+      {!editing && <Materials id={id} />}
       <Modifiers id={id} />
     </div>
   );

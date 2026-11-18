@@ -1,4 +1,4 @@
-//! File access for the UI's own open/save/export flows (`src/bridge/files.ts`) and the native MCP tools.
+//! File access for the UI's own open/save/import/export flows (`src/bridge/files.ts`) and the native MCP tools.
 
 use std::path::Path;
 
@@ -30,12 +30,154 @@ pub fn decode_base64(data: &str) -> Result<Vec<u8>, String> {
     .map_err(|e| format!("Invalid base64 data: {e}"))
 }
 
+pub fn encode_base64(bytes: &[u8]) -> String {
+  base64::engine::general_purpose::STANDARD.encode(bytes)
+}
+
 /// Lower-case file extension without the dot, or an empty string.
 pub fn extension(path: &str) -> String {
   Path::new(path)
     .extension()
     .map(|e| e.to_string_lossy().to_ascii_lowercase())
     .unwrap_or_default()
+}
+
+/// 3D formats `import.file` reads, by extension.
+pub const IMPORT_EXTENSIONS: [&str; 6] = ["glb", "gltf", "obj", "stl", "ply", "fbx"];
+/// 3D formats `export.file` writes, by extension.
+pub const EXPORT_EXTENSIONS: [&str; 6] = ["glb", "gltf", "obj", "stl", "ply", "usdz"];
+/// Images that can become textures.
+pub const IMAGE_EXTENSIONS: [&str; 4] = ["png", "jpg", "jpeg", "webp"];
+/// Largest file that is read for import: 192 MB, which is 256 MB as base64 (the limit of `import.file`).
+pub const MAX_IMPORT_BYTES: u64 = 192 * 1024 * 1024;
+
+/// Reads a file for import, refusing files above the import limit before loading them.
+pub async fn read_bytes_limited(path: &str) -> Result<Vec<u8>, String> {
+  let meta = tokio::fs::metadata(path)
+    .await
+    .map_err(|e| format!("Could not read \"{path}\": {e}"))?;
+  if !meta.is_file() {
+    return Err(format!("\"{path}\" is not a file"));
+  }
+  if meta.len() > MAX_IMPORT_BYTES {
+    return Err(format!(
+      "\"{path}\" is too large to import: {} MB, the limit is {} MB.",
+      meta.len() / (1024 * 1024),
+      MAX_IMPORT_BYTES / (1024 * 1024)
+    ));
+  }
+  tokio::fs::read(path)
+    .await
+    .map_err(|e| format!("Could not read \"{path}\": {e}"))
+}
+
+/// A file name that came from the document (or from the webview) as a plain name inside one folder:
+/// no path separators or drive letters, no characters Windows forbids, no leading or trailing dots.
+/// None if nothing usable is left.
+pub fn safe_file_name(name: &str) -> Option<String> {
+  const FORBIDDEN: &str = "<>:\"/\\|?*";
+  let cleaned: String = name
+    .chars()
+    .map(|c| if c.is_control() || c.is_whitespace() || FORBIDDEN.contains(c) { '_' } else { c })
+    .collect();
+  let cleaned = cleaned.trim_matches(|c| c == '.' || c == '_');
+  let stem = cleaned.split('.').next().unwrap_or_default().to_ascii_lowercase();
+  let reserved = matches!(stem.as_str(), "con" | "prn" | "aux" | "nul")
+    || (stem.len() == 4
+      && (stem.starts_with("com") || stem.starts_with("lpt"))
+      && stem.ends_with(|c: char| c.is_ascii_digit()));
+  if cleaned.is_empty() || reserved { None } else { Some(cleaned.to_string()) }
+}
+
+/// One side file of an OBJ export (a texture image).
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct SideFile {
+  pub name: String,
+  pub base64: String,
+}
+
+/// Writes an OBJ export: the .obj at `path`, and next to it the material library and the texture
+/// images. Side file names are sanitised and must be an .mtl or an image, so nothing can be written
+/// outside the folder of the .obj or over other kinds of files. Returns the names written, .obj first.
+pub async fn write_obj_bundle(
+  path: &str,
+  text: &str,
+  mtl_name: &str,
+  mtl: &str,
+  images: &[SideFile],
+) -> Result<Vec<String>, String> {
+  let folder = Path::new(path).parent().unwrap_or(Path::new(""));
+  let obj_name = Path::new(path)
+    .file_name()
+    .map(|n| n.to_string_lossy().into_owned())
+    .unwrap_or_default();
+
+  let side_path = |name: &str, allowed: &[&str]| -> Result<(String, String), String> {
+    let safe = safe_file_name(name).ok_or_else(|| format!("\"{name}\" is not a usable file name"))?;
+    if !allowed.contains(&extension(&safe).as_str()) {
+      return Err(format!("The side file \"{name}\" must end in .{}", allowed.join(" or .")));
+    }
+    Ok((folder.join(&safe).to_string_lossy().into_owned(), safe))
+  };
+
+  // Validate everything before the first write.
+  let (mtl_path, mtl_file) = side_path(mtl_name, &["mtl"])?;
+  let mut decoded = Vec::with_capacity(images.len());
+  for image in images {
+    let (image_path, image_file) = side_path(&image.name, &IMAGE_EXTENSIONS)?;
+    decoded.push((image_path, image_file, decode_base64(&image.base64)?));
+  }
+
+  write_bytes(path, text.as_bytes()).await?;
+  write_bytes(&mtl_path, mtl.as_bytes()).await?;
+  let mut written = vec![obj_name, mtl_file];
+  for (image_path, image_file, bytes) in decoded {
+    write_bytes(&image_path, &bytes).await?;
+    written.push(image_file);
+  }
+  Ok(written)
+}
+
+/// MIME type and pixel size of a PNG, JPEG or WebP file, read from its header.
+pub fn image_info(b: &[u8]) -> Option<(&'static str, u32, u32)> {
+  let be16 = |i: usize| b.get(i..i + 2).map(|s| u32::from(u16::from_be_bytes([s[0], s[1]])));
+  let be32 = |i: usize| b.get(i..i + 4).map(|s| u32::from_be_bytes([s[0], s[1], s[2], s[3]]));
+  let le16 = |i: usize| b.get(i..i + 2).map(|s| u32::from(u16::from_le_bytes([s[0], s[1]])));
+  let le24 = |i: usize| b.get(i..i + 3).map(|s| u32::from(s[0]) | u32::from(s[1]) << 8 | u32::from(s[2]) << 16);
+
+  if b.starts_with(&[0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a]) {
+    return Some(("image/png", be32(16)?, be32(20)?));
+  }
+  if b.starts_with(&[0xff, 0xd8, 0xff]) {
+    let mut i = 2;
+    while i + 4 <= b.len() {
+      if b[i] != 0xff {
+        return None;
+      }
+      let marker = b[i + 1];
+      match marker {
+        0xff => i += 1,
+        // SOF0..SOF15 except DHT, JPG and DAC carry the frame size.
+        0xc0..=0xcf if !matches!(marker, 0xc4 | 0xc8 | 0xcc) => return Some(("image/jpeg", be16(i + 7)?, be16(i + 5)?)),
+        // Markers without a length field.
+        0x01 | 0xd0..=0xd8 => i += 2,
+        _ => i += 2 + be16(i + 2)? as usize,
+      }
+    }
+    return None;
+  }
+  if b.starts_with(b"RIFF") && b.get(8..12) == Some(b"WEBP".as_slice()) {
+    return match b.get(12..16)? {
+      b"VP8X" => Some(("image/webp", le24(24)? + 1, le24(27)? + 1)),
+      b"VP8 " => Some(("image/webp", le16(26)? & 0x3fff, le16(28)? & 0x3fff)),
+      b"VP8L" => {
+        let bits = b.get(21..25).map(|s| u32::from_le_bytes([s[0], s[1], s[2], s[3]]))?;
+        Some(("image/webp", (bits & 0x3fff) + 1, ((bits >> 14) & 0x3fff) + 1))
+      }
+      _ => None,
+    };
+  }
+  None
 }
 
 /// The webview may only touch the file types the editor works with, whatever path it is handed
@@ -54,6 +196,13 @@ pub async fn read_text_file(path: String) -> Result<String, String> {
   read_text(&path).await
 }
 
+/// Reads a 3D file for the UI's import flow and returns it as base64.
+#[tauri::command]
+pub async fn read_binary_file(path: String) -> Result<String, String> {
+  require_extension(&path, &IMPORT_EXTENSIONS)?;
+  Ok(encode_base64(&read_bytes_limited(&path).await?))
+}
+
 #[tauri::command]
 pub async fn write_text_file(path: String, contents: String) -> Result<(), String> {
   require_extension(&path, &["tessel", "gltf"])?;
@@ -62,6 +211,89 @@ pub async fn write_text_file(path: String, contents: String) -> Result<(), Strin
 
 #[tauri::command]
 pub async fn write_binary_file(path: String, base64: String) -> Result<(), String> {
-  require_extension(&path, &["glb"])?;
+  require_extension(&path, &["glb", "stl", "ply", "usdz"])?;
   write_bytes(&path, &decode_base64(&base64)?).await
+}
+
+/// Writes an OBJ export with its material library and texture images next to it.
+#[tauri::command]
+pub async fn write_obj_export(
+  path: String,
+  text: String,
+  mtl_name: String,
+  mtl: String,
+  files: Vec<SideFile>,
+) -> Result<Vec<String>, String> {
+  require_extension(&path, &["obj"])?;
+  write_obj_bundle(&path, &text, &mtl_name, &mtl, &files).await
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn file_names_from_the_document_are_made_safe() {
+    assert_eq!(safe_file_name("scene_wood.png").as_deref(), Some("scene_wood.png"));
+    assert_eq!(safe_file_name("..\\..\\Windows\\evil.png").as_deref(), Some("Windows_evil.png"));
+    assert_eq!(safe_file_name("../../etc/passwd").as_deref(), Some("etc_passwd"));
+    assert_eq!(safe_file_name("C:\\boot.mtl").as_deref(), Some("C__boot.mtl"));
+    assert_eq!(safe_file_name("a b\tc.mtl").as_deref(), Some("a_b_c.mtl"));
+    assert_eq!(safe_file_name("Größe.png").as_deref(), Some("Größe.png"));
+    assert_eq!(safe_file_name(".."), None);
+    assert_eq!(safe_file_name(""), None);
+    assert_eq!(safe_file_name("con.png"), None);
+    assert_eq!(safe_file_name("LPT1.mtl"), None);
+    assert_eq!(safe_file_name("compost.png").as_deref(), Some("compost.png"));
+  }
+
+  #[test]
+  fn extensions_are_checked_case_insensitively() {
+    assert!(require_extension("C:\\a\\b.GLB", &IMPORT_EXTENSIONS).is_ok());
+    assert!(require_extension("C:\\a\\b.exe", &IMPORT_EXTENSIONS).is_err());
+    assert!(require_extension("C:\\a\\glb", &IMPORT_EXTENSIONS).is_err());
+    assert!(require_extension("C:\\a\\b.usdz", &EXPORT_EXTENSIONS).is_ok());
+  }
+
+  #[test]
+  fn image_sizes_come_from_the_headers() {
+    let mut png = vec![0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, b'I', b'H', b'D', b'R'];
+    png.extend([0, 0, 1, 0, 0, 0, 0, 64, 8, 2, 0, 0, 0]);
+    assert_eq!(image_info(&png), Some(("image/png", 256, 64)));
+    let jpeg = [0xff, 0xd8, 0xff, 0xe0, 0, 4, 0, 0, 0xff, 0xc0, 0, 11, 8, 0, 3, 0, 5, 3, 0, 0, 0];
+    assert_eq!(image_info(&jpeg), Some(("image/jpeg", 5, 3)));
+    let mut webp = b"RIFF\0\0\0\0WEBPVP8X\x0a\0\0\0\0\0\0\0".to_vec();
+    webp.extend([9, 0, 0, 4, 0, 0]);
+    assert_eq!(image_info(&webp), Some(("image/webp", 10, 5)));
+    assert_eq!(image_info(b"GIF89a"), None);
+    assert_eq!(image_info(&png[..12]), None);
+  }
+
+  #[test]
+  fn obj_side_files_stay_in_the_folder() {
+    let runtime = tokio::runtime::Builder::new_current_thread().build().unwrap();
+    runtime.block_on(async {
+      let dir = std::env::temp_dir().join(format!("tessel-test-{}", std::process::id()));
+      let obj = dir.join("out").join("model.obj").to_string_lossy().into_owned();
+      let image = |name: &str| SideFile { name: name.into(), base64: "AQID".into() };
+
+      let written = write_obj_bundle(&obj, "o a\n", "model.mtl", "newmtl a\n", &[image("..\\..\\escape.png")])
+        .await
+        .unwrap();
+      assert_eq!(written, ["model.obj", "model.mtl", "escape.png"]);
+      assert_eq!(std::fs::read(dir.join("out").join("escape.png")).unwrap(), [1, 2, 3]);
+      assert!(!dir.join("escape.png").exists());
+
+      // Wrong kinds of side files are refused before anything is written.
+      let other = dir.join("other").join("model.obj").to_string_lossy().into_owned();
+      assert!(write_obj_bundle(&other, "", "model.mtl", "", &[image("run.exe")]).await.is_err());
+      assert!(write_obj_bundle(&other, "", "model.txt", "", &[]).await.is_err());
+      assert!(write_obj_bundle(&other, "", "model.obj", "", &[]).await.is_err());
+      assert!(write_obj_bundle(&other, "", "..", "", &[]).await.is_err());
+      let broken = SideFile { name: "a.png".into(), base64: "!".into() };
+      assert!(write_obj_bundle(&other, "", "model.mtl", "", &[broken]).await.is_err());
+      assert!(!dir.join("other").exists());
+      std::fs::remove_dir_all(&dir).unwrap();
+    });
+  }
 }

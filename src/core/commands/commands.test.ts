@@ -362,14 +362,14 @@ describe('documents', () => {
   it('starts with one empty, clean document', async () => {
     expect(app.docOrder).toHaveLength(1);
     expect((await run('document.list')).documents).toEqual([
-      { id: app.activeDocId, name: 'Unbenannt', filePath: null, dirty: false, active: true, objectCount: 0 },
+      { id: app.activeDocId, name: 'Untitled', filePath: null, dirty: false, active: true, objectCount: 0 },
     ]);
   });
 
   it('new creates a tab with a unique name and switches to it', async () => {
     const first = app.activeDocId;
     const second = await run('document.new');
-    expect(second.name).toBe('Unbenannt.001');
+    expect(second.name).toBe('Untitled.001');
     const third = await run('document.new', { name: 'Haus' });
     expect(app.docOrder).toEqual([first, second.id, third.id]);
     expect(app.activeDocId).toBe(third.id);
@@ -380,7 +380,7 @@ describe('documents', () => {
   it('switch changes the active document and rejects unknown ids', async () => {
     const first = app.activeDocId;
     const second = (await run('document.new')).id;
-    expect(await run('document.switch', { id: first })).toEqual({ id: first, name: 'Unbenannt' });
+    expect(await run('document.switch', { id: first })).toEqual({ id: first, name: 'Untitled' });
     expect(app.activeDocId).toBe(first);
     await run('document.switch', { id: second });
     expect(app.activeDocId).toBe(second);
@@ -419,7 +419,7 @@ describe('documents', () => {
     expect(result.activeDocId).not.toBe(only);
     expect(app.docOrder).toEqual([result.activeDocId]);
     expect(Object.keys(app.docs)).toEqual([result.activeDocId]);
-    expect(doc()).toMatchObject({ name: 'Unbenannt', dirty: false, past: [], future: [] });
+    expect(doc()).toMatchObject({ name: 'Untitled', dirty: false, past: [], future: [] });
     expect(state().order).toEqual([]);
   });
 
@@ -598,13 +598,13 @@ describe('project files', () => {
   });
 
   it('parseProject rejects text that is not JSON', () => {
-    expect(() => parseProject('')).toThrow('Datei ist kein gültiges JSON');
-    expect(() => parseProject('{ "format": "tessel", ')).toThrow('Datei ist kein gültiges JSON');
-    expect(() => parseProject('not json')).toThrow('Datei ist kein gültiges JSON');
+    expect(() => parseProject('')).toThrow('File is not valid JSON');
+    expect(() => parseProject('{ "format": "tessel", ')).toThrow('File is not valid JSON');
+    expect(() => parseProject('not json')).toThrow('File is not valid JSON');
   });
 
   it('parseProject rejects JSON that is not a Tessel project', () => {
-    const invalid = /^Keine gültige Tessel-Datei: /;
+    const invalid = /^Not a valid Tessel file: /;
     expect(() => parseProject('null')).toThrow(invalid);
     expect(() => parseProject('[]')).toThrow(invalid);
     expect(() => parseProject('{}')).toThrow(invalid);
@@ -623,13 +623,13 @@ describe('project files', () => {
   });
 
   it('parseProject rejects invalid meshes', () => {
-    const invalid = /^Keine gültige Tessel-Datei: /;
+    const invalid = /^Not a valid Tessel file: /;
     const withMesh = (mesh: unknown) => project([object(), object({ id: 'b', mesh })]);
     expect(() => parseProject(withMesh({ ...triangle, faces: [[0, 1, 3]] }))).toThrow(
-      'Keine gültige Tessel-Datei: face references a vertex that does not exist',
+      'Not a valid Tessel file: face references a vertex that does not exist',
     );
     expect(() => parseProject(withMesh({ ...triangle, positions: [0, 0, 0, 1, 0, 0, 0, 1] }))).toThrow(
-      'Keine gültige Tessel-Datei: positions length must be a multiple of 3',
+      'Not a valid Tessel file: positions length must be a multiple of 3',
     );
     expect(() => parseProject(withMesh({ ...triangle, faces: [[0, 1]] }))).toThrow(invalid);
     expect(() => parseProject(withMesh({ ...triangle, faces: [[0, 1, -2]] }))).toThrow(invalid);
@@ -642,9 +642,9 @@ describe('project files', () => {
 
   it('document.load with a bad file opens nothing', async () => {
     const before = app;
-    await expect(run('document.load', { json: 'not json' })).rejects.toThrow('Datei ist kein gültiges JSON');
+    await expect(run('document.load', { json: 'not json' })).rejects.toThrow('File is not valid JSON');
     await expect(run('document.load', { json: project([object({ mesh: { positions: [], faces: [[0, 1, 2]] } })]) })).rejects.toThrow(
-      /Keine gültige Tessel-Datei/,
+      /Not a valid Tessel file/,
     );
     expect(app).toBe(before);
   });

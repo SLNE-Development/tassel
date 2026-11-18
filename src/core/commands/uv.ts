@@ -1,4 +1,5 @@
 // UV commands (uv.*): unwrap, pack, transform, clear and query the texture coordinates of an object.
+import { own } from '../state';
 import { z } from 'zod';
 import { selectedFaces } from '../mesh/selection';
 import { clearUvs, packUvs, transformUvs, unwrap, unwrapMethods, uvCharts } from '../mesh/uv';
@@ -22,7 +23,7 @@ const scope =
 function target(state: DocState, id: string | undefined): { object: SceneObject; faces: number[] | null } {
   const resolved = id ?? state.activeId;
   if (!resolved) throw new Error('No objectId given and there is no active object');
-  const object = state.objects[resolved];
+  const object = own(state.objects, resolved);
   if (!object) throw new Error(`Object "${resolved}" does not exist`);
   const selected = state.edit?.objectId === resolved ? selectedFaces(object.mesh, state.edit) : [];
   return { object, faces: selected.length > 0 ? selected : null };

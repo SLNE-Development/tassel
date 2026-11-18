@@ -812,18 +812,18 @@ describe('project files', () => {
     expect(invariantErrors(loaded)).toEqual([]);
   });
 
-  it('rejects invalid textures with a German message', () => {
+  it('rejects invalid textures with a readable message', () => {
     const load = (overrides: Record<string, unknown>) => () => parseProject(project({ textures: [fileTexture('t', { name: 'Holz', ...overrides })] }));
-    expect(load({ data: JPEG })).toThrow('Keine gültige Tessel-Datei: Textur "Holz": Bilddaten sind kein Bild vom Typ image/png');
-    expect(load({ mimeType: 'image/webp' })).toThrow('Textur "Holz": Bilddaten sind kein Bild vom Typ image/webp');
-    expect(load({ data: 'kein base64!' })).toThrow('Keine gültige Tessel-Datei: Textur "Holz": Bilddaten sind kein gültiges Base64');
-    expect(load({ data: '' })).toThrow('Keine gültige Tessel-Datei: Textur "Holz": enthält keine Bilddaten');
+    expect(load({ data: JPEG })).toThrow('Not a valid Tessel file: texture "Holz": image data is not an image of type image/png');
+    expect(load({ mimeType: 'image/webp' })).toThrow('texture "Holz": image data is not an image of type image/webp');
+    expect(load({ data: 'kein base64!' })).toThrow('Not a valid Tessel file: texture "Holz": image data is not valid base64');
+    expect(load({ data: '' })).toThrow('Not a valid Tessel file: texture "Holz": has no image data');
     for (const size of [0, -4, 1.5, 16385]) {
-      const message = 'Keine gültige Tessel-Datei: Textur "Holz": Breite und Höhe müssen ganze Zahlen von 1 bis 16384 sein';
+      const message = 'Not a valid Tessel file: texture "Holz": width and height must be integers from 1 to 16384';
       expect(load({ width: size }), String(size)).toThrow(message);
       expect(load({ height: size }), String(size)).toThrow(message);
     }
-    const invalid = /^Keine gültige Tessel-Datei: /;
+    const invalid = /^Not a valid Tessel file: /;
     expect(load({ mimeType: 'image/gif' })).toThrow(invalid);
     expect(load({ data: undefined })).toThrow(invalid);
     expect(load({ width: '1' })).toThrow(invalid);
@@ -834,12 +834,12 @@ describe('project files', () => {
   it('rejects textures above the size limit', () => {
     const data = PNG.slice(0, 16) + 'A'.repeat(MAX_TEXTURE_BASE64);
     expect(() => parseProject(project({ textures: [fileTexture('t', { data })] }))).toThrow(
-      'Keine gültige Tessel-Datei: Textur "t": Bilddaten sind größer als 64 MB',
+      'Not a valid Tessel file: texture "t": image data is larger than 64 MB',
     );
   });
 
   it('rejects malformed material data', () => {
-    const invalid = /^Keine gültige Tessel-Datei: /;
+    const invalid = /^Not a valid Tessel file: /;
     const load = (overrides: Record<string, unknown>) => () => parseProject(project({ materials: [fileMaterial('m', overrides)] }));
     expect(load({ baseColor: 'red' })).toThrow(invalid);
     expect(load({ emissive: undefined })).toThrow(invalid);

@@ -1,11 +1,11 @@
 import { z } from 'zod';
 import { parseProject, serializeProject } from '../project';
-import { activeDoc, addDoc, createDoc, uniqueName, withDoc } from '../state';
+import { DEFAULT_DOC_NAME, activeDoc, addDoc, createDoc, own, uniqueName, withDoc } from '../state';
 import type { AppState, Doc } from '../types';
 import { defineCommand, type CommandContext } from './registry';
 
 function requireDoc(app: AppState, id: string | undefined): Doc {
-  const doc = app.docs[id ?? app.activeDocId];
+  const doc = own(app.docs, id ?? app.activeDocId);
   if (!doc) throw new Error(`Document "${id}" does not exist`);
   return doc;
 }
@@ -37,7 +37,7 @@ export const documentCommands = [
     id: 'document.new',
     title: 'Neues Modell',
     description: 'Create a new empty document (model) in a new tab and switch to it. Returns the document id.',
-    params: z.object({ name: z.string().min(1).default('Unbenannt') }),
+    params: z.object({ name: z.string().min(1).default(DEFAULT_DOC_NAME) }),
     run(ctx, p) {
       return open(ctx, createDoc(uniqueName(docNames(ctx.get()), p.name)));
     },
@@ -79,7 +79,7 @@ export const documentCommands = [
         delete docs[doc.id];
         const index = app.docOrder.indexOf(doc.id);
         const docOrder = app.docOrder.filter((id) => id !== doc.id);
-        if (docOrder.length === 0) return addDoc({ ...app, docs, docOrder }, createDoc('Unbenannt'));
+        if (docOrder.length === 0) return addDoc({ ...app, docs, docOrder }, createDoc(DEFAULT_DOC_NAME));
         const activeDocId =
           app.activeDocId === doc.id ? docOrder[Math.min(index, docOrder.length - 1)] : app.activeDocId;
         return { ...app, docs, docOrder, activeDocId };

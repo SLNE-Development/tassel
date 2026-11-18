@@ -36,7 +36,7 @@ export function repairGroups(
 ): { objects: Record<string, SceneObject>; groups: Record<string, Group> } {
   const fixedGroups: Record<string, Group> = {};
   for (const group of Object.values(groups)) {
-    const dangling = group.parentId !== null && !(group.parentId in groups);
+    const dangling = group.parentId !== null && !(Object.hasOwn(groups, group.parentId));
     fixedGroups[group.id] = dangling ? { ...group, parentId: null } : group;
   }
   for (const id of Object.keys(fixedGroups)) {
@@ -51,7 +51,7 @@ export function repairGroups(
   }
   const fixedObjects: Record<string, SceneObject> = {};
   for (const obj of Object.values(objects)) {
-    const dangling = obj.groupId !== null && !(obj.groupId in fixedGroups);
+    const dangling = obj.groupId !== null && !(Object.hasOwn(fixedGroups, obj.groupId));
     fixedObjects[obj.id] = dangling ? { ...obj, groupId: null } : obj;
   }
   return { objects: fixedObjects, groups: fixedGroups };
