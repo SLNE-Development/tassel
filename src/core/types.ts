@@ -16,12 +16,65 @@ export interface Transform {
   readonly scale: Vec3;
 }
 
+/** An undirected edge as a vertex index pair with a < b. */
+export type Edge = readonly [number, number];
+
+export const modifierTypes = ['mirror', 'subdivision', 'array', 'boolean'] as const;
+export type ModifierType = (typeof modifierTypes)[number];
+
+export const booleanOperations = ['union', 'difference', 'intersect'] as const;
+export type BooleanOperation = (typeof booleanOperations)[number];
+
+interface ModifierBase {
+  readonly id: string;
+  /** Disabled modifiers are skipped when the object is evaluated. */
+  readonly enabled: boolean;
+}
+
+/** Non-destructive operations, evaluated top to bottom on the object's base mesh (in local space). */
+export type Modifier =
+  | (ModifierBase & {
+      readonly type: 'mirror';
+      /** Mirror across the local planes x=0 / y=0 / z=0. */
+      readonly axes: { readonly x: boolean; readonly y: boolean; readonly z: boolean };
+      /** Vertices closer than this to the mirror plane are welded. */
+      readonly mergeDistance: number;
+    })
+  | (ModifierBase & { readonly type: 'subdivision'; /** Catmull-Clark levels, 1-4. */ readonly levels: number })
+  | (ModifierBase & { readonly type: 'array'; readonly count: number; /** Offset per copy in local units. */ readonly offset: Vec3 })
+  | (ModifierBase & {
+      readonly type: 'boolean';
+      readonly operation: BooleanOperation;
+      /** The other object; null (or a missing object) makes the modifier a no-op. */
+      readonly targetId: string | null;
+    });
+
 export interface SceneObject {
   readonly id: string;
   readonly name: string;
   readonly visible: boolean;
   readonly transform: Transform;
+  /** The editable base mesh. What is rendered and exported is this mesh after `modifiers`. */
   readonly mesh: PolyMesh;
+  readonly modifiers: readonly Modifier[];
+  /** Smooth (averaged vertex normals) instead of flat shading. */
+  readonly smooth: boolean;
+}
+
+export const elementModes = ['vertex', 'edge', 'face'] as const;
+export type ElementMode = (typeof elementModes)[number];
+
+/**
+ * Edit mode: one object's base mesh is being edited. Only the array that matches `elementMode`
+ * holds the selection; the other two are empty. Use the helpers in mesh/selection.ts to get the
+ * selection as another element kind. Indices refer to `objects[objectId].mesh`.
+ */
+export interface EditState {
+  readonly objectId: string;
+  readonly elementMode: ElementMode;
+  readonly vertices: readonly number[];
+  readonly edges: readonly Edge[];
+  readonly faces: readonly number[];
 }
 
 /** The undoable part of a document. */
@@ -32,6 +85,8 @@ export interface DocState {
   readonly selection: readonly string[];
   /** Last selected object; the gizmo attaches to it. Always part of `selection` or null. */
   readonly activeId: string | null;
+  /** Set while in edit mode, null in object mode. */
+  readonly edit: EditState | null;
 }
 
 export interface Doc {

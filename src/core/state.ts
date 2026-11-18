@@ -4,7 +4,7 @@ export function newId(): string {
   return crypto.randomUUID().slice(0, 8);
 }
 
-export const emptyDocState: DocState = { objects: {}, order: [], selection: [], activeId: null };
+export const emptyDocState: DocState = { objects: {}, order: [], selection: [], activeId: null, edit: null };
 
 export function createDoc(name: string, state: DocState = emptyDocState, filePath: string | null = null): Doc {
   return { id: newId(), name, filePath, dirty: false, state, past: [], future: [] };

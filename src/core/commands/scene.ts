@@ -86,12 +86,15 @@ export const sceneCommands = [
         visible: true,
         transform: { position, rotation, scale },
         mesh,
+        modifiers: [],
+        smooth: false,
       };
       updateDocState(ctx, (s) => ({
         objects: { ...s.objects, [obj.id]: obj },
         order: [...s.order, obj.id],
         selection: [obj.id],
         activeId: obj.id,
+        edit: null,
       }));
       return { id: obj.id, name: obj.name };
     },
@@ -109,6 +112,7 @@ export const sceneCommands = [
         remove.forEach((id) => delete objects[id]);
         const selection = s.selection.filter((id) => !remove.has(id));
         return {
+          ...s,
           objects,
           order: s.order.filter((id) => !remove.has(id)),
           selection,
@@ -144,6 +148,7 @@ export const sceneCommands = [
         order: [...s.order, ...copies.map((c) => c.id)],
         selection: copies.map((c) => c.id),
         activeId: copies.at(-1)?.id ?? null,
+        edit: null,
       }));
       return { objects: copies.map((c) => ({ id: c.id, name: c.name })) };
     },
@@ -228,7 +233,7 @@ export const sceneCommands = [
       const lastAdded = [...p.ids].reverse().find((id) => current.has(id));
       const activeId =
         lastAdded ?? (state.activeId && current.has(state.activeId) ? state.activeId : (selection.at(-1) ?? null));
-      updateDocState(ctx, (s) => ({ ...s, selection, activeId }));
+      updateDocState(ctx, (s) => ({ ...s, selection, activeId, edit: s.edit && s.edit.objectId === activeId ? s.edit : null }));
       return { selection, activeId };
     },
   }),

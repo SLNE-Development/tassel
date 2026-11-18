@@ -43,7 +43,10 @@ export const vec3 = z.tuple([z.number(), z.number(), z.number()]);
 export function updateDocState(ctx: CommandContext, update: (state: DocState) => DocState): void {
   ctx.set((app) => {
     const doc = activeDoc(app);
-    return withDoc(app, { ...doc, state: update(doc.state) });
+    const next = update(doc.state);
+    // Edit mode cannot outlive its object (deleted, or removed by undoing its creation elsewhere).
+    const state = next.edit && !next.objects[next.edit.objectId] ? { ...next, edit: null } : next;
+    return withDoc(app, { ...doc, state });
   });
 }
 

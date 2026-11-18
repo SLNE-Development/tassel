@@ -47,8 +47,11 @@ export interface TriangleSoup {
   triToFace: Uint32Array;
 }
 
-/** Fan triangulation with flat normals. Correct for convex faces. */
-export function triangulate(mesh: PolyMesh): TriangleSoup {
+/**
+ * Fan triangulation. Correct for convex faces.
+ * `smooth` = averaged vertex normals instead of flat per-face normals (not implemented yet).
+ */
+export function triangulate(mesh: PolyMesh, _smooth = false): TriangleSoup {
   let triCount = 0;
   for (const f of mesh.faces) triCount += f.length - 2;
   const positions = new Float32Array(triCount * 9);

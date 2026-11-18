@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { polyMeshSchema } from './mesh/polymesh';
+import { modifierSchema } from './modifiers/schema';
 import { newId } from './state';
 import type { Doc, DocState, SceneObject } from './types';
 
@@ -18,6 +19,9 @@ const projectSchema = z.object({
       visible: z.boolean(),
       transform: z.object({ position: vec3, rotation: vec3, scale: vec3 }),
       mesh: polyMeshSchema,
+      // Added after the first version of the format; older files simply lack them.
+      modifiers: z.array(modifierSchema).default([]),
+      smooth: z.boolean().default(false),
     }),
   ),
 });
@@ -25,11 +29,11 @@ const projectSchema = z.object({
 export const PROJECT_EXTENSION = 'tessel';
 
 export function serializeProject(doc: Doc): string {
-  const project: z.infer<typeof projectSchema> = {
+  const project = {
     format: 'tessel',
     version: 1,
     name: doc.name,
-    objects: doc.state.order.map((id) => doc.state.objects[id] as z.infer<typeof projectSchema>['objects'][number]),
+    objects: doc.state.order.map((id) => doc.state.objects[id]),
   };
   return JSON.stringify(project);
 }
@@ -51,5 +55,5 @@ export function parseProject(json: string): { name: string; state: DocState } {
     objects[id] = { ...obj, id };
     order.push(id);
   }
-  return { name: parsed.data.name, state: { objects, order, selection: [], activeId: null } };
+  return { name: parsed.data.name, state: { objects, order, selection: [], activeId: null, edit: null } };
 }
