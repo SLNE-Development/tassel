@@ -426,8 +426,8 @@ describe('documents', () => {
   it('rename and mark_saved update the document metadata', async () => {
     await run('document.rename', { name: 'Haus' });
     expect(doc()).toMatchObject({ name: 'Haus', dirty: true });
-    await run('document.mark_saved', { filePath: 'C:/tmp/haus.forma' });
-    expect(doc()).toMatchObject({ name: 'Haus', dirty: false, filePath: 'C:/tmp/haus.forma' });
+    await run('document.mark_saved', { filePath: 'C:/tmp/haus.tessel' });
+    expect(doc()).toMatchObject({ name: 'Haus', dirty: false, filePath: 'C:/tmp/haus.tessel' });
     await add();
     expect(doc().dirty).toBe(true);
   });
@@ -501,7 +501,7 @@ describe('project files', () => {
     const source = doc();
     const { json, name } = await run('document.serialize');
     expect(name).toBe('Szene');
-    expect(JSON.parse(json)).toMatchObject({ format: 'forma', version: 1, name: 'Szene' });
+    expect(JSON.parse(json)).toMatchObject({ format: 'tessel', version: 1, name: 'Szene' });
 
     const loaded = await run('document.load', { json });
     expect(loaded.name).toBe('Szene');
@@ -532,8 +532,8 @@ describe('project files', () => {
   it('load takes name and file path overrides', async () => {
     await add();
     const { json } = await run('document.serialize');
-    await run('document.load', { json, name: 'Kopie', filePath: 'C:/tmp/kopie.forma' });
-    expect(doc()).toMatchObject({ name: 'Kopie', filePath: 'C:/tmp/kopie.forma', dirty: false });
+    await run('document.load', { json, name: 'Kopie', filePath: 'C:/tmp/kopie.tessel' });
+    expect(doc()).toMatchObject({ name: 'Kopie', filePath: 'C:/tmp/kopie.tessel', dirty: false });
   });
 
   it('serialize can address a background document', async () => {
@@ -568,7 +568,7 @@ describe('project files', () => {
     ...overrides,
   });
   const project = (objects: unknown[], overrides: Record<string, unknown> = {}) =>
-    JSON.stringify({ format: 'forma', version: 1, name: 'Test', objects, ...overrides });
+    JSON.stringify({ format: 'tessel', version: 1, name: 'Test', objects, ...overrides });
 
   it('parseProject accepts a minimal valid file', () => {
     const parsed = parseProject(project([object()]));
@@ -588,12 +588,12 @@ describe('project files', () => {
 
   it('parseProject rejects text that is not JSON', () => {
     expect(() => parseProject('')).toThrow('Datei ist kein gültiges JSON');
-    expect(() => parseProject('{ "format": "forma", ')).toThrow('Datei ist kein gültiges JSON');
+    expect(() => parseProject('{ "format": "tessel", ')).toThrow('Datei ist kein gültiges JSON');
     expect(() => parseProject('not json')).toThrow('Datei ist kein gültiges JSON');
   });
 
-  it('parseProject rejects JSON that is not a Forma project', () => {
-    const invalid = /^Keine gültige Forma-Datei: /;
+  it('parseProject rejects JSON that is not a Tessel project', () => {
+    const invalid = /^Keine gültige Tessel-Datei: /;
     expect(() => parseProject('null')).toThrow(invalid);
     expect(() => parseProject('[]')).toThrow(invalid);
     expect(() => parseProject('{}')).toThrow(invalid);
@@ -612,13 +612,13 @@ describe('project files', () => {
   });
 
   it('parseProject rejects invalid meshes', () => {
-    const invalid = /^Keine gültige Forma-Datei: /;
+    const invalid = /^Keine gültige Tessel-Datei: /;
     const withMesh = (mesh: unknown) => project([object(), object({ id: 'b', mesh })]);
     expect(() => parseProject(withMesh({ ...triangle, faces: [[0, 1, 3]] }))).toThrow(
-      'Keine gültige Forma-Datei: face references a vertex that does not exist',
+      'Keine gültige Tessel-Datei: face references a vertex that does not exist',
     );
     expect(() => parseProject(withMesh({ ...triangle, positions: [0, 0, 0, 1, 0, 0, 0, 1] }))).toThrow(
-      'Keine gültige Forma-Datei: positions length must be a multiple of 3',
+      'Keine gültige Tessel-Datei: positions length must be a multiple of 3',
     );
     expect(() => parseProject(withMesh({ ...triangle, faces: [[0, 1]] }))).toThrow(invalid);
     expect(() => parseProject(withMesh({ ...triangle, faces: [[0, 1, -2]] }))).toThrow(invalid);
@@ -633,7 +633,7 @@ describe('project files', () => {
     const before = app;
     await expect(run('document.load', { json: 'not json' })).rejects.toThrow('Datei ist kein gültiges JSON');
     await expect(run('document.load', { json: project([object({ mesh: { positions: [], faces: [[0, 1, 2]] } })]) })).rejects.toThrow(
-      /Keine gültige Forma-Datei/,
+      /Keine gültige Tessel-Datei/,
     );
     expect(app).toBe(before);
   });

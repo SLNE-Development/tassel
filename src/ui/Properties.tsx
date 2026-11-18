@@ -1,0 +1,142 @@
+import { useMemo, useRef } from 'react';
+import { selectDocState, useApp } from '../app/store';
+import { meshStats } from '../core/mesh/polymesh';
+import type { PolyMesh, Transform, Vec3 } from '../core/types';
+import { dispatch, shortcutLabel } from './actions';
+import { ScrubField } from './ScrubField';
+
+const axes = [
+  { label: 'X', color: 'var(--axis-x)' },
+  { label: 'Y', color: 'var(--axis-y)' },
+  { label: 'Z', color: 'var(--axis-z)' },
+] as const;
+
+const rows: { key: keyof Transform; title: string; unit: string; step: number }[] = [
+  { key: 'position', title: 'Position', unit: 'm', step: 0.01 },
+  { key: 'rotation', title: 'Drehung', unit: '°', step: 0.5 },
+  { key: 'scale', title: 'Skalierung', unit: '×', step: 0.01 },
+];
+
+function NameField({ id, name }: { id: string; name: string }) {
+  const reverting = useRef(false);
+  return (
+    <input
+      // Remount when the name changes from outside (undo, MCP), so the field never shows a stale value.
+      key={name}
+      aria-label="Name"
+      defaultValue={name}
+      spellCheck={false}
+      className="h-7 w-full min-w-0 rounded-md bg-ink px-2 text-[13px] text-text ring-1 ring-line outline-none ring-inset hover:ring-line-strong focus:ring-accent"
+      onBlur={(e) => {
+        const next = e.currentTarget.value.trim();
+        if (reverting.current || !next) e.currentTarget.value = name;
+        else if (next !== name) void dispatch('scene.rename_object', { id, name: next });
+        reverting.current = false;
+      }}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') e.currentTarget.blur();
+        if (e.key === 'Escape') {
+          reverting.current = true;
+          e.currentTarget.blur();
+        }
+      }}
+    />
+  );
+}
+
+function TransformRows({ id }: { id: string }) {
+  const transform = useApp((s) => selectDocState(s).objects[id]?.transform);
+  if (!transform) return null;
+  return (
+    <div className="flex flex-col gap-2.5">
+      {rows.map(({ key, title, unit, step }) => (
+        <div key={key} role="group" aria-label={title}>
+          <div className="mb-1 flex items-baseline gap-1.5 text-[12px]">
+            <span className="text-dim">{title}</span>
+            <span className="text-faint">{unit}</span>
+          </div>
+          <div className="grid grid-cols-3 gap-1">
+            {axes.map((axis, i) => (
+              <ScrubField
+                key={axis.label}
+                label={axis.label}
+                ariaLabel={`${title} ${axis.label}`}
+                color={axis.color}
+                value={transform[key][i]}
+                step={step}
+                onCommit={(value) => {
+                  const next = [...transform[key]] as Vec3;
+                  next[i] = value;
+                  void dispatch('scene.set_transform', { items: [{ id, [key]: next }] });
+                }}
+              />
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function MeshStats({ mesh }: { mesh: PolyMesh }) {
+  const stats = useMemo(() => meshStats(mesh), [mesh]);
+  const items = [
+    ['Eckpunkte', stats.vertices],
+    ['Kanten', stats.edges],
+    ['Flächen', stats.faces],
+    ['Dreiecke', stats.triangles],
+  ] as const;
+  return (
+    <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-[12.5px]">
+      {items.map(([title, count]) => (
+        <div key={title} className="flex items-baseline justify-between">
+          <dt className="text-dim">{title}</dt>
+          <dd className="tnum text-text">{count.toLocaleString('de-DE')}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+function ObjectProperties({ id }: { id: string }) {
+  const name = useApp((s) => selectDocState(s).objects[id]?.name ?? '');
+  const mesh = useApp((s) => selectDocState(s).objects[id]?.mesh);
+  return (
+    <div className="flex flex-col gap-4 px-3 pb-4">
+      <NameField id={id} name={name} />
+      <TransformRows id={id} />
+      {mesh && (
+        <div>
+          <h3 className="mb-1.5 border-t border-line pt-3 text-[12px] font-semibold text-dim">Netz</h3>
+          <MeshStats mesh={mesh} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function Properties() {
+  const activeId = useApp((s) => selectDocState(s).activeId);
+  const hasObjects = useApp((s) => selectDocState(s).order.length > 0);
+  const selected = useApp((s) => selectDocState(s).selection.length);
+  return (
+    <section aria-label="Eigenschaften" className="flex min-h-0 min-w-0 flex-col border-t border-line">
+      <header className="flex h-8 shrink-0 items-center justify-between px-3">
+        <h2 className="text-[12px] font-semibold text-dim">Eigenschaften</h2>
+        {/* The fields edit the active object only; say so when more is selected. */}
+        {activeId && selected > 1 && <span className="text-[12px] text-faint">aktives von {selected} Objekten</span>}
+      </header>
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        {activeId ? (
+          <ObjectProperties key={activeId} id={activeId} />
+        ) : (
+          <p className="px-3 pt-1 text-[12.5px] leading-relaxed text-faint">
+            {hasObjects
+              ? 'Wähle ein Objekt aus, um Name, Lage und Netzdaten zu sehen.'
+              : `Hier erscheinen Name, Lage und Netzdaten des ausgewählten Objekts. ${shortcutLabel('add.menu')} fügt eines hinzu.`}
+          </p>
+        )}
+      </div>
+    </section>
+  );
+}

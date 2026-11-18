@@ -104,7 +104,7 @@ export const documentCommands = [
     id: 'document.serialize',
     title: 'Dokument serialisieren',
     description:
-      'Return a document as Forma project JSON text. Usually you want the file_save tool instead, which writes it to disk.',
+      'Return a document as Tessel project JSON text. Usually you want the file_save tool instead, which writes it to disk.',
     params: z.object({ id: docIdParam }),
     run(ctx, p) {
       const doc = requireDoc(ctx.get(), p.id);
@@ -116,7 +116,7 @@ export const documentCommands = [
     id: 'document.load',
     title: 'Dokument laden',
     description:
-      'Open Forma project JSON text as a new document tab. Usually you want the file_open tool instead, which reads a file from disk.',
+      'Open Tessel project JSON text as a new document tab. Usually you want the file_open tool instead, which reads a file from disk.',
     params: z.object({ json: z.string(), name: z.string().min(1).optional(), filePath: z.string().optional() }),
     run(ctx, p) {
       const project = parseProject(p.json);

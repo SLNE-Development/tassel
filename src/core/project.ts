@@ -3,12 +3,12 @@ import { polyMeshSchema } from './mesh/polymesh';
 import { newId } from './state';
 import type { Doc, DocState, SceneObject } from './types';
 
-// Project file format (.forma): JSON, validated on load because files are untrusted input.
+// Project file format (.tessel): JSON, validated on load because files are untrusted input.
 
 const vec3 = z.tuple([z.number().finite(), z.number().finite(), z.number().finite()]);
 
 const projectSchema = z.object({
-  format: z.literal('forma'),
+  format: z.literal('tessel'),
   version: z.literal(1),
   name: z.string(),
   objects: z.array(
@@ -22,11 +22,11 @@ const projectSchema = z.object({
   ),
 });
 
-export const PROJECT_EXTENSION = 'forma';
+export const PROJECT_EXTENSION = 'tessel';
 
 export function serializeProject(doc: Doc): string {
   const project: z.infer<typeof projectSchema> = {
-    format: 'forma',
+    format: 'tessel',
     version: 1,
     name: doc.name,
     objects: doc.state.order.map((id) => doc.state.objects[id] as z.infer<typeof projectSchema>['objects'][number]),
@@ -43,7 +43,7 @@ export function parseProject(json: string): { name: string; state: DocState } {
     throw new Error('Datei ist kein gültiges JSON');
   }
   const parsed = projectSchema.safeParse(raw);
-  if (!parsed.success) throw new Error(`Keine gültige Forma-Datei: ${parsed.error.issues[0]?.message ?? 'unbekannt'}`);
+  if (!parsed.success) throw new Error(`Keine gültige Tessel-Datei: ${parsed.error.issues[0]?.message ?? 'unbekannt'}`);
   const objects: Record<string, SceneObject> = {};
   const order: string[] = [];
   for (const obj of parsed.data.objects) {

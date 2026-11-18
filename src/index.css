@@ -1,0 +1,164 @@
+@import 'tailwindcss';
+
+/*
+ * Tessel design tokens.
+ * Slate with a slight green-grey cast ("Schiefer") and one brass accent ("Messing").
+ * --accent is the single accent variable; the viewport's selection highlight should use the same one.
+ */
+:root {
+  --accent: #e9b949;
+  --accent-ink: #1b1604;
+
+  --ink: #14181a;
+  --panel: #1a1f22;
+  --raised: #232a2e;
+  --overlay: #262e33;
+  --line: #2c353a;
+  --line-strong: #3b464c;
+
+  --text: #e3e7e5;
+  --dim: #a4aeac;
+  --faint: #7c8886;
+
+  --axis-x: #e2695f;
+  --axis-y: #7fbf5a;
+  --axis-z: #5b9be6;
+  --danger: #e8695e;
+  --ok: #6fc28b;
+
+  color-scheme: dark;
+}
+
+@theme inline {
+  --color-accent: var(--accent);
+  --color-accent-ink: var(--accent-ink);
+  --color-ink: var(--ink);
+  --color-panel: var(--panel);
+  --color-raised: var(--raised);
+  --color-overlay: var(--overlay);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-text: var(--text);
+  --color-dim: var(--dim);
+  --color-faint: var(--faint);
+  --color-axis-x: var(--axis-x);
+  --color-axis-y: var(--axis-y);
+  --color-axis-z: var(--axis-z);
+  --color-danger: var(--danger);
+  --color-ok: var(--ok);
+
+  --font-sans: 'Segoe UI Variable Text', 'Segoe UI', system-ui, -apple-system, 'Helvetica Neue', sans-serif;
+  --font-display: 'Segoe UI Variable Display', 'Segoe UI', system-ui, -apple-system, 'Helvetica Neue', sans-serif;
+
+  --shadow-pop: 0 1px 0 0 rgb(255 255 255 / 0.04) inset, 0 12px 32px -8px rgb(0 0 0 / 0.55), 0 2px 6px rgb(0 0 0 / 0.3);
+}
+
+@layer base {
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  overflow: hidden;
+  background: var(--ink);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 1.35;
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: default;
+}
+
+input {
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+/* Everything clickable shows the hand cursor (Tailwind's reset leaves buttons on the arrow). */
+button:not(:disabled),
+a[href],
+summary,
+label[for],
+[role='button']:not([aria-disabled='true']),
+[role='tab']:not([aria-disabled='true']),
+[role='menuitem']:not([aria-disabled='true']),
+[role='menuitemradio']:not([aria-disabled='true']),
+[role='menuitemcheckbox']:not([aria-disabled='true']),
+[role='option']:not([aria-disabled='true']) {
+  cursor: pointer;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* Menu and list items show focus through their highlight, not a ring. */
+[role='menuitem']:focus-visible,
+[role='menuitemradio']:focus-visible,
+[role='menuitemcheckbox']:focus-visible,
+[role='menu']:focus-visible,
+[role='dialog']:focus-visible,
+[role='alertdialog']:focus-visible {
+  outline: none;
+}
+}
+
+.tnum {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Thin, quiet scrollbars. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
+}
+
+.no-scrollbar {
+  scrollbar-width: none;
+}
+
+/* Drafting-paper dot grid for the placeholder workspaces. */
+.dot-grid {
+  background-image: radial-gradient(circle, var(--line) 1px, transparent 1.2px);
+  background-size: 24px 24px;
+  background-position: 12px 12px;
+}
+
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(-3px) scale(0.985);
+  }
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+.anim-pop {
+  animation: pop-in 110ms ease-out;
+}
+
+.anim-toast {
+  animation: toast-in 160ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .anim-pop,
+  .anim-toast {
+    animation: none;
+  }
+}
