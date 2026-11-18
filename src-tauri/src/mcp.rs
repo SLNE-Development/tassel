@@ -4,7 +4,7 @@ use std::net::{Ipv4Addr, SocketAddr};
 use std::sync::Arc;
 
 use axum::Router;
-use axum::extract::Request;
+use axum::extract::{Request, State};
 use axum::http::{StatusCode, header};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
@@ -25,11 +25,11 @@ use crate::tools::{self, ToolOutput};
 pub const PORT: u16 = 4737;
 const PATH: &str = "/mcp";
 
-const INSTRUCTIONS: &str = "Forma is a desktop 3D editor for polygon modeling; this server controls the running editor \
+const INSTRUCTIONS: &str = "Tessel is a desktop 3D editor for polygon modeling; this server controls the running editor \
 window, so the user sees every change you make live. Start with app_get_state to learn which documents are open, \
 what is selected and where the camera is. Every editor action is a tool (scene_*, view_*, document_*, history_*), \
 and each change is one undo step. Conventions: Y is up, units are meters, rotations are Euler XYZ in degrees. \
-Call view_screenshot to see the result of your work. Use file_save / file_open for .forma project files and \
+Call view_screenshot to see the result of your work. Use file_save / file_open for .tessel project files and \
 file_export for .glb / .gltf (absolute paths), and batch to run several tool calls in one request.";
 
 pub fn url() -> String {
@@ -37,7 +37,7 @@ pub fn url() -> String {
 }
 
 /// Binds the port and serves MCP in the background. Never fails: a bind error ends up in `mcp_status`.
-pub fn start(bridge: Arc<Bridge>) {
+pub fn start(bridge: Arc<Bridge>, token: String) {
   let addr = SocketAddr::from((Ipv4Addr::LOCALHOST, PORT));
   let listener = std::net::TcpListener::bind(addr).and_then(|listener| {
     listener.set_nonblocking(true)?;
@@ -57,7 +57,7 @@ pub fn start(bridge: Arc<Bridge>) {
 
   tauri::async_runtime::spawn(async move {
     let result = match tokio::net::TcpListener::from_std(listener) {
-      Ok(listener) => axum::serve(listener, router(bridge.clone())).await,
+      Ok(listener) => axum::serve(listener, router(bridge.clone(), token)).await,
       Err(e) => Err(e),
     };
     let message = match result {
@@ -69,20 +69,68 @@ pub fn start(bridge: Arc<Bridge>) {
   });
 }
 
-fn router(bridge: Arc<Bridge>) -> Router {
+fn router(bridge: Arc<Bridge>, token: String) -> Router {
   // Stateless with plain JSON responses: every POST is answered directly, no session to keep alive.
   // rmcp additionally rejects requests whose Host header is not a loopback name.
   let config = StreamableHttpServerConfig::default()
     .with_legacy_session_mode(false)
     .with_json_response(true);
   let service = StreamableHttpService::new(
-    move || Ok(FormaServer { bridge: bridge.clone() }),
+    move || Ok(TesselServer { bridge: bridge.clone() }),
     Arc::new(LocalSessionManager::default()),
     config,
   );
   Router::new()
     .route_service(PATH, service)
+    .layer(middleware::from_fn_with_state(Arc::<str>::from(token), require_token))
     .layer(middleware::from_fn(reject_foreign_origins))
+}
+
+/// Loads the access token from `path`, or creates and stores a new one on first launch. The token
+/// is kept across launches so MCP client configurations stay valid.
+pub fn load_or_create_token(path: &std::path::Path) -> std::io::Result<String> {
+  if let Ok(existing) = std::fs::read_to_string(path) {
+    let existing = existing.trim();
+    if existing.len() == 64 && existing.bytes().all(|b| b.is_ascii_hexdigit()) {
+      return Ok(existing.to_string());
+    }
+  }
+  let mut bytes = [0u8; 32];
+  getrandom::fill(&mut bytes).map_err(|e| std::io::Error::other(e.to_string()))?;
+  let token: String = bytes.iter().map(|b| format!("{b:02x}")).collect();
+  if let Some(parent) = path.parent() {
+    std::fs::create_dir_all(parent)?;
+  }
+  std::fs::write(path, &token)?;
+  #[cfg(unix)]
+  {
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))?;
+  }
+  Ok(token)
+}
+
+/// Every request must carry `Authorization: Bearer <token>`: the tools read and write files, so
+/// other local processes must not be able to use the server without the user handing them the token.
+async fn require_token(State(token): State<Arc<str>>, request: Request, next: Next) -> Response {
+  let given = request
+    .headers()
+    .get(header::AUTHORIZATION)
+    .and_then(|value| value.to_str().ok())
+    .and_then(|value| value.strip_prefix("Bearer "));
+  if !given.is_some_and(|given| constant_time_eq(given.as_bytes(), token.as_bytes())) {
+    return (
+      StatusCode::UNAUTHORIZED,
+      [(header::WWW_AUTHENTICATE, "Bearer")],
+      "Unauthorized: missing or wrong access token",
+    )
+      .into_response();
+  }
+  next.run(request).await
+}
+
+fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
+  a.len() == b.len() && a.iter().zip(b).fold(0u8, |diff, (x, y)| diff | (x ^ y)) == 0
 }
 
 /// DNS-rebinding protection: browsers always send `Origin` on cross-site requests, so a present
@@ -130,11 +178,11 @@ fn is_port(port: Option<&str>) -> bool {
   port.is_some_and(|p| !p.is_empty() && p.len() <= 5 && p.bytes().all(|b| b.is_ascii_digit()))
 }
 
-struct FormaServer {
+struct TesselServer {
   bridge: Arc<Bridge>,
 }
 
-impl FormaServer {
+impl TesselServer {
   fn tools(&self) -> Vec<Tool> {
     let native = tools::native_tools();
     let mut list: Vec<Tool> = self
@@ -164,13 +212,13 @@ fn schema_object(schema: Value) -> JsonObject {
   }
 }
 
-impl ServerHandler for FormaServer {
+impl ServerHandler for TesselServer {
   fn get_info(&self) -> ServerConfig {
     ServerConfig::new(ServerCapabilities::builder().enable_tools().build())
       .with_server_info(
-        Implementation::new("forma", env!("CARGO_PKG_VERSION"))
-          .with_title("Forma")
-          .with_description("Forma 3D editor"),
+        Implementation::new("tessel", env!("CARGO_PKG_VERSION"))
+          .with_title("Tessel")
+          .with_description("Tessel 3D editor"),
       )
       .with_instructions(INSTRUCTIONS)
   }

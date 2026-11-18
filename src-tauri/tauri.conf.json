@@ -1,8 +1,8 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
-  "productName": "Forma",
+  "productName": "Tessel",
   "version": "0.1.0",
-  "identifier": "dev.forma.editor",
+  "identifier": "dev.tessel.editor",
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:5173",
@@ -13,7 +13,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "Forma",
+        "title": "Tessel",
         "width": 1440,
         "height": 900,
         "minWidth": 960,

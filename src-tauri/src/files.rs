@@ -30,17 +30,38 @@ pub fn decode_base64(data: &str) -> Result<Vec<u8>, String> {
     .map_err(|e| format!("Invalid base64 data: {e}"))
 }
 
+/// Lower-case file extension without the dot, or an empty string.
+pub fn extension(path: &str) -> String {
+  Path::new(path)
+    .extension()
+    .map(|e| e.to_string_lossy().to_ascii_lowercase())
+    .unwrap_or_default()
+}
+
+/// The webview may only touch the file types the editor works with, whatever path it is handed
+/// (a document's file path can be set through MCP).
+fn require_extension(path: &str, allowed: &[&str]) -> Result<(), String> {
+  if allowed.contains(&extension(path).as_str()) {
+    Ok(())
+  } else {
+    Err(format!("\"{path}\" must end in .{}", allowed.join(" or .")))
+  }
+}
+
 #[tauri::command]
 pub async fn read_text_file(path: String) -> Result<String, String> {
+  require_extension(&path, &["tessel"])?;
   read_text(&path).await
 }
 
 #[tauri::command]
 pub async fn write_text_file(path: String, contents: String) -> Result<(), String> {
+  require_extension(&path, &["tessel", "gltf"])?;
   write_bytes(&path, contents.as_bytes()).await
 }
 
 #[tauri::command]
 pub async fn write_binary_file(path: String, base64: String) -> Result<(), String> {
+  require_extension(&path, &["glb"])?;
   write_bytes(&path, &decode_base64(&base64)?).await
 }

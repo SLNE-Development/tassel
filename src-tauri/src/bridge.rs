@@ -42,6 +42,8 @@ impl FrontendCommand {
 pub struct McpStatus {
   pub running: bool,
   pub url: String,
+  /// Access token MCP clients must send as `Authorization: Bearer <token>`. Shown in the UI.
+  pub token: String,
   pub error: Option<String>,
 }
 
@@ -56,13 +58,13 @@ pub struct Bridge {
 }
 
 impl Bridge {
-  pub fn new(app: AppHandle) -> Self {
+  pub fn new(app: AppHandle, token: String) -> Self {
     Self {
       app,
       commands: RwLock::new(Vec::new()),
       pending: Mutex::new(HashMap::new()),
       next_id: AtomicU64::new(1),
-      status: RwLock::new(McpStatus { running: false, url: crate::mcp::url(), error: None }),
+      status: RwLock::new(McpStatus { running: false, url: crate::mcp::url(), token, error: None }),
     }
   }
 
@@ -84,12 +86,12 @@ impl Bridge {
   pub async fn call(&self, command: &str, params: Value) -> Reply {
     if self.commands.read().unwrap().is_empty() {
       return Err(
-        "The Forma editor window has not finished starting (no commands registered yet). Try again in a moment."
+        "The Tessel editor window has not finished starting (no commands registered yet). Try again in a moment."
           .into(),
       );
     }
     let Some(window) = self.app.get_webview_window(MAIN_WINDOW) else {
-      return Err("The Forma editor window is not open.".into());
+      return Err("The Tessel editor window is not open.".into());
     };
 
     let request_id = format!("mcp-{}", self.next_id.fetch_add(1, Ordering::Relaxed));
@@ -99,7 +101,7 @@ impl Bridge {
     let payload = json!({ "requestId": request_id, "command": command, "params": params });
     if let Err(e) = window.emit_to(MAIN_WINDOW, CALL_EVENT, payload) {
       self.pending.lock().unwrap().remove(&request_id);
-      return Err(format!("Could not reach the Forma editor window: {e}"));
+      return Err(format!("Could not reach the Tessel editor window: {e}"));
     }
 
     match tokio::time::timeout(CALL_TIMEOUT, rx).await {

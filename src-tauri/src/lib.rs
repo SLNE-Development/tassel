@@ -20,9 +20,10 @@ pub fn run() {
             .build(),
         )?;
       }
-      let bridge = Arc::new(Bridge::new(app.handle().clone()));
+      let token = mcp::load_or_create_token(&app.path().app_config_dir()?.join("mcp-token"))?;
+      let bridge = Arc::new(Bridge::new(app.handle().clone(), token.clone()));
       app.manage(bridge.clone());
-      mcp::start(bridge);
+      mcp::start(bridge, token);
       Ok(())
     })
     .invoke_handler(tauri::generate_handler![
@@ -34,5 +35,5 @@ pub fn run() {
       files::write_binary_file,
     ])
     .run(tauri::generate_context!())
-    .expect("error while running Forma");
+    .expect("error while running Tessel");
 }

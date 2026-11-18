@@ -7,6 +7,8 @@ import { commands } from '../core/commands';
 export interface McpStatus {
   running: boolean;
   url: string;
+  /** Access token MCP clients must send as `Authorization: Bearer <token>`. */
+  token: string;
   error: string | null;
 }
 

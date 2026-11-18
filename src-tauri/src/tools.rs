@@ -25,8 +25,8 @@ pub fn native_tools() -> Vec<NativeTool> {
   vec![
     NativeTool {
       name: "file_save",
-      description: "Save the active document as a Forma project file (.forma, JSON) on disk and mark it as saved. \
-        Pass an absolute path ending in .forma to save to a new location (\"save as\"); omit path to save to the \
+      description: "Save the active document as a Tessel project file (.tessel, JSON) on disk and mark it as saved. \
+        Pass an absolute path ending in .tessel to save to a new location (\"save as\"); omit path to save to the \
         file the document was opened from or last saved to (see activeDocument.filePath in app_get_state). \
         Missing parent folders are created; an existing file is overwritten. The document is renamed to the file name.",
       input_schema: json!({
@@ -34,7 +34,7 @@ pub fn native_tools() -> Vec<NativeTool> {
         "properties": {
           "path": {
             "type": "string",
-            "description": "Absolute path of the project file, ending in .forma. Optional if the document already has a file path."
+            "description": "Absolute path of the project file, ending in .tessel. Optional if the document already has a file path."
           }
         },
         "additionalProperties": false
@@ -42,12 +42,12 @@ pub fn native_tools() -> Vec<NativeTool> {
     },
     NativeTool {
       name: "file_open",
-      description: "Open a Forma project file (.forma) from disk in a new document tab and switch to it. \
+      description: "Open a Tessel project file (.tessel) from disk in a new document tab and switch to it. \
         Returns the id and name of the new document. Other open documents are not affected.",
       input_schema: json!({
         "type": "object",
         "properties": {
-          "path": { "type": "string", "description": "Absolute path of the project file, ending in .forma." }
+          "path": { "type": "string", "description": "Absolute path of the project file, ending in .tessel." }
         },
         "required": ["path"],
         "additionalProperties": false
@@ -124,7 +124,7 @@ async fn call_single(bridge: &Bridge, tool: &str, args: Value) -> Result<Value, 
     _ => match bridge.find_command(tool) {
       Some(command) => bridge.call(&command.command_id(), args).await,
       None if bridge.commands().is_empty() => Err(format!(
-        "Unknown tool \"{tool}\". The Forma editor window has not registered its commands yet - try again in a moment."
+        "Unknown tool \"{tool}\". The Tessel editor window has not registered its commands yet - try again in a moment."
       )),
       None => Err(format!("Unknown tool \"{tool}\". Use tools/list to see the available tools.")),
     },
@@ -168,27 +168,20 @@ fn str_arg<'a>(args: &'a Value, key: &str) -> Option<&'a str> {
   args.get(key).and_then(Value::as_str).map(str::trim).filter(|s| !s.is_empty())
 }
 
-fn extension(path: &str) -> String {
-  Path::new(path)
-    .extension()
-    .map(|e| e.to_string_lossy().to_lowercase())
-    .unwrap_or_default()
-}
-
 fn require_absolute(path: &str) -> Result<(), String> {
   if Path::new(path).is_absolute() {
     Ok(())
   } else {
-    Err(format!("\"{path}\" is not an absolute path. Pass a full path such as C:\\Models\\chair.forma."))
+    Err(format!("\"{path}\" is not an absolute path. Pass a full path such as C:\\Models\\chair.tessel."))
   }
 }
 
-fn require_forma(path: &str) -> Result<(), String> {
+fn require_tessel(path: &str) -> Result<(), String> {
   require_absolute(path)?;
-  if extension(path) == "forma" {
+  if files::extension(path) == "tessel" {
     Ok(())
   } else {
-    Err(format!("\"{path}\" is not a Forma project file: the path must end in .forma"))
+    Err(format!("\"{path}\" is not a Tessel project file: the path must end in .tessel"))
   }
 }
 
@@ -209,14 +202,14 @@ fn field<'a>(value: &'a Value, key: &str, command: &str) -> Result<&'a str, Stri
 async fn file_save(bridge: &Bridge, args: &Value) -> Result<Value, String> {
   // Validate an explicit path before bothering the frontend.
   if let Some(path) = str_arg(args, "path") {
-    require_forma(path)?;
+    require_tessel(path)?;
   }
   let doc = bridge.call("document.serialize", json!({})).await?;
   let path = match str_arg(args, "path").or_else(|| doc.get("filePath").and_then(Value::as_str)) {
     Some(path) => path.to_string(),
-    None => return Err("This document has never been saved, so a path is required: pass an absolute path ending in .forma.".into()),
+    None => return Err("This document has never been saved, so a path is required: pass an absolute path ending in .tessel.".into()),
   };
-  require_forma(&path)?;
+  require_tessel(&path)?;
 
   let json = field(&doc, "json", "document.serialize")?;
   files::write_bytes(&path, json.as_bytes()).await?;
@@ -235,7 +228,7 @@ async fn file_save(bridge: &Bridge, args: &Value) -> Result<Value, String> {
 
 async fn file_open(bridge: &Bridge, args: &Value) -> Result<Value, String> {
   let path = str_arg(args, "path").ok_or("\"path\" is required")?;
-  require_forma(path)?;
+  require_tessel(path)?;
   let json = files::read_text(path).await?;
   let opened = bridge
     .call("document.load", json!({ "json": json, "filePath": path, "name": file_stem(path) }))
@@ -252,7 +245,7 @@ async fn file_open(bridge: &Bridge, args: &Value) -> Result<Value, String> {
 async fn file_export(bridge: &Bridge, args: &Value) -> Result<Value, String> {
   let path = str_arg(args, "path").ok_or("\"path\" is required")?;
   require_absolute(path)?;
-  let binary = match extension(path).as_str() {
+  let binary = match files::extension(path).as_str() {
     "glb" => true,
     "gltf" => false,
     "" => return Err(format!("\"{path}\" has no file extension. Supported export formats: {EXPORT_FORMATS}.")),

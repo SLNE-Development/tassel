@@ -2,7 +2,7 @@ import { invoke, isTauri } from '@tauri-apps/api/core';
 import { open, save } from '@tauri-apps/plugin-dialog';
 import { execute, selectActiveDoc, useApp } from '../app/store';
 
-const PROJECT_FILTER = { name: 'Forma-Projekt', extensions: ['forma'] };
+const PROJECT_FILTER = { name: 'Tessel-Projekt', extensions: ['tessel'] };
 const GLB_FILTER = { name: 'glTF Binär', extensions: ['glb'] };
 const GLTF_FILTER = { name: 'glTF', extensions: ['gltf'] };
 
@@ -28,7 +28,7 @@ function suggestedFileName(name: string, extension: string): string {
   return `${safe}.${extension}`;
 }
 
-/** Shows an open dialog and loads the chosen .forma project into a new tab. */
+/** Shows an open dialog and loads the chosen .tessel project into a new tab. */
 export async function openProject(): Promise<void> {
   requireDesktop();
   const path = await open({ multiple: false, directory: false, filters: [PROJECT_FILTER] });
@@ -44,11 +44,11 @@ export async function saveProject(opts?: { saveAs?: boolean }): Promise<boolean>
   let path = opts?.saveAs ? null : current.filePath;
   if (!path) {
     const chosen = await save({
-      defaultPath: current.filePath ?? suggestedFileName(current.name, 'forma'),
+      defaultPath: current.filePath ?? suggestedFileName(current.name, 'tessel'),
       filters: [PROJECT_FILTER],
     });
     if (!chosen) return false;
-    path = withExtension(chosen, 'forma');
+    path = withExtension(chosen, 'tessel');
   }
   // Serialize after the dialog, by id: the document the user was asked about is the one that gets written.
   const doc = (await execute('document.serialize', { id: current.id })) as { id: string; json: string };
