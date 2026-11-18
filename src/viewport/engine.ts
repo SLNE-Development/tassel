@@ -9,9 +9,11 @@ import {
   LineBasicMaterial,
   LineSegments,
   MathUtils,
+  Matrix4,
   Mesh,
   MeshStandardMaterial,
   MOUSE,
+  Object3D,
   PerspectiveCamera,
   Raycaster,
   Scene,
@@ -24,9 +26,12 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { TransformControls } from 'three/addons/controls/TransformControls.js';
 import { LineSegments2 } from 'three/addons/lines/webgpu/LineSegments2.js';
 import { execute, useApp } from '../app/store';
+import { evaluateObject } from '../core/modifiers/evaluate';
 import type {
   AppState,
   CameraPose,
+  DocState,
+  PolyMesh,
   SceneObject,
   ScreenshotOptions,
   Shading,
@@ -36,6 +41,8 @@ import type {
   ViewportService,
   ViewPreset,
 } from '../core/types';
+import { EditMaterials, EditView, selectedVertices } from './editMesh';
+import { ElementPicker } from './editPick';
 import { DEFAULT_SPHERE, fitClipPlanes, fitDistance, placeCamera, viewDirection } from './framing';
 import { GeometryStore, type MeshGeometry } from './geometry';
 import { GroundGrid } from './grid';
@@ -52,7 +59,17 @@ interface Entry {
   solid: Mesh;
   wire: LineSegments | null;
   outline: LineSegments2 | null;
+  /**
+   * Set while the object is being edited: it then shows its base mesh with the edit overlays, and
+   * `geometry` (the modifier result) is hidden and not kept up to date.
+   */
+  edit: EditView | null;
 }
+
+type Drag =
+  | { kind: 'object'; start: Map<string, Vector3>; origin: Vector3 }
+  /** `pivot` is the gizmo position at the start, in the object's local space. */
+  | { kind: 'edit'; view: EditView; pivot: Vector3 };
 
 const gizmoModes: Record<Exclude<Tool, 'select'>, 'translate' | 'rotate' | 'scale'> = {
   move: 'translate',
@@ -61,6 +78,8 @@ const gizmoModes: Record<Exclude<Tool, 'select'>, 'translate' | 'rotate' | 'scal
 };
 
 const CLICK_TOLERANCE_PX = 4;
+/** How close (in CSS pixels) a click must be to a vertex or edge to pick it. */
+const PICK_TOLERANCE_PX = 10;
 const FOV = 40;
 
 const round = (n: number) => Math.round(n * 1e6) / 1e6;
@@ -115,20 +134,37 @@ export class ViewportEngine {
     (color) => new LineBasicMaterial({ color, fog: false, transparent: true, opacity: 0.4, depthWrite: false }),
   );
   private readonly outlineMaterials: Line2NodeMaterial[];
+  /** Other objects while one is being edited. */
+  private readonly clayDim: MeshStandardMaterial;
+  private readonly wireDim = new LineBasicMaterial({ color: VIEWPORT_COLORS.wireDim, fog: false });
+  private readonly editMaterials = new EditMaterials();
+  /** The gizmo attaches to this in edit mode; a child of the edited object's group. */
+  private readonly pivot = new Object3D();
+  /** Rectangle of a box selection in progress. */
+  private readonly boxElement = document.createElement('div');
 
   private initialised = false;
   private disposed = false;
   private frameRequest = 0;
   private needsSync = true;
   private docId: string | null = null;
-  private pointerDown: { x: number; y: number; onGizmo: boolean } | null = null;
-  private drag: { start: Map<string, Vector3>; origin: Vector3 } | null = null;
+  private pointerDown: { x: number; y: number; onGizmo: boolean; box: boolean } | null = null;
+  private drag: Drag | null = null;
 
   constructor(private readonly container: HTMLElement) {
     this.renderer = new WebGPURenderer({ antialias: true, alpha: false, powerPreference: 'high-performance' });
     this.canvas = this.renderer.domElement as HTMLCanvasElement;
     Object.assign(this.canvas.style, { display: 'block', width: '100%', height: '100%', outline: 'none' });
     container.appendChild(this.canvas);
+    Object.assign(this.boxElement.style, {
+      display: 'none',
+      position: 'absolute',
+      pointerEvents: 'none',
+      boxSizing: 'border-box',
+      border: `1px solid ${ACCENT_COLOR}`,
+      background: `${ACCENT_COLOR}26`,
+    });
+    container.appendChild(this.boxElement);
 
     this.scene.background = new Color(VIEWPORT_COLORS.background);
     this.scene.fog = this.grid.fog;
@@ -143,21 +179,21 @@ export class ViewportEngine {
     this.lightRig.add(key, fill);
 
     // Clay for [not selected, selected, active]; the offset keeps edge overlays free of z-fighting.
-    this.clay = [0, 0.06, 0.1].map(
-      (glow) =>
-        new MeshStandardMaterial({
-          color: VIEWPORT_COLORS.clay,
-          roughness: 0.9,
-          metalness: 0,
-          side: DoubleSide,
-          emissive: ACCENT_COLOR,
-          emissiveIntensity: glow,
-          fog: false,
-          polygonOffset: true,
-          polygonOffsetFactor: 1,
-          polygonOffsetUnits: 1,
-        }),
-    );
+    const clay = (color: string, glow: number) =>
+      new MeshStandardMaterial({
+        color,
+        roughness: 0.9,
+        metalness: 0,
+        side: DoubleSide,
+        emissive: ACCENT_COLOR,
+        emissiveIntensity: glow,
+        fog: false,
+        polygonOffset: true,
+        polygonOffsetFactor: 1,
+        polygonOffsetUnits: 1,
+      });
+    this.clay = [0, 0.06, 0.1].map((glow) => clay(VIEWPORT_COLORS.clay, glow));
+    this.clayDim = clay(VIEWPORT_COLORS.clayDim, 0);
     this.outlineMaterials = [ACCENT_COLOR, ACCENT_ACTIVE_COLOR].map((color) => {
       const material = new Line2NodeMaterial({ color, linewidth: 2, worldUnits: false });
       material.fog = false;
@@ -182,9 +218,11 @@ export class ViewportEngine {
 
     // Registered after the controls so that the gizmo has already updated its hover state.
     this.canvas.addEventListener('pointerdown', this.onPointerDown);
+    this.canvas.addEventListener('pointermove', this.onPointerMove);
     this.canvas.addEventListener('pointerup', this.onPointerUp);
     this.canvas.addEventListener('pointercancel', this.onPointerCancel);
     this.canvas.addEventListener('mousedown', this.onMouseDown);
+    this.canvas.addEventListener('dblclick', this.onDoubleClick);
 
     this.resizeObserver = new ResizeObserver(() => this.resize());
     this.resizeObserver.observe(container);
@@ -222,18 +260,30 @@ export class ViewportEngine {
     this.unsubscribe();
     this.resizeObserver.disconnect();
     this.canvas.removeEventListener('pointerdown', this.onPointerDown);
+    this.canvas.removeEventListener('pointermove', this.onPointerMove);
     this.canvas.removeEventListener('pointerup', this.onPointerUp);
     this.canvas.removeEventListener('pointercancel', this.onPointerCancel);
     this.canvas.removeEventListener('mousedown', this.onMouseDown);
+    this.canvas.removeEventListener('dblclick', this.onDoubleClick);
     this.gizmo.detach();
     this.gizmo.dispose();
     this.orbit.dispose();
+    for (const entry of this.entries.values()) entry.edit?.dispose();
     this.entries.clear();
     this.geometries.dispose();
     this.grid.dispose();
-    [...this.clay, ...this.wireMaterials, ...this.overlayMaterials, ...this.outlineMaterials].forEach((m) => m.dispose());
+    this.editMaterials.dispose();
+    [
+      ...this.clay,
+      this.clayDim,
+      ...this.wireMaterials,
+      this.wireDim,
+      ...this.overlayMaterials,
+      ...this.outlineMaterials,
+    ].forEach((m) => m.dispose());
     if (this.initialised) this.renderer.dispose();
     this.canvas.remove();
+    this.boxElement.remove();
   }
 
   // ---------------------------------------------------------------- rendering
@@ -299,54 +349,104 @@ export class ViewportEngine {
       if (!state.objects[id]) this.removeEntry(id, entry);
     }
 
+    const edit = state.edit;
     const selected = new Set(state.selection);
     for (const id of state.order) {
       const obj = state.objects[id];
-      let entry = this.entries.get(id);
-      if (!entry) {
-        entry = this.createEntry(obj);
-      } else if (entry.obj !== obj) {
-        if (entry.obj.mesh !== obj.mesh) this.swapGeometry(entry, obj);
-        if (entry.obj.transform !== obj.transform) applyTransform(entry.group, obj.transform);
-        entry.obj = obj;
-      }
+      const entry = this.entries.get(id) ?? this.createEntry(state, obj);
+      if (entry.obj.transform !== obj.transform) applyTransform(entry.group, obj.transform);
+      entry.obj = obj;
       entry.group.visible = obj.visible;
+
+      if (edit?.objectId === id) {
+        // The edited object shows its base mesh, so that element indices match what is clicked.
+        if (entry.edit?.mesh !== obj.mesh) {
+          entry.edit?.dispose();
+          entry.edit = new EditView(obj.mesh, this.editMaterials, this.clay[0]);
+          entry.group.add(entry.edit.group);
+        }
+        entry.edit.setSelection(edit);
+        entry.edit.setLook(app.shading, edit.elementMode);
+        entry.solid.visible = false;
+        if (entry.wire) entry.wire.visible = false;
+        if (entry.outline) entry.outline.visible = false;
+        continue;
+      }
+
+      entry.edit?.dispose();
+      entry.edit = null;
+      const mesh = evaluateObject(state, id).mesh;
+      if (entry.geometry.mesh !== mesh || entry.geometry.smooth !== obj.smooth) this.swapGeometry(entry, mesh, obj.smooth);
       const highlight: Highlight = id === state.activeId ? 2 : selected.has(id) ? 1 : 0;
-      this.applyLook(entry, app.shading, highlight);
+      this.applyLook(entry, app.shading, highlight, edit !== null);
     }
 
-    const active = state.activeId ? this.entries.get(state.activeId) : undefined;
-    if (active && active.obj.visible && app.tool !== 'select') {
-      if (this.gizmo.object !== active.group) this.gizmo.attach(active.group);
+    // The gizmo: on the active object, or in edit mode on the selected elements.
+    let target: Object3D | null = null;
+    if (app.tool === 'select') {
+      // No gizmo.
+    } else if (edit) {
+      const entry = this.entries.get(edit.objectId);
+      const box = entry?.edit && entry.obj.visible ? this.selectionBox(entry.edit, edit) : null;
+      if (entry && box) {
+        box.getCenter(this.pivot.position);
+        this.pivot.quaternion.identity();
+        this.pivot.scale.setScalar(1);
+        if (this.pivot.parent !== entry.group) entry.group.add(this.pivot);
+        target = this.pivot;
+      }
+    } else {
+      const active = state.activeId ? this.entries.get(state.activeId) : undefined;
+      if (active && active.obj.visible) target = active.group;
+    }
+    if (target && app.tool !== 'select') {
+      if (this.gizmo.object !== target) this.gizmo.attach(target);
       this.gizmo.setMode(gizmoModes[app.tool]);
+      // Edit mode works along the object's local axes.
+      this.gizmo.setSpace(edit ? 'local' : 'world');
     } else if (this.gizmo.object) {
       this.gizmo.detach();
     }
   }
 
-  private createEntry(obj: SceneObject): Entry {
-    const geometry = this.geometries.acquire(obj.mesh);
+  /** Local-space bounding box of the selected elements, or null if nothing is selected. */
+  private selectionBox(view: EditView, edit: NonNullable<DocState['edit']>): Box3 | null {
+    const box = new Box3();
+    const point = new Vector3();
+    const count = view.vertexPositions.length / 3;
+    for (const v of selectedVertices(view.mesh, edit)) {
+      if (v < count) box.expandByPoint(point.fromArray(view.vertexPositions, v * 3));
+    }
+    return box.isEmpty() ? null : box;
+  }
+
+  private createEntry(state: DocState, obj: SceneObject): Entry {
+    const geometry = this.geometries.acquire(evaluateObject(state, obj.id).mesh, obj.smooth);
     const group = new Group();
     applyTransform(group, obj.transform);
     const solid = new Mesh(geometry.solid, this.clay[0]);
     solid.userData.id = obj.id;
     group.add(solid);
     this.content.add(group);
-    const entry: Entry = { obj, geometry, group, solid, wire: null, outline: null };
+    const entry: Entry = { obj, geometry, group, solid, wire: null, outline: null, edit: null };
     this.entries.set(obj.id, entry);
     return entry;
   }
 
   private removeEntry(id: string, entry: Entry): void {
-    if (this.gizmo.object === entry.group) this.gizmo.detach();
+    if (this.gizmo.object === entry.group || this.pivot.parent === entry.group) {
+      this.gizmo.detach();
+      this.pivot.removeFromParent();
+    }
+    entry.edit?.dispose();
     this.content.remove(entry.group);
-    this.geometries.release(entry.obj.mesh);
+    this.geometries.release(entry.geometry);
     this.entries.delete(id);
   }
 
-  private swapGeometry(entry: Entry, obj: SceneObject): void {
-    const next = this.geometries.acquire(obj.mesh);
-    this.geometries.release(entry.obj.mesh);
+  private swapGeometry(entry: Entry, mesh: PolyMesh, smooth: boolean): void {
+    const next = this.geometries.acquire(mesh, smooth);
+    this.geometries.release(entry.geometry);
     entry.geometry = next;
     entry.solid.geometry = next.solid;
     // Edge objects are rebuilt lazily by applyLook.
@@ -356,14 +456,16 @@ export class ViewportEngine {
     entry.outline = null;
   }
 
-  private applyLook(entry: Entry, shading: Shading, highlight: Highlight): void {
+  /** `dim`: another object is being edited; this one steps back and shows no selection. */
+  private applyLook(entry: Entry, shading: Shading, highlight: Highlight, dim: boolean): void {
     const wireframe = shading === 'wireframe';
+    if (dim) highlight = 0;
     entry.solid.visible = !wireframe;
-    entry.solid.material = this.clay[highlight];
+    entry.solid.material = dim ? this.clayDim : this.clay[highlight];
 
     // All edges: the object itself in wireframe shading, a faint overlay on selected solid objects.
     if (wireframe || highlight > 0) {
-      const material = wireframe ? this.wireMaterials[highlight] : this.overlayMaterials[highlight - 1];
+      const material = dim ? this.wireDim : wireframe ? this.wireMaterials[highlight] : this.overlayMaterials[highlight - 1];
       if (!entry.wire) {
         entry.wire = new LineSegments(entry.geometry.wire, material);
         entry.group.add(entry.wire);
@@ -396,34 +498,154 @@ export class ViewportEngine {
     if (event.button === 1) event.preventDefault();
   };
 
+  private docState(): DocState | undefined {
+    return useApp.getState().docs[this.docId ?? '']?.state;
+  }
+
   private readonly onPointerDown = (event: PointerEvent): void => {
     if (event.button !== 0) return;
     const onGizmo = this.gizmo.object !== undefined && this.gizmo.axis !== null;
-    this.pointerDown = { x: event.clientX, y: event.clientY, onGizmo };
+    this.pointerDown = { x: event.clientX, y: event.clientY, onGizmo, box: false };
+  };
+
+  /** In edit mode a left drag that does not start on the gizmo draws a selection rectangle. */
+  private readonly onPointerMove = (event: PointerEvent): void => {
+    const down = this.pointerDown;
+    if (!down || down.onGizmo) return;
+    if (!down.box) {
+      if (Math.hypot(event.clientX - down.x, event.clientY - down.y) <= CLICK_TOLERANCE_PX) return;
+      if (!this.docState()?.edit) return;
+      down.box = true;
+    }
+    const rect = this.canvas.getBoundingClientRect();
+    Object.assign(this.boxElement.style, {
+      display: 'block',
+      left: `${Math.min(down.x, event.clientX) - rect.left}px`,
+      top: `${Math.min(down.y, event.clientY) - rect.top}px`,
+      width: `${Math.abs(event.clientX - down.x)}px`,
+      height: `${Math.abs(event.clientY - down.y)}px`,
+    });
   };
 
   private readonly onPointerCancel = (): void => {
     this.pointerDown = null;
+    this.boxElement.style.display = 'none';
   };
 
   private readonly onPointerUp = (event: PointerEvent): void => {
     if (event.button !== 0) return;
     const down = this.pointerDown;
     this.pointerDown = null;
+    this.boxElement.style.display = 'none';
     if (!down || down.onGizmo) return;
+    this.syncIfNeeded();
+    if (down.box) {
+      this.boxSelect(down, event);
+      return;
+    }
     // A drag is not a click.
     if (Math.hypot(event.clientX - down.x, event.clientY - down.y) > CLICK_TOLERANCE_PX) return;
-    this.click(event);
+    if (this.docState()?.edit) this.editClick(event);
+    else this.click(event);
+  };
+
+  private readonly onDoubleClick = (event: MouseEvent): void => {
+    if (event.button !== 0 || this.gizmo.axis !== null) return;
+    this.syncIfNeeded();
+    if (this.docState()?.edit) return;
+    const id = this.pick(event.clientX, event.clientY);
+    if (id) execute('edit.enter', { id }).catch((error) => console.error(error));
   };
 
   private click(event: PointerEvent): void {
-    this.syncIfNeeded();
     const id = this.pick(event.clientX, event.clientY);
-    const selection = useApp.getState().docs[this.docId ?? '']?.state.selection ?? [];
+    const selection = this.docState()?.selection ?? [];
     let params: { ids: string[]; mode: 'replace' | 'toggle' } | null = null;
     if (id) params = { ids: [id], mode: event.shiftKey ? 'toggle' : 'replace' };
     else if (!event.shiftKey && selection.length > 0) params = { ids: [], mode: 'replace' };
     if (params) execute('scene.select', params).catch((error) => console.error(error));
+  }
+
+  // ---------------------------------------------------------------- edit mode picking
+
+  /** The edit state, the view that shows it and a picker for the current camera; null if not ready. */
+  private editContext() {
+    const edit = this.docState()?.edit;
+    const entry = edit ? this.entries.get(edit.objectId) : undefined;
+    const view = entry?.edit;
+    const rect = this.canvas.getBoundingClientRect();
+    if (!edit || !entry || !view || view.shown !== edit || !entry.obj.visible || rect.width < 1 || rect.height < 1) return null;
+    this.scene.updateMatrixWorld();
+    this.camera.updateMatrixWorld();
+    const matrix = new Matrix4()
+      .multiplyMatrices(this.camera.projectionMatrix, this.camera.matrixWorldInverse)
+      .multiply(entry.group.matrixWorld);
+    // In wireframe shading the elements behind faces are visible, so they can be picked.
+    const occlusion = useApp.getState().shading !== 'wireframe';
+    const picker = new ElementPicker(view, matrix, Math.round(rect.width), Math.round(rect.height), occlusion);
+    return { edit, view, rect, picker };
+  }
+
+  private select(command: string, params: object): void {
+    execute(command, params).catch((error) => console.error(error));
+  }
+
+  private selectNone(edit: NonNullable<DocState['edit']>): void {
+    if (edit.vertices.length + edit.edges.length + edit.faces.length > 0) this.select('mesh.select_none', {});
+  }
+
+  /** Click: select the element under the cursor (shift toggles). Alt: edge loop, Ctrl+Alt: edge ring. */
+  private editClick(event: PointerEvent): void {
+    const context = this.editContext();
+    if (!context) return;
+    const { edit, view, rect, picker } = context;
+    const x = event.clientX - rect.left;
+    const y = event.clientY - rect.top;
+
+    if (event.altKey) {
+      const edge = picker.pickEdge(x, y, PICK_TOLERANCE_PX);
+      const command = event.ctrlKey ? 'mesh.select_ring' : 'mesh.select_loop';
+      if (edge) this.select(command, { edge, action: event.shiftKey ? 'add' : 'replace' });
+      return;
+    }
+
+    let params: { indices?: number[]; edges?: [number, number][] } | null = null;
+    if (edit.elementMode === 'vertex') {
+      const vertex = picker.pickVertex(x, y, PICK_TOLERANCE_PX);
+      if (vertex !== null) params = { indices: [vertex] };
+    } else if (edit.elementMode === 'edge') {
+      const edge = picker.pickEdge(x, y, PICK_TOLERANCE_PX);
+      if (edge) params = { edges: [edge] };
+    } else {
+      const ndc = new Vector2((x / rect.width) * 2 - 1, -(y / rect.height) * 2 + 1);
+      this.raycaster.setFromCamera(ndc, this.camera);
+      const hit = this.raycaster.intersectObject(view.solid, false)[0];
+      if (hit && hit.faceIndex != null) params = { indices: [view.triToFace[hit.faceIndex]] };
+    }
+    if (params) this.select('mesh.select', { ...params, action: event.shiftKey ? 'toggle' : 'replace' });
+    else if (!event.shiftKey) this.selectNone(edit);
+  }
+
+  /** Selects the elements inside the dragged rectangle (shift adds to the selection). */
+  private boxSelect(down: { x: number; y: number }, event: PointerEvent): void {
+    const context = this.editContext();
+    if (!context) return;
+    const { edit, rect, picker } = context;
+    const box = {
+      x0: Math.min(down.x, event.clientX) - rect.left,
+      y0: Math.min(down.y, event.clientY) - rect.top,
+      x1: Math.max(down.x, event.clientX) - rect.left,
+      y1: Math.max(down.y, event.clientY) - rect.top,
+    };
+    const params: { indices?: number[]; edges?: [number, number][] } =
+      edit.elementMode === 'vertex'
+        ? { indices: picker.boxVertices(box) }
+        : edit.elementMode === 'edge'
+          ? { edges: picker.boxEdges(box) }
+          : { indices: picker.boxFaces(box) };
+    const count = (params.indices ?? params.edges ?? []).length;
+    if (count > 0) this.select('mesh.select', { ...params, action: event.shiftKey ? 'add' : 'replace' });
+    else if (!event.shiftKey) this.selectNone(edit);
   }
 
   /** Id of the frontmost visible object under the given client coordinates. */
@@ -453,7 +675,14 @@ export class ViewportEngine {
   };
 
   private beginDrag(): void {
-    const state = useApp.getState().docs[this.docId ?? '']?.state;
+    const state = this.docState();
+    if (this.gizmo.object === this.pivot) {
+      const view = state?.edit ? this.entries.get(state.edit.objectId)?.edit : undefined;
+      if (!view?.shown) return;
+      view.beginPreview(selectedVertices(view.mesh, view.shown));
+      this.drag = { kind: 'edit', view, pivot: this.pivot.position.clone() };
+      return;
+    }
     const active = state?.activeId ? this.entries.get(state.activeId) : undefined;
     if (!state || !active) return;
     const start = new Map<string, Vector3>();
@@ -461,13 +690,25 @@ export class ViewportEngine {
       const entry = this.entries.get(id);
       if (entry && entry !== active) start.set(id, entry.group.position.clone());
     }
-    this.drag = { start, origin: active.group.position.clone() };
+    this.drag = { kind: 'object', start, origin: active.group.position.clone() };
   }
 
-  /** While moving, the other selected objects follow the active one by the same translation. */
+  /**
+   * Object mode: while moving, the other selected objects follow the active one by the same
+   * translation. Edit mode: the selected vertices follow the gizmo, in the GPU buffers only.
+   */
   private readonly onGizmoChange = (): void => {
     const active = this.gizmo.object;
-    if (!this.drag || !active || this.gizmo.mode !== 'translate') return;
+    if (!this.drag || !active) return;
+    if (this.drag.kind === 'edit') {
+      const { x, y, z } = this.drag.pivot;
+      const matrix = new Matrix4()
+        .compose(this.pivot.position, this.pivot.quaternion, this.pivot.scale)
+        .multiply(new Matrix4().makeTranslation(-x, -y, -z));
+      this.drag.view.preview(matrix);
+      return;
+    }
+    if (this.gizmo.mode !== 'translate') return;
     const delta = active.position.clone().sub(this.drag.origin);
     for (const [id, start] of this.drag.start) {
       this.entries.get(id)?.group.position.copy(start).add(delta);
@@ -479,7 +720,14 @@ export class ViewportEngine {
     const drag = this.drag;
     this.drag = null;
     if (!drag) return;
-    const state = useApp.getState().docs[this.docId ?? '']?.state;
+    // Picks up anything that changed in the store while the drag was in progress.
+    this.needsSync = true;
+    this.invalidate();
+    if (drag.kind === 'edit') {
+      this.commitEditDrag(drag.view, drag.pivot);
+      return;
+    }
+    const state = this.docState();
     const active = state?.activeId ? this.entries.get(state.activeId) : undefined;
     const items: { id: string; position?: Vec3; rotation?: Vec3; scale?: Vec3 }[] = [];
     if (state && active && state.objects[active.obj.id]) {
@@ -515,9 +763,34 @@ export class ViewportEngine {
     } else {
       this.resetTransforms();
     }
-    // Picks up anything that changed in the store while the drag was in progress.
-    this.needsSync = true;
-    this.invalidate();
+  }
+
+  /** Commits an edit-mode gizmo drag as one `mesh.transform` in the object's local space. */
+  private commitEditDrag(view: EditView, pivot: Vector3): void {
+    const p = this.pivot;
+    const params: { pivot: Vec3; translate?: Vec3; rotate?: Vec3; scale?: Vec3 } = { pivot: toVec3(pivot) };
+    const translate = toVec3(p.position.clone().sub(pivot));
+    const rotate = toVec3({
+      x: MathUtils.radToDeg(p.rotation.x),
+      y: MathUtils.radToDeg(p.rotation.y),
+      z: MathUtils.radToDeg(p.rotation.z),
+    });
+    const scale = toVec3(p.scale);
+    if (!sameVec3(translate, [0, 0, 0])) params.translate = translate;
+    if (this.gizmo.mode === 'rotate' && !sameVec3(rotate, [0, 0, 0])) params.rotate = rotate;
+    if (this.gizmo.mode === 'scale' && !sameVec3(scale, [1, 1, 1])) params.scale = scale;
+    const restore = () => {
+      view.preview(new Matrix4());
+      this.invalidate();
+    };
+    if (params.translate || params.rotate || params.scale) {
+      execute('mesh.transform', params).catch((error) => {
+        console.error(error);
+        restore();
+      });
+    } else {
+      restore();
+    }
   }
 
   /** Puts all three objects back to their document transform. */
@@ -548,7 +821,7 @@ export class ViewportEngine {
       const box = new Box3();
       const part = new Box3();
       for (const entry of list) {
-        const local = entry?.geometry.solid.boundingBox;
+        const local = entry?.edit ? entry.edit.box : entry?.geometry.solid.boundingBox;
         if (!entry || !entry.obj.visible || !local || local.isEmpty()) continue;
         entry.group.updateMatrix();
         box.union(part.copy(local).applyMatrix4(entry.group.matrix));
@@ -580,8 +853,22 @@ export class ViewportEngine {
     this.lookFrom(viewDirection(preset), this.bounds([]));
   }
 
+  /** Frames the objects; in edit mode the selected elements, if there are any. */
   private frame(ids: readonly string[]): void {
-    this.lookFrom(this.currentDirection(), this.bounds(ids));
+    this.lookFrom(this.currentDirection(), this.editSelectionBounds() ?? this.bounds(ids));
+  }
+
+  private editSelectionBounds(): Sphere | null {
+    this.syncIfNeeded();
+    const edit = this.docState()?.edit;
+    const entry = edit ? this.entries.get(edit.objectId) : undefined;
+    const box = edit && entry?.edit ? this.selectionBox(entry.edit, edit) : null;
+    if (!entry || !box) return null;
+    entry.group.updateMatrix();
+    const sphere = box.applyMatrix4(entry.group.matrix).getBoundingSphere(new Sphere());
+    // A single vertex still needs some room around it.
+    if (!(sphere.radius > 1e-6)) sphere.radius = 0.5;
+    return sphere;
   }
 
   private async screenshot(opts: ScreenshotOptions): Promise<string> {

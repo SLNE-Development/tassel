@@ -1,27 +1,33 @@
 import { BufferAttribute, BufferGeometry, MathUtils, Mesh, MeshStandardMaterial, Scene } from 'three';
 import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
 import { triangulate } from '../core/mesh/polymesh';
+import { evaluateObject } from '../core/modifiers/evaluate';
 import type { DocState, ExportService, PolyMesh } from '../core/types';
 
-/** Builds a throw-away three scene: one mesh node per visible object, flat normals, one default material. */
+/**
+ * Builds a throw-away three scene: one mesh node per visible object (its mesh after
+ * modifiers, with flat or smooth normals), one default material.
+ */
 function buildScene(state: DocState, ids?: readonly string[]): { scene: Scene; dispose(): void } {
   const only = ids ? new Set(ids) : null;
   const scene = new Scene();
   scene.name = 'Scene';
   const material = new MeshStandardMaterial({ name: 'Default', color: 0xcccccc, roughness: 0.8, metalness: 0 });
-  // Objects sharing a mesh (duplicates) share one geometry, so the file stores the data once.
-  const geometries = new Map<PolyMesh, BufferGeometry>();
+  // Objects sharing a mesh and shading (duplicates) share one geometry, so the file stores the data once.
+  const geometries = [new Map<PolyMesh, BufferGeometry>(), new Map<PolyMesh, BufferGeometry>()];
 
   for (const id of state.order) {
     const obj = state.objects[id];
     if (!obj || !obj.visible || (only && !only.has(id))) continue;
-    let geometry = geometries.get(obj.mesh);
+    const mesh = evaluateObject(state, id).mesh;
+    const cache = geometries[obj.smooth ? 1 : 0];
+    let geometry = cache.get(mesh);
     if (!geometry) {
-      const soup = triangulate(obj.mesh);
+      const soup = triangulate(mesh, obj.smooth);
       geometry = new BufferGeometry();
       geometry.setAttribute('position', new BufferAttribute(soup.positions, 3));
       geometry.setAttribute('normal', new BufferAttribute(soup.normals, 3));
-      geometries.set(obj.mesh, geometry);
+      cache.set(mesh, geometry);
     }
     const node = new Mesh(geometry, material);
     node.name = obj.name;
@@ -40,7 +46,7 @@ function buildScene(state: DocState, ids?: readonly string[]): { scene: Scene; d
   return {
     scene,
     dispose() {
-      geometries.forEach((g) => g.dispose());
+      for (const cache of geometries) cache.forEach((g) => g.dispose());
       material.dispose();
     },
   };

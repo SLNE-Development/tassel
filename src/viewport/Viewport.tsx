@@ -21,7 +21,7 @@ export function Viewport() {
     <div
       ref={container}
       className="h-full w-full"
-      style={{ width: '100%', height: '100%', overflow: 'hidden', background: VIEWPORT_COLORS.background }}
+      style={{ position: 'relative', width: '100%', height: '100%', overflow: 'hidden', background: VIEWPORT_COLORS.background }}
       onContextMenu={(event) => event.preventDefault()}
     />
   );

@@ -11,4 +11,11 @@ export const VIEWPORT_COLORS = {
   axisZ: '#3f6db3',
   clay: '#b9b5ae',
   wire: '#8e9896',
+  /** Other objects while one is being edited. */
+  clayDim: '#4b4e4d',
+  wireDim: '#3d4443',
+  /** Edges and unselected vertices of the edited object on its clay surface. */
+  editEdge: '#2c3336',
+  editVertex: '#0d1011',
+  editVertexRim: '#e6eaeb',
 } as const;

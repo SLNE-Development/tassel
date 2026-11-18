@@ -3,7 +3,7 @@ import { LineSegmentsGeometry } from 'three/addons/lines/LineSegmentsGeometry.js
 import { faceNormal, triangulate, wireframePositions } from '../core/mesh/polymesh';
 import type { PolyMesh } from '../core/types';
 
-/** GPU geometry of one PolyMesh. Edge geometries are built on first use. */
+/** GPU geometry of one PolyMesh with flat or smooth normals. Edge geometries are built on first use. */
 export class MeshGeometry {
   readonly solid: BufferGeometry;
   refs = 0;
@@ -11,8 +11,11 @@ export class MeshGeometry {
   private wireGeometry: BufferGeometry | null = null;
   private outlineGeometry: LineSegmentsGeometry | null | undefined;
 
-  constructor(private readonly mesh: PolyMesh) {
-    const soup = triangulate(mesh);
+  constructor(
+    readonly mesh: PolyMesh,
+    readonly smooth: boolean,
+  ) {
+    const soup = triangulate(mesh, smooth);
     this.solid = new BufferGeometry();
     this.solid.setAttribute('position', new BufferAttribute(soup.positions, 3));
     this.solid.setAttribute('normal', new BufferAttribute(soup.normals, 3));
@@ -86,32 +89,35 @@ export function featureEdgePositions(mesh: PolyMesh): Float32Array {
 }
 
 /**
- * Reference-counted cache from PolyMesh to GPU geometry. Meshes are immutable and keep their
- * identity while unchanged, so geometry is only built when a mesh really is new, and objects
+ * Reference-counted cache from (PolyMesh, smooth) to GPU geometry. Meshes are immutable and keep
+ * their identity while unchanged, so geometry is only built when a mesh really is new, and objects
  * that share a mesh (duplicates) share its buffers.
  */
 export class GeometryStore {
-  private readonly cache = new Map<PolyMesh, MeshGeometry>();
+  /** [flat, smooth] */
+  private readonly caches = [new Map<PolyMesh, MeshGeometry>(), new Map<PolyMesh, MeshGeometry>()];
 
-  acquire(mesh: PolyMesh): MeshGeometry {
-    let geometry = this.cache.get(mesh);
+  acquire(mesh: PolyMesh, smooth: boolean): MeshGeometry {
+    const cache = this.caches[smooth ? 1 : 0];
+    let geometry = cache.get(mesh);
     if (!geometry) {
-      geometry = new MeshGeometry(mesh);
-      this.cache.set(mesh, geometry);
+      geometry = new MeshGeometry(mesh, smooth);
+      cache.set(mesh, geometry);
     }
     geometry.refs++;
     return geometry;
   }
 
-  release(mesh: PolyMesh): void {
-    const geometry = this.cache.get(mesh);
-    if (!geometry || --geometry.refs > 0) return;
+  release(geometry: MeshGeometry): void {
+    if (--geometry.refs > 0) return;
     geometry.dispose();
-    this.cache.delete(mesh);
+    this.caches[geometry.smooth ? 1 : 0].delete(geometry.mesh);
   }
 
   dispose(): void {
-    this.cache.forEach((g) => g.dispose());
-    this.cache.clear();
+    for (const cache of this.caches) {
+      cache.forEach((g) => g.dispose());
+      cache.clear();
+    }
   }
 }
