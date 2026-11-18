@@ -1,5 +1,6 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
+import { initPreferences } from './app/preferences';
 import { execute, services, useApp } from './app/store';
 import { startMcpBridge } from './bridge/mcp';
 import { initModifiers } from './core/modifiers/evaluate';
@@ -9,6 +10,7 @@ import { installCloseGuard } from './ui/closeGuard';
 import { notifyError } from './ui/toast';
 import './index.css';
 
+initPreferences();
 services.exporter = gltfExporter;
 startMcpBridge().catch(notifyError);
 installCloseGuard();

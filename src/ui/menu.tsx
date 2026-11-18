@@ -6,7 +6,7 @@ import { getAction, runAction, shortcutLabel } from './actions';
 /** Shared look for all menus (menu bar, add menu). */
 
 export const popupClass =
-  'anim-pop min-w-52 rounded-lg border border-line-strong bg-overlay p-1 text-[13px] text-text shadow-pop outline-none';
+  'anim-pop min-w-52 rounded-lg border border-line-strong bg-overlay p-1 text-[calc(13px*var(--font-scale))] text-text shadow-pop outline-none';
 
 export const itemClass =
   'flex h-7 items-center gap-2.5 rounded-[5px] pr-2 pl-2 outline-none data-[highlighted]:bg-accent data-[highlighted]:text-accent-ink data-[disabled]:text-faint data-[popup-open]:not-data-[highlighted]:bg-raised';
@@ -27,7 +27,7 @@ function Slot({ icon: Icon }: { icon?: LucideIcon }) {
 
 function Shortcut({ label }: { label?: string }) {
   if (!label) return null;
-  return <span className="tnum ml-auto pl-6 text-[12px] opacity-60">{label}</span>;
+  return <span className="tnum ml-auto pl-6 text-[calc(12px*var(--font-scale))] opacity-60">{label}</span>;
 }
 
 /** Menu item bound to a UI action: title, shortcut label and behaviour all come from the action. */
@@ -89,5 +89,5 @@ export function MenuSeparator() {
 }
 
 export function MenuLabel({ children }: { children: ReactNode }) {
-  return <Menu.GroupLabel className="px-2 pt-1.5 pb-1 text-[12px] text-faint">{children}</Menu.GroupLabel>;
+  return <Menu.GroupLabel className="px-2 pt-1.5 pb-1 text-[calc(12px*var(--font-scale))] text-faint">{children}</Menu.GroupLabel>;
 }

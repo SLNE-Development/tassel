@@ -11,7 +11,7 @@ import { ActionItem, MenuLabel, MenuPopup, MenuSeparator, RadioActionItem, Subme
 function TopMenu({ title, disabled, children }: { title: string; disabled?: boolean; children: ReactNode }) {
   return (
     <Menu.Root disabled={disabled}>
-      <Menu.Trigger className="h-7 rounded-md px-2.5 text-[13px] text-dim outline-none hover:bg-raised hover:text-text focus-visible:bg-raised focus-visible:text-text data-[disabled]:pointer-events-none data-[disabled]:text-faint/60 data-[popup-open]:bg-raised data-[popup-open]:text-text">
+      <Menu.Trigger className="h-7 rounded-md px-2.5 text-[calc(13px*var(--font-scale))] text-dim outline-none hover:bg-raised hover:text-text focus-visible:bg-raised focus-visible:text-text data-[disabled]:pointer-events-none data-[disabled]:text-faint/60 data-[popup-open]:bg-raised data-[popup-open]:text-text">
         {title}
       </Menu.Trigger>
       <MenuPopup>{children}</MenuPopup>

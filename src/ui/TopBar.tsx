@@ -28,7 +28,7 @@ function WorkspaceSwitch() {
             key={w}
             role="radio"
             aria-checked={active}
-            className={`h-6 rounded-md px-3 text-[12.5px] ${
+            className={`h-6 rounded-md px-3 text-[calc(12.5px*var(--font-scale))] ${
               active ? 'bg-raised text-text shadow-[0_0_0_1px_var(--line-strong)]' : 'text-dim hover:text-text'
             }`}
             onClick={() => void dispatch('app.set_workspace', { workspace: w })}
@@ -46,7 +46,7 @@ export function TopBar() {
     <header className="flex h-10 items-center gap-2 border-b border-line bg-panel pl-3" onMouseDown={dragWindow}>
       <div className="flex shrink-0 items-center gap-2 pr-1">
         <Mark />
-        <span className="font-display text-[14px] font-semibold tracking-[0.01em]">Tessel</span>
+        <span className="font-display text-[calc(14px*var(--font-scale))] font-semibold tracking-[0.01em]">Tessel</span>
       </div>
       <MenuBar />
       <div aria-hidden className="mx-1 h-4 w-px shrink-0 bg-line-strong" />

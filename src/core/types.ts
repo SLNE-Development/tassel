@@ -2,6 +2,8 @@
 // All state is immutable: commands produce new objects, which makes undo a stack of DocStates.
 // Conventions: Y is up, units are meters, rotations are Euler XYZ in degrees.
 
+import type { Preferences } from './preferences';
+
 export type Vec3 = [number, number, number];
 
 /** Polygon mesh: flat xyz positions and faces as vertex index loops (CCW seen from outside). */
@@ -112,6 +114,8 @@ export const viewPresets = ['front', 'back', 'left', 'right', 'top', 'bottom', '
 export type ViewPreset = (typeof viewPresets)[number];
 
 export interface AppState {
+  /** App-wide settings; see core/preferences.ts. Not part of any document's undo history. */
+  readonly preferences: Preferences;
   readonly docs: Readonly<Record<string, Doc>>;
   /** Document ids in tab order. */
   readonly docOrder: readonly string[];

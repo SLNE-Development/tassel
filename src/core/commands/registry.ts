@@ -54,7 +54,6 @@ export function docState(ctx: CommandContext): DocState {
   return activeDoc(ctx.get()).state;
 }
 
-const HISTORY_LIMIT = 200;
 
 /** Validates params, runs the command and records undo history for every document it changed. */
 export async function runCommand(def: AnyCommand, ctx: CommandContext, rawParams: unknown): Promise<unknown> {
@@ -70,7 +69,7 @@ export async function runCommand(def: AnyCommand, ctx: CommandContext, rawParams
           next = withDoc(next, {
             ...doc,
             dirty: true,
-            past: [...prev.past, prev.state].slice(-HISTORY_LIMIT),
+            past: [...prev.past, prev.state].slice(-app.preferences.undoSteps),
             future: [],
           });
         }

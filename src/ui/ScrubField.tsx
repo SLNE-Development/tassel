@@ -107,7 +107,7 @@ export function ScrubField({
     <label className="flex h-7 min-w-0 items-center rounded-md bg-ink ring-1 ring-line ring-inset focus-within:ring-accent hover:ring-line-strong focus-within:hover:ring-accent">
       <span
         className={`flex h-full shrink-0 cursor-ew-resize touch-none items-center ${
-          wide ? 'pr-1 pl-2 text-[12px]' : 'w-6 justify-center text-[11.5px] font-semibold'
+          wide ? 'pr-1 pl-2 text-[calc(12px*var(--font-scale))]' : 'w-6 justify-center text-[calc(11.5px*var(--font-scale))] font-semibold'
         }`}
         style={{ color }}
         title="Ziehen, um den Wert zu ändern"
@@ -132,7 +132,7 @@ export function ScrubField({
         inputMode="decimal"
         spellCheck={false}
         autoComplete="off"
-        className="tnum h-full w-full min-w-0 bg-transparent pr-1.5 text-right text-[12.5px] text-text outline-none"
+        className="tnum h-full w-full min-w-0 bg-transparent pr-1.5 text-right text-[calc(12.5px*var(--font-scale))] text-text outline-none"
         value={draft ?? format(value)}
         onFocus={(e) => e.currentTarget.select()}
         onChange={(e) => setDraft(e.currentTarget.value)}

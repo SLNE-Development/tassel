@@ -112,7 +112,7 @@ function PaletteBody({ close }: { close(): void }) {
           aria-label="Befehl suchen"
           placeholder="Befehl suchen"
           spellCheck={false}
-          className="h-full min-w-0 flex-1 bg-transparent text-[14px] text-text outline-none placeholder:text-faint"
+          className="h-full min-w-0 flex-1 bg-transparent text-[calc(14px*var(--font-scale))] text-text outline-none placeholder:text-faint"
           value={query}
           onChange={(e) => {
             setQuery(e.currentTarget.value);
@@ -133,22 +133,22 @@ function PaletteBody({ close }: { close(): void }) {
         />
       </div>
       <div id="palette-list" role="listbox" aria-label="Befehle" className="max-h-[min(22rem,55vh)] overflow-y-auto p-1">
-        {results.length === 0 && <p className="px-3 py-5 text-center text-[13px] text-faint">Kein Befehl passt zu „{query.trim()}“.</p>}
+        {results.length === 0 && <p className="px-3 py-5 text-center text-[calc(13px*var(--font-scale))] text-faint">Kein Befehl passt zu „{query.trim()}“.</p>}
         {results.map((entry, i) => (
           <div
             key={entry.id}
             id={`palette-${i}`}
             role="option"
             aria-selected={i === index}
-            className={`flex h-8 items-center gap-3 rounded-md px-2.5 text-[13px] ${
+            className={`flex h-8 items-center gap-3 rounded-md px-2.5 text-[calc(13px*var(--font-scale))] ${
               i === index ? 'bg-accent text-accent-ink' : 'text-text'
             }`}
             onPointerMove={() => i !== index && setCursor(i)}
             onClick={() => run(entry)}
           >
             <span className="min-w-0 flex-1 truncate">{entry.title}</span>
-            {entry.shortcut && <span className="tnum shrink-0 text-[12px] opacity-70">{entry.shortcut}</span>}
-            <span className="w-24 shrink-0 text-right text-[12px] opacity-60">{entry.group}</span>
+            {entry.shortcut && <span className="tnum shrink-0 text-[calc(12px*var(--font-scale))] opacity-70">{entry.shortcut}</span>}
+            <span className="w-24 shrink-0 text-right text-[calc(12px*var(--font-scale))] opacity-60">{entry.group}</span>
           </div>
         ))}
       </div>

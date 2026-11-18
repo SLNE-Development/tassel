@@ -40,7 +40,7 @@ export function Segmented<T extends string | number>({
             role="radio"
             aria-checked={active}
             aria-label={option.ariaLabel}
-            className={`tnum min-w-0 flex-1 truncate rounded-[4px] px-1 text-[12px] ${
+            className={`tnum min-w-0 flex-1 truncate rounded-[4px] px-1 text-[calc(12px*var(--font-scale))] ${
               active ? 'bg-raised text-text shadow-[0_0_0_1px_var(--line-strong)]' : 'text-dim hover:text-text'
             }`}
             onClick={() => !active && onChange(option.value)}
@@ -73,7 +73,7 @@ export function PickMenu<T extends string>({
     <Menu.Root>
       <Menu.Trigger
         aria-label={`${label}: ${current?.title ?? placeholder}`}
-        className="flex h-7 w-full min-w-0 items-center gap-1 rounded-md bg-ink pr-1.5 pl-2 text-left text-[12.5px] ring-1 ring-line ring-inset hover:ring-line-strong data-[popup-open]:ring-accent"
+        className="flex h-7 w-full min-w-0 items-center gap-1 rounded-md bg-ink pr-1.5 pl-2 text-left text-[calc(12.5px*var(--font-scale))] ring-1 ring-line ring-inset hover:ring-line-strong data-[popup-open]:ring-accent"
       >
         <span className={`min-w-0 flex-1 truncate ${current ? 'text-text' : 'text-faint'}`}>{current?.title ?? placeholder}</span>
         <ChevronsUpDown size={12} className="shrink-0 text-faint" />
@@ -81,7 +81,7 @@ export function PickMenu<T extends string>({
       <Menu.Portal>
         <Menu.Positioner side="bottom" align="start" sideOffset={4} className="z-50 outline-none">
           <Menu.Popup className={`${popupClass} max-h-64 overflow-y-auto`}>
-            {options.length === 0 && <p className="px-2 py-1.5 text-[12.5px] text-faint">Keine Auswahl möglich</p>}
+            {options.length === 0 && <p className="px-2 py-1.5 text-[calc(12.5px*var(--font-scale))] text-faint">Keine Auswahl möglich</p>}
             <Menu.RadioGroup value={current?.value ?? ''}>
               {options.map((option) => (
                 <Menu.RadioItem key={option.value} className={itemClass} value={option.value} closeOnClick onClick={() => onChange(option.value)}>

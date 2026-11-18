@@ -1,3 +1,4 @@
+import { defaultPreferences } from './preferences';
 import type { AppState, Doc, DocState } from './types';
 
 export function newId(): string {
@@ -13,6 +14,7 @@ export function createDoc(name: string, state: DocState = emptyDocState, filePat
 export function createAppState(): AppState {
   const doc = createDoc('Unbenannt');
   return {
+    preferences: defaultPreferences,
     docs: { [doc.id]: doc },
     docOrder: [doc.id],
     activeDocId: doc.id,

@@ -6,7 +6,7 @@ import { dirtyDocNames, quitNow } from './closeGuard';
 import { notifyError } from './toast';
 import { useUi } from './uiStore';
 
-const buttonBase = 'h-8 rounded-md px-3.5 text-[13px] font-medium';
+const buttonBase = 'h-8 rounded-md px-3.5 text-[calc(13px*var(--font-scale))] font-medium';
 const quietButton = `${buttonBase} text-dim hover:bg-raised hover:text-text`;
 const dangerButton = `${buttonBase} text-danger ring-1 ring-danger/40 ring-inset hover:bg-danger/12`;
 const primaryButton = `${buttonBase} bg-accent text-accent-ink hover:brightness-110`;
@@ -29,8 +29,8 @@ function Confirm({
       <AlertDialog.Portal>
         <AlertDialog.Backdrop className="fixed inset-0 z-40 bg-black/45" />
         <AlertDialog.Popup className="anim-pop fixed top-[24vh] left-1/2 z-50 w-[min(26rem,calc(100vw-2rem))] -translate-x-1/2 rounded-xl border border-line-strong bg-overlay p-5 shadow-pop">
-          <AlertDialog.Title className="font-display text-[15px] font-semibold text-text">{title}</AlertDialog.Title>
-          <AlertDialog.Description className="mt-1.5 text-[13px] leading-relaxed text-dim">{children}</AlertDialog.Description>
+          <AlertDialog.Title className="font-display text-[calc(15px*var(--font-scale))] font-semibold text-text">{title}</AlertDialog.Title>
+          <AlertDialog.Description className="mt-1.5 text-[calc(13px*var(--font-scale))] leading-relaxed text-dim">{children}</AlertDialog.Description>
           <div className="mt-5 flex justify-end gap-2">
             <AlertDialog.Close className={`${quietButton} mr-auto`}>Abbrechen</AlertDialog.Close>
             {actions}

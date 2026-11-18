@@ -102,11 +102,11 @@ export function Outliner() {
   return (
     <section aria-label="Szene" className="flex min-h-0 min-w-0 flex-col">
       <header className="flex h-8 shrink-0 items-center justify-between pr-3 pl-3">
-        <h2 className="text-[12px] font-semibold text-dim">Szene</h2>
-        <span className="tnum text-[12px] text-faint">{order.length || ''}</span>
+        <h2 className="text-[calc(12px*var(--font-scale))] font-semibold text-dim">Szene</h2>
+        <span className="tnum text-[calc(12px*var(--font-scale))] text-faint">{order.length || ''}</span>
       </header>
       {order.length === 0 ? (
-        <p className="px-3 pt-1 pb-4 text-[12.5px] leading-relaxed text-faint">
+        <p className="px-3 pt-1 pb-4 text-[calc(12.5px*var(--font-scale))] leading-relaxed text-faint">
           Noch keine Objekte. Mit <kbd className="font-sans text-dim">{shortcutLabel('add.menu')}</kbd> fügst du das erste hinzu.
         </p>
       ) : (

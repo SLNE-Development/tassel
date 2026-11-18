@@ -24,7 +24,7 @@ const iconButton =
 function Row({ title, children }: { title: string; children: ReactNode }) {
   return (
     <div className="grid grid-cols-[4.5rem_minmax(0,1fr)] items-center gap-2">
-      <span className="truncate text-[12px] text-dim">{title}</span>
+      <span className="truncate text-[calc(12px*var(--font-scale))] text-dim">{title}</span>
       {children}
     </div>
   );
@@ -56,7 +56,7 @@ function Params({ objectId, modifier }: { objectId: string; modifier: Modifier }
                     key={axis.key}
                     aria-pressed={on}
                     aria-label={`Spiegeln an ${axis.label}`}
-                    className={`h-7 rounded-md text-[11.5px] font-semibold ring-1 ring-inset ${on ? 'bg-raised ring-line-strong' : 'bg-ink opacity-45 ring-line hover:opacity-80'}`}
+                    className={`h-7 rounded-md text-[calc(11.5px*var(--font-scale))] font-semibold ring-1 ring-inset ${on ? 'bg-raised ring-line-strong' : 'bg-ink opacity-45 ring-line hover:opacity-80'}`}
                     style={{ color: axis.color }}
                     onClick={() => update({ axes: { [axis.key]: !on } })}
                   >
@@ -80,7 +80,7 @@ function Params({ objectId, modifier }: { objectId: string; modifier: Modifier }
         <>
           <ScrubField wide label="Anzahl" ariaLabel="Anzahl" color="var(--dim)" value={modifier.count} step={0.1} integer min={1} max={1000} {...scrub((v) => ({ count: v }))} />
           <div role="group" aria-label="Versatz">
-            <div className="mb-1 flex items-baseline gap-1.5 text-[12px]">
+            <div className="mb-1 flex items-baseline gap-1.5 text-[calc(12px*var(--font-scale))]">
               <span className="text-dim">Versatz</span>
               <span className="text-faint">m</span>
             </div>
@@ -129,7 +129,7 @@ function Card({ objectId, modifier, index, count, error: failure, editing }: { o
     <li aria-label={title} className={`rounded-md bg-raised/45 ring-1 ring-inset ${error ? 'ring-danger/60' : 'ring-line'}`}>
       <div className="flex h-8 items-center gap-1 pr-1 pl-2">
         <Icon size={14} strokeWidth={1.75} className={`shrink-0 ${modifier.enabled ? 'text-dim' : 'text-faint'}`} />
-        <span className={`min-w-0 flex-1 truncate pl-1 text-[12.5px] ${modifier.enabled ? 'text-text' : 'text-faint'}`}>{title}</span>
+        <span className={`min-w-0 flex-1 truncate pl-1 text-[calc(12.5px*var(--font-scale))] ${modifier.enabled ? 'text-text' : 'text-faint'}`}>{title}</span>
         <Tip label={modifier.enabled ? 'Ausschalten' : 'Einschalten'}>
           <span className="mr-1 flex">
             <Switch label={`${title} aktiv`} checked={modifier.enabled} onChange={(enabled) => void dispatch('modifier.update', { ...ref, enabled })} />
@@ -154,7 +154,7 @@ function Card({ objectId, modifier, index, count, error: failure, editing }: { o
       <div className="flex flex-col gap-1.5 px-2 pb-2">
         <Params objectId={objectId} modifier={modifier} />
         {error && (
-          <p role="alert" className="flex gap-1.5 pt-0.5 text-[12px] leading-snug text-danger select-text">
+          <p role="alert" className="flex gap-1.5 pt-0.5 text-[calc(12px*var(--font-scale))] leading-snug text-danger select-text">
             <TriangleAlert size={13} className="mt-px shrink-0" />
             <span className="min-w-0 break-words">{error}</span>
           </p>
@@ -164,7 +164,7 @@ function Card({ objectId, modifier, index, count, error: failure, editing }: { o
             <button
               // Not `disabled`, so the tooltip can still say why.
               aria-disabled={editing}
-              className={`h-6 rounded-md px-2 text-[12px] ring-1 ring-inset ${
+              className={`h-6 rounded-md px-2 text-[calc(12px*var(--font-scale))] ring-1 ring-inset ${
                 editing ? 'cursor-default text-faint ring-line' : 'text-text ring-line-strong hover:bg-raised hover:ring-faint'
               }`}
               onClick={() => !editing && void dispatch('modifier.apply', ref)}
@@ -188,11 +188,11 @@ export function Modifiers({ id }: { id: string }) {
   return (
     <div>
       <div className="mb-1.5 flex items-center justify-between border-t border-line pt-2">
-        <h3 className="text-[12px] font-semibold text-dim">Modifikatoren</h3>
+        <h3 className="text-[calc(12px*var(--font-scale))] font-semibold text-dim">Modifikatoren</h3>
         <Menu.Root>
           <Menu.Trigger
             aria-label="Modifikator hinzufügen"
-            className="-mr-1 flex h-6 items-center gap-1 rounded-md pr-2 pl-1.5 text-[12px] text-dim hover:bg-raised hover:text-text data-[popup-open]:bg-raised data-[popup-open]:text-accent"
+            className="-mr-1 flex h-6 items-center gap-1 rounded-md pr-2 pl-1.5 text-[calc(12px*var(--font-scale))] text-dim hover:bg-raised hover:text-text data-[popup-open]:bg-raised data-[popup-open]:text-accent"
           >
             <Plus size={13} />
             Hinzufügen
@@ -217,7 +217,7 @@ export function Modifiers({ id }: { id: string }) {
         </Menu.Root>
       </div>
       {modifiers.length === 0 ? (
-        <p className="text-[12.5px] leading-relaxed text-faint">Modifikatoren verändern das Netz, ohne es anzutasten: spiegeln, glätten, vervielfachen, verschneiden.</p>
+        <p className="text-[calc(12.5px*var(--font-scale))] leading-relaxed text-faint">Modifikatoren verändern das Netz, ohne es anzutasten: spiegeln, glätten, vervielfachen, verschneiden.</p>
       ) : (
         <ul aria-label="Modifikatoren" className="flex flex-col gap-1.5">
           {modifiers.map((modifier, index) => (

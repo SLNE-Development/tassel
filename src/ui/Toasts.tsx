@@ -20,8 +20,8 @@ export function Toasts() {
           >
             <span className="mt-px shrink-0">{icons[toast.type as keyof typeof icons] ?? icons.info}</span>
             <div className="min-w-0 flex-1">
-              <Toast.Title className="text-[13px] font-medium text-text" />
-              <Toast.Description className="mt-0.5 text-[12.5px] leading-snug break-words text-dim select-text" />
+              <Toast.Title className="text-[calc(13px*var(--font-scale))] font-medium text-text" />
+              <Toast.Description className="mt-0.5 text-[calc(12.5px*var(--font-scale))] leading-snug break-words text-dim select-text" />
             </div>
             <Toast.Close aria-label="Schließen" className="flex size-5 shrink-0 items-center justify-center rounded text-faint hover:bg-raised hover:text-text">
               <X size={13} />

@@ -32,7 +32,7 @@ function NameField({ id, name }: { id: string; name: string }) {
       aria-label="Name"
       defaultValue={name}
       spellCheck={false}
-      className="h-7 w-full min-w-0 rounded-md bg-ink px-2 text-[13px] text-text ring-1 ring-line outline-none ring-inset hover:ring-line-strong focus:ring-accent"
+      className="h-7 w-full min-w-0 rounded-md bg-ink px-2 text-[calc(13px*var(--font-scale))] text-text ring-1 ring-line outline-none ring-inset hover:ring-line-strong focus:ring-accent"
       onBlur={(e) => {
         const next = e.currentTarget.value.trim();
         if (reverting.current || !next) e.currentTarget.value = name;
@@ -63,7 +63,7 @@ function TransformRows({ id }: { id: string }) {
     <div className="flex flex-col gap-2.5">
       {rows.map(({ key, title, unit, step }) => (
         <div key={key} role="group" aria-label={title}>
-          <div className="mb-1 flex items-baseline gap-1.5 text-[12px]">
+          <div className="mb-1 flex items-baseline gap-1.5 text-[calc(12px*var(--font-scale))]">
             <span className="text-dim">{title}</span>
             <span className="text-faint">{unit}</span>
           </div>
@@ -97,7 +97,7 @@ function MeshStats({ mesh }: { mesh: PolyMesh }) {
     ['Dreiecke', stats.triangles],
   ] as const;
   return (
-    <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-[12.5px]">
+    <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-[calc(12.5px*var(--font-scale))]">
       {items.map(([title, count]) => (
         <div key={title} className="flex items-baseline justify-between">
           <dt className="text-dim">{title}</dt>
@@ -114,8 +114,8 @@ function EvaluatedStats({ id, mesh }: { id: string; mesh: PolyMesh }) {
   if (evaluated === mesh) return null;
   const n = (value: number) => value.toLocaleString('de-DE');
   return (
-    <div className="mt-2 text-[12.5px]">
-      <div className="mb-1 text-[12px] text-faint">Mit Modifikatoren</div>
+    <div className="mt-2 text-[calc(12.5px*var(--font-scale))]">
+      <div className="mb-1 text-[calc(12px*var(--font-scale))] text-faint">Mit Modifikatoren</div>
       <dl className="grid grid-cols-2 gap-x-4">
         {(
           [
@@ -139,7 +139,7 @@ function ElementSelection({ mesh }: { mesh: PolyMesh }) {
   const counts = useMemo(() => (edit ? elementCounts(edit, mesh) : null), [edit, mesh]);
   if (!edit || !counts) return null;
   return (
-    <div className="flex items-baseline justify-between rounded-md bg-ink px-2 py-1.5 text-[12.5px] ring-1 ring-line ring-inset">
+    <div className="flex items-baseline justify-between rounded-md bg-ink px-2 py-1.5 text-[calc(12.5px*var(--font-scale))] ring-1 ring-line ring-inset">
       <span className="text-dim">Ausgewählt</span>
       <span className="tnum">
         <span className={counts.selected ? 'text-accent' : 'text-text'}>{counts.selected.toLocaleString('de-DE')}</span>
@@ -164,11 +164,11 @@ function ObjectProperties({ id }: { id: string }) {
       {editing ? mesh && <ElementSelection mesh={mesh} /> : <TransformRows id={id} />}
       {mesh && (
         <div>
-          <h3 className="mb-1.5 border-t border-line pt-3 text-[12px] font-semibold text-dim">Netz</h3>
+          <h3 className="mb-1.5 border-t border-line pt-3 text-[calc(12px*var(--font-scale))] font-semibold text-dim">Netz</h3>
           <MeshStats mesh={mesh} />
           <EvaluatedStats id={id} mesh={mesh} />
           <div className="mt-2.5 flex items-center justify-between">
-            <span className="text-[12.5px] text-dim">Glätten</span>
+            <span className="text-[calc(12.5px*var(--font-scale))] text-dim">Glätten</span>
             <Switch label="Glätten" checked={smooth} onChange={(next) => void dispatch('scene.set_smooth', { ids: [id], smooth: next })} />
           </div>
         </div>
@@ -185,15 +185,15 @@ export function Properties() {
   return (
     <section aria-label="Eigenschaften" className="flex min-h-0 min-w-0 flex-col border-t border-line">
       <header className="flex h-8 shrink-0 items-center justify-between px-3">
-        <h2 className="text-[12px] font-semibold text-dim">Eigenschaften</h2>
+        <h2 className="text-[calc(12px*var(--font-scale))] font-semibold text-dim">Eigenschaften</h2>
         {/* The fields edit the active object only; say so when more is selected. */}
-        {activeId && selected > 1 && <span className="text-[12px] text-faint">aktives von {selected} Objekten</span>}
+        {activeId && selected > 1 && <span className="text-[calc(12px*var(--font-scale))] text-faint">aktives von {selected} Objekten</span>}
       </header>
       <div className="min-h-0 flex-1 overflow-y-auto">
         {activeId ? (
           <ObjectProperties key={activeId} id={activeId} />
         ) : (
-          <p className="px-3 pt-1 text-[12.5px] leading-relaxed text-faint">
+          <p className="px-3 pt-1 text-[calc(12.5px*var(--font-scale))] leading-relaxed text-faint">
             {hasObjects
               ? 'Wähle ein Objekt aus, um Name, Lage und Netzdaten zu sehen.'
               : `Hier erscheinen Name, Lage und Netzdaten des ausgewählten Objekts. ${shortcutLabel('add.menu')} fügt eines hinzu.`}

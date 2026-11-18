@@ -110,7 +110,7 @@ const axes = [
   { label: 'Z', color: 'var(--axis-z)' },
 ] as const;
 
-const rowLabel = 'min-w-0 flex-1 truncate text-[12px] text-dim';
+const rowLabel = 'min-w-0 flex-1 truncate text-[calc(12px*var(--font-scale))] text-dim';
 
 /**
  * Parameters of the operation that just ran. Changing one re-runs the operation in place of its
@@ -136,8 +136,8 @@ export function LastOpPanel() {
       className="anim-pop absolute bottom-3 left-3 flex max-h-[calc(100%-4.5rem)] w-56 flex-col rounded-lg border border-line-strong bg-overlay/95 shadow-pop backdrop-blur-sm"
     >
       <header className="flex h-8 shrink-0 items-center justify-between gap-2 pr-2.5 pl-3">
-        <h2 className="min-w-0 truncate text-[12.5px] font-semibold text-text">{title}</h2>
-        <span className="shrink-0 text-[11.5px] text-faint">Letzte Aktion</span>
+        <h2 className="min-w-0 truncate text-[calc(12.5px*var(--font-scale))] font-semibold text-text">{title}</h2>
+        <span className="shrink-0 text-[calc(11.5px*var(--font-scale))] text-faint">Letzte Aktion</span>
       </header>
       {visible.length > 0 && (
         <div className="flex min-h-0 flex-col gap-1 overflow-y-auto px-2 pb-2">
@@ -189,7 +189,7 @@ export function LastOpPanel() {
             const vec = value as number[];
             return (
               <div key={field.key} role="group" aria-label={label}>
-                <div className="pt-0.5 pb-1 pl-2 text-[12px] text-dim">{label}</div>
+                <div className="pt-0.5 pb-1 pl-2 text-[calc(12px*var(--font-scale))] text-dim">{label}</div>
                 <div className="grid grid-cols-3 gap-1">
                   {axes.map((axis, i) => {
                     const change = (v: number) => set(field.key, vec.map((old, j) => (j === i ? v : old)));

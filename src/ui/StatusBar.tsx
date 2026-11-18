@@ -170,7 +170,7 @@ function Mcp() {
 
 export function StatusBar() {
   return (
-    <footer className="flex h-6.5 items-center gap-3 border-t border-line bg-panel pr-2 pl-3 text-[12px]">
+    <footer className="flex h-6.5 items-center gap-3 border-t border-line bg-panel pr-2 pl-3 text-[calc(12px*var(--font-scale))]">
       <Mode />
       <div className="flex-1" />
       <Totals />

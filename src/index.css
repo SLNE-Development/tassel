@@ -6,6 +6,9 @@
  * --accent is the single accent variable; the viewport's selection highlight should use the same one.
  */
 :root {
+  /* Set from the preferences (fontScale). */
+  --font-scale: 1;
+
   --accent: #e9b949;
   --accent-ink: #1b1604;
 
@@ -66,7 +69,7 @@ body {
   background: var(--ink);
   color: var(--text);
   font-family: var(--font-sans);
-  font-size: 13px;
+  font-size: calc(13px * var(--font-scale));
   line-height: 1.35;
   -webkit-font-smoothing: antialiased;
   user-select: none;

@@ -17,7 +17,7 @@ function ElementIcon({ mode }: { mode: ElementMode }) {
 
 const group = 'flex items-center rounded-lg border border-line bg-panel/90 p-0.5 backdrop-blur-sm';
 const segment = (active: boolean) =>
-  `flex h-6 items-center rounded-md text-[12.5px] ${active ? 'bg-raised text-text shadow-[0_0_0_1px_var(--line-strong)]' : 'text-dim hover:text-text'}`;
+  `flex h-6 items-center rounded-md text-[calc(12.5px*var(--font-scale))] ${active ? 'bg-raised text-text shadow-[0_0_0_1px_var(--line-strong)]' : 'text-dim hover:text-text'}`;
 
 /** Object/edit mode and, in edit mode, which kind of element is selected. Floats over the viewport. */
 export function ModeSwitch() {
