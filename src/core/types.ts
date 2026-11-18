@@ -1,0 +1,103 @@
+// Core data model. Everything in src/core is DOM-free.
+// All state is immutable: commands produce new objects, which makes undo a stack of DocStates.
+// Conventions: Y is up, units are meters, rotations are Euler XYZ in degrees.
+
+export type Vec3 = [number, number, number];
+
+/** Polygon mesh: flat xyz positions and faces as vertex index loops (CCW seen from outside). */
+export interface PolyMesh {
+  readonly positions: readonly number[];
+  readonly faces: readonly (readonly number[])[];
+}
+
+export interface Transform {
+  readonly position: Vec3;
+  readonly rotation: Vec3;
+  readonly scale: Vec3;
+}
+
+export interface SceneObject {
+  readonly id: string;
+  readonly name: string;
+  readonly visible: boolean;
+  readonly transform: Transform;
+  readonly mesh: PolyMesh;
+}
+
+/** The undoable part of a document. */
+export interface DocState {
+  readonly objects: Readonly<Record<string, SceneObject>>;
+  /** Object ids in outliner order. */
+  readonly order: readonly string[];
+  readonly selection: readonly string[];
+  /** Last selected object; the gizmo attaches to it. Always part of `selection` or null. */
+  readonly activeId: string | null;
+}
+
+export interface Doc {
+  readonly id: string;
+  readonly name: string;
+  readonly filePath: string | null;
+  readonly dirty: boolean;
+  readonly state: DocState;
+  readonly past: readonly DocState[];
+  readonly future: readonly DocState[];
+}
+
+export const workspaces = ['modeling', 'uv', 'paint'] as const;
+export type Workspace = (typeof workspaces)[number];
+
+export const shadings = ['solid', 'wireframe', 'material'] as const;
+export type Shading = (typeof shadings)[number];
+
+export const tools = ['select', 'move', 'rotate', 'scale'] as const;
+export type Tool = (typeof tools)[number];
+
+export const viewPresets = ['front', 'back', 'left', 'right', 'top', 'bottom', 'iso'] as const;
+export type ViewPreset = (typeof viewPresets)[number];
+
+export interface AppState {
+  readonly docs: Readonly<Record<string, Doc>>;
+  /** Document ids in tab order. */
+  readonly docOrder: readonly string[];
+  readonly activeDocId: string;
+  readonly workspace: Workspace;
+  readonly shading: Shading;
+  readonly tool: Tool;
+}
+
+export interface CameraPose {
+  position: Vec3;
+  target: Vec3;
+}
+
+export interface ScreenshotOptions {
+  width: number;
+  height: number;
+  /** 'current' uses the user's camera; a preset renders from that direction without moving the user's camera. */
+  view: ViewPreset | 'current';
+  /** Fit all visible objects into the frame (always true for presets). */
+  fit: boolean;
+}
+
+/** Implemented by src/viewport, registered on mount. */
+export interface ViewportService {
+  /** Returns a PNG as base64 (no data: prefix). */
+  screenshot(opts: ScreenshotOptions): Promise<string>;
+  getCamera(): CameraPose;
+  setCamera(pose: Partial<CameraPose>): void;
+  setView(preset: ViewPreset): void;
+  /** Frame the given objects; an empty array frames everything. */
+  frame(ids: readonly string[]): void;
+}
+
+/** Implemented by src/io, registered at startup. */
+export interface ExportService {
+  /** Returns GLB as base64 (binary) or glTF JSON text. `ids` limits the export to these objects. */
+  gltf(state: DocState, opts: { binary: boolean; ids?: readonly string[] }): Promise<string>;
+}
+
+export interface Services {
+  viewport: ViewportService | null;
+  exporter: ExportService | null;
+}
