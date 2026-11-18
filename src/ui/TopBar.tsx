@@ -4,6 +4,7 @@ import { dispatch } from './actions';
 import { DocTabs } from './DocTabs';
 import { workspaceLabels } from './labels';
 import { MenuBar } from './MenuBar';
+import { dragWindow, WindowControls } from './WindowControls';
 
 /** The Tessel mark: a cube tessellated into three facets, the top one in the accent colour. */
 function Mark() {
@@ -42,7 +43,7 @@ function WorkspaceSwitch() {
 
 export function TopBar() {
   return (
-    <header className="flex h-10 items-center gap-2 border-b border-line bg-panel pr-2 pl-3">
+    <header className="flex h-10 items-center gap-2 border-b border-line bg-panel pl-3" onMouseDown={dragWindow}>
       <div className="flex shrink-0 items-center gap-2 pr-1">
         <Mark />
         <span className="font-display text-[14px] font-semibold tracking-[0.01em]">Tessel</span>
@@ -51,6 +52,7 @@ export function TopBar() {
       <div aria-hidden className="mx-1 h-4 w-px shrink-0 bg-line-strong" />
       <DocTabs />
       <WorkspaceSwitch />
+      <WindowControls />
     </header>
   );
 }
