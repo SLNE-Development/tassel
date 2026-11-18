@@ -3,6 +3,7 @@
 // encoding images needs the browser.
 import type { Texture } from '../core/types';
 import { toBase64 } from './bytes';
+import { imageSize } from './imageInfo';
 
 export interface PackedImage {
   mimeType: 'image/png';
@@ -47,7 +48,17 @@ export function channelPixels(rgba: Uint8ClampedArray, channel: Channel): Uint8C
   return white ? null : out;
 }
 
+/** Largest image (in pixels) we are willing to decode: decoding allocates 4 bytes per pixel, whatever the file size. */
+const MAX_DECODE_PIXELS = 8192 * 8192;
+
 async function decode(bytes: Uint8Array<ArrayBuffer>, mimeType: string, size?: { width: number; height: number }): Promise<ImageData> {
+  // Check the size in the file header before decoding, so a tiny file that claims huge dimensions
+  // (a decompression bomb in an imported model) is refused instead of exhausting memory.
+  const header = imageSize(bytes);
+  if (!header) throw new Error('The image has no readable size');
+  if (header.width * header.height > MAX_DECODE_PIXELS || (size && size.width * size.height > MAX_DECODE_PIXELS)) {
+    throw new Error(`The image is too large to process (${header.width} x ${header.height})`);
+  }
   const bitmap = await createImageBitmap(new Blob([bytes], { type: mimeType }), {
     premultiplyAlpha: 'none',
     colorSpaceConversion: 'none',
