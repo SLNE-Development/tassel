@@ -28,6 +28,26 @@ export interface Texture {
   readonly data: string;
   readonly width: number;
   readonly height: number;
+  /**
+   * Paint layers, bottom first. Present on textures created or edited by painting; `data` is then
+   * always the flattened PNG of the visible layers, so renderers and exporters only ever need `data`.
+   */
+  readonly layers?: readonly PaintLayer[];
+}
+
+export const blendModes = ['normal', 'multiply', 'screen', 'overlay', 'add'] as const;
+export type BlendMode = (typeof blendModes)[number];
+
+/** One layer of a painted texture: a PNG of the texture's size with alpha. */
+export interface PaintLayer {
+  readonly id: string;
+  readonly name: string;
+  readonly visible: boolean;
+  /** 0..1 */
+  readonly opacity: number;
+  readonly blend: BlendMode;
+  /** PNG as base64 (no data: prefix), same pixel size as the texture. */
+  readonly data: string;
 }
 
 export const textureSlots = ['baseColor', 'normal', 'roughness', 'metallic', 'emissive', 'occlusion'] as const;
