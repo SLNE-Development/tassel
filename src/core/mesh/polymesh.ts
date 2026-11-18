@@ -47,33 +47,163 @@ export interface TriangleSoup {
   triToFace: Uint32Array;
 }
 
+/** Newell vector of a face: its direction is the face normal, its length twice the face area. */
+function newell(p: readonly number[], face: readonly number[]): Vec3 {
+  let nx = 0;
+  let ny = 0;
+  let nz = 0;
+  for (let i = 0; i < face.length; i++) {
+    const a = face[i] * 3;
+    const b = face[(i + 1) % face.length] * 3;
+    nx += (p[a + 1] - p[b + 1]) * (p[a + 2] + p[b + 2]);
+    ny += (p[a + 2] - p[b + 2]) * (p[a] + p[b]);
+    nz += (p[a] - p[b]) * (p[a + 1] + p[b + 1]);
+  }
+  return [nx, ny, nz];
+}
+
+/** Twice the signed area of triangle (a, b, c) seen against the direction n. */
+function signedArea(p: readonly number[], a: number, b: number, c: number, n: Vec3): number {
+  const ux = p[b * 3] - p[a * 3];
+  const uy = p[b * 3 + 1] - p[a * 3 + 1];
+  const uz = p[b * 3 + 2] - p[a * 3 + 2];
+  const vx = p[c * 3] - p[a * 3];
+  const vy = p[c * 3 + 1] - p[a * 3 + 1];
+  const vz = p[c * 3 + 2] - p[a * 3 + 2];
+  return (uy * vz - uz * vy) * n[0] + (uz * vx - ux * vz) * n[1] + (ux * vy - uy * vx) * n[2];
+}
+
+/** Ear clipping of a face projected onto its plane (normal `n`, not necessarily unit). Appends vertex index triples. */
+function earClip(p: readonly number[], face: readonly number[], n: Vec3, out: number[]): void {
+  // 2D coordinates in a basis (u, v) with u x v = n, so the polygon is counter-clockwise.
+  const len = Math.hypot(n[0], n[1], n[2]) || 1;
+  const nx = n[0] / len;
+  const ny = n[1] / len;
+  const nz = n[2] / len;
+  const ax = Math.abs(nx);
+  const ay = Math.abs(ny);
+  const az = Math.abs(nz);
+  // Helper axis: the one the normal is least aligned with.
+  const h: Vec3 = ax <= ay && ax <= az ? [1, 0, 0] : ay <= az ? [0, 1, 0] : [0, 0, 1];
+  let ux = h[1] * nz - h[2] * ny;
+  let uy = h[2] * nx - h[0] * nz;
+  let uz = h[0] * ny - h[1] * nx;
+  const ul = Math.hypot(ux, uy, uz) || 1;
+  ux /= ul;
+  uy /= ul;
+  uz /= ul;
+  const vx = ny * uz - nz * uy;
+  const vy = nz * ux - nx * uz;
+  const vz = nx * uy - ny * ux;
+  const xs = face.map((i) => p[i * 3] * ux + p[i * 3 + 1] * uy + p[i * 3 + 2] * uz);
+  const ys = face.map((i) => p[i * 3] * vx + p[i * 3 + 1] * vy + p[i * 3 + 2] * vz);
+  const cross = (a: number, b: number, c: number) => (xs[b] - xs[a]) * (ys[c] - ys[a]) - (ys[b] - ys[a]) * (xs[c] - xs[a]);
+  const eps = len * 1e-12;
+
+  const rest = face.map((_, i) => i); // positions within `face` still to be clipped
+  while (rest.length > 3) {
+    let ear = -1;
+    for (let i = 0; i < rest.length && ear === -1; i++) {
+      const a = rest[(i + rest.length - 1) % rest.length];
+      const b = rest[i];
+      const c = rest[(i + 1) % rest.length];
+      if (cross(a, b, c) <= eps) continue; // reflex or straight corner
+      // An ear must not contain (or touch) any other remaining vertex.
+      let empty = true;
+      for (const q of rest) {
+        if (q === a || q === b || q === c) continue;
+        if (cross(a, b, q) >= -eps && cross(b, c, q) >= -eps && cross(c, a, q) >= -eps) {
+          empty = false;
+          break;
+        }
+      }
+      if (empty) ear = i;
+    }
+    // Self-intersecting or degenerate polygons may have no ear; clip anything so that we terminate.
+    if (ear === -1) ear = 0;
+    const a = rest[(ear + rest.length - 1) % rest.length];
+    const c = rest[(ear + 1) % rest.length];
+    out.push(face[a], face[rest[ear]], face[c]);
+    rest.splice(ear, 1);
+  }
+  out.push(face[rest[0]], face[rest[1]], face[rest[2]]);
+}
+
 /**
- * Fan triangulation. Correct for convex faces.
- * `smooth` = averaged vertex normals instead of flat per-face normals (not implemented yet).
+ * Splits one face into triangles (appended to `out` as vertex index triples), keeping the winding.
+ * Convex faces are fanned from their first vertex; concave ones are ear clipped in the face plane.
  */
-export function triangulate(mesh: PolyMesh, _smooth = false): TriangleSoup {
+export function triangulateFace(mesh: PolyMesh, face: readonly number[], out: number[]): void {
+  const count = face.length;
+  if (count === 3) {
+    out.push(face[0], face[1], face[2]);
+    return;
+  }
+  const p = mesh.positions;
+  const n = newell(p, face);
+  // If every fan triangle has the face's orientation, the face is star-shaped seen from its first
+  // vertex and the fan is a valid triangulation. That covers all convex faces.
+  const tolerance = -1e-9 * (n[0] * n[0] + n[1] * n[1] + n[2] * n[2]);
+  let fan = true;
+  for (let i = 1; i < count - 1 && fan; i++) fan = signedArea(p, face[0], face[i], face[i + 1], n) >= tolerance;
+  if (fan) {
+    for (let i = 1; i < count - 1; i++) out.push(face[0], face[i], face[i + 1]);
+  } else if (count === 4) {
+    // Concave quad with the reflex corner at vertex 1 or 3: use the other diagonal.
+    out.push(face[1], face[2], face[3], face[1], face[3], face[0]);
+  } else {
+    earClip(p, face, n, out);
+  }
+}
+
+/**
+ * Triangulates all faces (also concave ones). Triangles keep the winding of their face.
+ * `smooth` = area-weighted averaged vertex normals instead of flat per-face normals.
+ */
+export function triangulate(mesh: PolyMesh, smooth = false): TriangleSoup {
   let triCount = 0;
   for (const f of mesh.faces) triCount += f.length - 2;
   const positions = new Float32Array(triCount * 9);
   const normals = new Float32Array(triCount * 9);
   const triToFace = new Uint32Array(triCount);
   const p = mesh.positions;
-  let t = 0;
-  mesh.faces.forEach((face, fi) => {
-    const n = faceNormal(mesh, face);
-    for (let i = 1; i < face.length - 1; i++) {
-      const corners = [face[0], face[i], face[i + 1]];
-      for (let c = 0; c < 3; c++) {
-        const src = corners[c] * 3;
-        const dst = t * 9 + c * 3;
-        positions[dst] = p[src];
-        positions[dst + 1] = p[src + 1];
-        positions[dst + 2] = p[src + 2];
-        normals[dst] = n[0];
-        normals[dst + 1] = n[1];
-        normals[dst + 2] = n[2];
+
+  let vertexNormals: Float64Array | null = null;
+  if (smooth) {
+    // The Newell vector's length is twice the face area, so summing it weights by area.
+    vertexNormals = new Float64Array(p.length);
+    for (const face of mesh.faces) {
+      const n = newell(p, face);
+      for (const v of face) {
+        vertexNormals[v * 3] += n[0];
+        vertexNormals[v * 3 + 1] += n[1];
+        vertexNormals[v * 3 + 2] += n[2];
       }
-      triToFace[t++] = fi;
+    }
+    for (let i = 0; i < vertexNormals.length; i += 3) {
+      const len = Math.hypot(vertexNormals[i], vertexNormals[i + 1], vertexNormals[i + 2]) || 1;
+      vertexNormals[i] /= len;
+      vertexNormals[i + 1] /= len;
+      vertexNormals[i + 2] /= len;
+    }
+  }
+
+  let t = 0;
+  const corners: number[] = [];
+  mesh.faces.forEach((face, fi) => {
+    corners.length = 0;
+    triangulateFace(mesh, face, corners);
+    const n = vertexNormals ? null : faceNormal(mesh, face);
+    for (let c = 0; c < corners.length; c++) {
+      const src = corners[c] * 3;
+      const dst = t * 9 + (c % 3) * 3;
+      positions[dst] = p[src];
+      positions[dst + 1] = p[src + 1];
+      positions[dst + 2] = p[src + 2];
+      normals[dst] = n ? n[0] : vertexNormals![src];
+      normals[dst + 1] = n ? n[1] : vertexNormals![src + 1];
+      normals[dst + 2] = n ? n[2] : vertexNormals![src + 2];
+      if (c % 3 === 2) triToFace[t++] = fi;
     }
   });
   return { positions, normals, triToFace };

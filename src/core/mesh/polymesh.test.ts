@@ -172,3 +172,134 @@ describe('polyMeshSchema', () => {
     expect(ok({ ...triangle, faces: [0, 1, 2] })).toBe(false);
   });
 });
+
+describe('triangulate: concave faces', () => {
+  type P2 = [number, number];
+
+  /** A face from 2D points (counter-clockwise), placed on a tilted plane to exercise the projection. */
+  function tilted(points: P2[]): PolyMesh {
+    const u = [0.6, 0.48, 0.64];
+    const v = [-0.8, 0.36, 0.48]; // u, v orthonormal
+    const positions = points.flatMap(([x, y]) => [1 + x * u[0] + y * v[0], 2 + x * u[1] + y * v[1], 3 + x * u[2] + y * v[2]]);
+    return { positions, faces: [points.map((_, i) => i)] };
+  }
+
+  function polygonArea(points: P2[]): number {
+    let sum = 0;
+    points.forEach(([x, y], i) => {
+      const [nx, ny] = points[(i + 1) % points.length];
+      sum += x * ny - nx * y;
+    });
+    return sum / 2;
+  }
+
+  function inside(points: P2[], [x, y]: P2): boolean {
+    let result = false;
+    points.forEach(([ax, ay], i) => {
+      const [bx, by] = points[(i + 1) % points.length];
+      if (ay > y !== by > y && x < ax + ((y - ay) / (by - ay)) * (bx - ax)) result = !result;
+    });
+    return result;
+  }
+
+  /** Triangulates the polygon and checks: right count, same orientation, inside the polygon, areas add up. */
+  function check(points: P2[]) {
+    const mesh = tilted(points);
+    const soup = triangulate(mesh);
+    const n = faceNormal(mesh, mesh.faces[0]);
+    expect(soup.triToFace).toHaveLength(points.length - 2);
+
+    // Recover 2D coordinates by matching positions to vertices.
+    const index = (t: number, c: number) => {
+      const at = [...soup.positions.slice(t * 9 + c * 3, t * 9 + c * 3 + 3)];
+      const found = points.findIndex((_, i) => at.every((value, a) => Math.abs(value - mesh.positions[i * 3 + a]) < 1e-5));
+      expect(found).toBeGreaterThanOrEqual(0);
+      return found;
+    };
+    let total = 0;
+    for (let t = 0; t < soup.triToFace.length; t++) {
+      const tri = [0, 1, 2].map((c) => points[index(t, c)]);
+      const area = polygonArea(tri);
+      expect(area).toBeGreaterThanOrEqual(-1e-9); // never flipped
+      total += area;
+      if (area > 1e-9) {
+        const centre: P2 = [(tri[0][0] + tri[1][0] + tri[2][0]) / 3, (tri[0][1] + tri[1][1] + tri[2][1]) / 3];
+        expect(inside(points, centre), `triangle ${t} of ${JSON.stringify(points)}`).toBe(true);
+      }
+      for (let c = 0; c < 3; c++) expect([...soup.normals.slice(t * 9 + c * 3, t * 9 + c * 3 + 3)]).toEqual(n.map(Math.fround));
+    }
+    expect(total).toBeCloseTo(polygonArea(points), 9);
+  }
+
+  const rotations = (points: P2[]) => points.map((_, i) => [...points.slice(i), ...points.slice(0, i)]);
+
+  const shapes: Record<string, P2[]> = {
+    'L-shaped hexagon': [[0, 0], [2, 0], [2, 1], [1, 1], [1, 2], [0, 2]],
+    'arrow (concave quad)': [[0, 0], [2, 1], [0, 2], [0.5, 1]],
+    'U shape': [[0, 0], [3, 0], [3, 3], [2, 3], [2, 1], [1, 1], [1, 3], [0, 3]],
+    'star': Array.from({ length: 10 }, (_, i): P2 => {
+      const r = i % 2 === 0 ? 2 : 0.7;
+      return [r * Math.cos((i / 10) * Math.PI * 2), r * Math.sin((i / 10) * Math.PI * 2)];
+    }),
+    'comb': [[0, 0], [5, 0], [5, 2], [4, 2], [4, 1], [3, 1], [3, 2], [2, 2], [2, 1], [1, 1], [1, 2], [0, 2]],
+    'square with edge midpoints': [[0, 0], [1, 0], [2, 0], [2, 1], [2, 2], [1, 2], [0, 2], [0, 1]],
+    'L with collinear vertices': [[0, 0], [1, 0], [2, 0], [2, 1], [1, 1], [1, 2], [0, 2], [0, 1]],
+  };
+
+  it.each(Object.entries(shapes))('%s, starting at every vertex', (_, points) => {
+    for (const rotated of rotations(points)) check(rotated);
+  });
+
+  it('the L-shaped hexagon gives 4 triangles with a total area of 3', () => {
+    const mesh = tilted(shapes['L-shaped hexagon']);
+    const soup = triangulate(mesh);
+    expect(soup.triToFace).toHaveLength(4);
+    let area = 0;
+    for (let t = 0; t < 4; t++) {
+      const [ax, ay, az, bx, by, bz, cx, cy, cz] = soup.positions.slice(t * 9, t * 9 + 9);
+      const u = [bx - ax, by - ay, bz - az];
+      const v = [cx - ax, cy - ay, cz - az];
+      area += Math.hypot(u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]) / 2;
+    }
+    expect(area).toBeCloseTo(3, 5);
+  });
+});
+
+describe('triangulate: smooth normals', () => {
+  it('keeps positions and face mapping, only the normals differ', () => {
+    const mesh = createPrimitive('cylinder', { segments: 6 });
+    const flat = triangulate(mesh);
+    const smooth = triangulate(mesh, true);
+    expect(smooth.positions).toEqual(flat.positions);
+    expect(smooth.triToFace).toEqual(flat.triToFace);
+    expect(smooth.normals).not.toEqual(flat.normals);
+  });
+
+  it('gives unit normals pointing radially on spheres', () => {
+    for (const mesh of [createPrimitive('ico_sphere', { subdivisions: 3, radius: 2 }), createPrimitive('uv_sphere', { radius: 0.5 })]) {
+      const soup = triangulate(mesh, true);
+      for (let i = 0; i < soup.positions.length; i += 3) {
+        const [x, y, z] = soup.positions.slice(i, i + 3);
+        const [nx, ny, nz] = soup.normals.slice(i, i + 3);
+        expect(Math.hypot(nx, ny, nz)).toBeCloseTo(1, 5);
+        expect((x * nx + y * ny + z * nz) / Math.hypot(x, y, z)).toBeGreaterThan(0.995); // within 6 degrees: area weighting is not exactly radial next to the poles
+      }
+    }
+  });
+
+  it('averages the face normals at a cube corner', () => {
+    const soup = triangulate(cube, true);
+    for (let i = 0; i < soup.positions.length; i += 3) {
+      for (let a = 0; a < 3; a++) expect(soup.normals[i + a]).toBeCloseTo(soup.positions[i + a] / Math.sqrt(3), 6);
+    }
+  });
+
+  it('weights by face area', () => {
+    // A large and a small triangle sharing an edge, at a right angle: the shared vertices lean towards the large one.
+    const mesh: PolyMesh = { positions: [0, 0, 0, 0, 0, 1, 10, 0, 0, 0, 1, 0], faces: [[0, 1, 2], [1, 0, 3]] };
+    const soup = triangulate(mesh, true);
+    const [nx, ny, nz] = soup.normals.slice(0, 3); // corner at vertex 0
+    expect(nz).toBeCloseTo(0);
+    expect(ny / nx).toBeCloseTo(10, 5); // areas 5 (normal +Y) and 0.5 (normal +X)
+  });
+});

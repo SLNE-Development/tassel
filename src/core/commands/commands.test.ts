@@ -573,7 +573,14 @@ describe('project files', () => {
   it('parseProject accepts a minimal valid file', () => {
     const parsed = parseProject(project([object()]));
     expect(parsed.name).toBe('Test');
-    expect(parsed.state).toEqual({ objects: { a: object() }, order: ['a'], selection: [], activeId: null });
+    // Files written before modifiers existed get the defaults.
+    expect(parsed.state).toEqual({
+      objects: { a: object({ modifiers: [], smooth: false }) },
+      order: ['a'],
+      selection: [],
+      activeId: null,
+      edit: null,
+    });
     expect(parseProject(project([])).state.order).toEqual([]);
   });
 

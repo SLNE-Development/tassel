@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { boundingBox, meshStats } from '../mesh/polymesh';
+import { evaluateObject, initModifiers } from '../modifiers/evaluate';
 import { createPrimitive, primitiveShape, primitiveTypes } from '../mesh/primitives';
 import { newId, uniqueName } from '../state';
 import type { DocState, SceneObject } from '../types';
@@ -55,11 +56,24 @@ export const sceneCommands = [
     id: 'scene.get_object',
     title: 'Objekt abfragen',
     description:
-      'Get one object: transform, mesh statistics and local bounding box. Set includeMesh to also get vertex positions and faces.',
+      'Get one object: transform, base mesh statistics and local bounding box, its modifiers, smooth shading flag, and "evaluated": the statistics of the mesh after all enabled modifiers (what is rendered and exported). "errors" maps modifier ids to the reason why that modifier is currently skipped. Set includeMesh to also get the vertex positions and faces of the base mesh.',
     params: z.object({ id: z.string(), includeMesh: z.boolean().default(false) }),
-    run(ctx, p) {
-      const obj = requireObject(docState(ctx), p.id);
-      return { ...summary(obj), boundingBox: boundingBox(obj.mesh), ...(p.includeMesh ? { mesh: obj.mesh } : {}) };
+    async run(ctx, p) {
+      // Booleans can only be evaluated once the WASM is there; a load failure shows up in `errors`.
+      const hasBoolean = requireObject(docState(ctx), p.id).modifiers.some((m) => m.type === 'boolean' && m.enabled);
+      if (hasBoolean) await initModifiers().catch(() => {});
+      const state = docState(ctx);
+      const obj = requireObject(state, p.id);
+      const evaluated = evaluateObject(state, p.id);
+      return {
+        ...summary(obj),
+        boundingBox: boundingBox(obj.mesh),
+        smooth: obj.smooth,
+        modifiers: obj.modifiers,
+        evaluated: meshStats(evaluated.mesh),
+        errors: evaluated.errors,
+        ...(p.includeMesh ? { mesh: obj.mesh } : {}),
+      };
     },
   }),
 
@@ -209,6 +223,22 @@ export const sceneCommands = [
       updateDocState(ctx, (s) => {
         const objects = { ...s.objects };
         for (const id of ids) objects[id] = { ...objects[id], visible: p.visible };
+        return { ...s, objects };
+      });
+    },
+  }),
+
+  defineCommand({
+    id: 'scene.set_smooth',
+    title: 'Glatt schattieren',
+    description:
+      'Switch objects (defaults to the current selection) between smooth shading (averaged vertex normals) and flat shading. Only the shading changes, not the geometry.',
+    params: z.object({ ids: idsParam, smooth: z.boolean() }),
+    run(ctx, p) {
+      const ids = targetIds(docState(ctx), p.ids);
+      updateDocState(ctx, (s) => {
+        const objects = { ...s.objects };
+        for (const id of ids) objects[id] = { ...objects[id], smooth: p.smooth };
         return { ...s, objects };
       });
     },
