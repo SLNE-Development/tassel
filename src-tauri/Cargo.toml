@@ -1,0 +1,28 @@
+[package]
+name = "forma"
+version = "0.1.0"
+description = "Forma - a modern 3D editor with first-class MCP integration"
+authors = ["Forma"]
+license = ""
+repository = ""
+edition = "2024"
+rust-version = "1.90"
+
+[lib]
+name = "forma_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2.7.6", features = [] }
+
+[dependencies]
+serde_json = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+log = "0.4"
+tauri = { version = "2.12.7", features = [] }
+tauri-plugin-log = "2"
+tauri-plugin-dialog = "2"
+tokio = { version = "1", features = ["net", "sync", "time", "fs", "rt"] }
+axum = { version = "0.8", default-features = false, features = ["http1", "tokio"] }
+rmcp = { version = "3.11", default-features = false, features = ["server", "transport-streamable-http-server"] }
+base64 = "0.22"
