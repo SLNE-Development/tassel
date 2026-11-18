@@ -1,6 +1,7 @@
 import { Menu } from '@base-ui/react/menu';
 import { Check, ChevronsUpDown } from 'lucide-react';
 import type { ReactNode } from 'react';
+import { useT } from '../i18n';
 import { itemClass, popupClass } from './menu';
 
 /** Small on/off switch. */
@@ -69,6 +70,7 @@ export function PickMenu<T extends string>({
   onChange(value: T): void;
 }) {
   const current = options.find((o) => o.value === value);
+  const t = useT();
   return (
     <Menu.Root>
       <Menu.Trigger
@@ -81,7 +83,7 @@ export function PickMenu<T extends string>({
       <Menu.Portal>
         <Menu.Positioner side="bottom" align="start" sideOffset={4} className="z-50 outline-none">
           <Menu.Popup className={`${popupClass} max-h-64 overflow-y-auto`}>
-            {options.length === 0 && <p className="px-2 py-1.5 text-[calc(12.5px*var(--font-scale))] text-faint">Keine Auswahl möglich</p>}
+            {options.length === 0 && <p className="px-2 py-1.5 text-[calc(12.5px*var(--font-scale))] text-faint">{t.controls.noOptions}</p>}
             <Menu.RadioGroup value={current?.value ?? ''}>
               {options.map((option) => (
                 <Menu.RadioItem key={option.value} className={itemClass} value={option.value} closeOnClick onClick={() => onChange(option.value)}>

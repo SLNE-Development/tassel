@@ -3,6 +3,7 @@ import { create } from 'zustand';
 import { execute, useApp } from '../app/store';
 import { activeDoc } from '../core/state';
 import type { DocState } from '../core/types';
+import type { Dictionary } from '../i18n';
 import { notifyError } from './toast';
 
 type Params = Record<string, unknown>;
@@ -94,7 +95,7 @@ export function useLiveEdit(): { scrub(id: string, params: Params): void; end():
 export interface LastOp {
   commandId: string;
   /** Overrides the command's title in the panel, e.g. the primitive's name. */
-  title?: string;
+  title?: (t: Dictionary) => string;
   params: Params;
 }
 
@@ -114,7 +115,7 @@ useApp.subscribe(() => {
 });
 
 /** Runs an operation and offers its parameters in the "Letzte Aktion" panel. Rejects if it fails. */
-export async function runOp(commandId: string, params: Params = {}, title?: string): Promise<void> {
+export async function runOp(commandId: string, params: Params = {}, title?: (t: Dictionary) => string): Promise<void> {
   forget();
   const edit = new LiveEdit();
   await edit.run(commandId, params);

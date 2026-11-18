@@ -1,5 +1,6 @@
 import { Toast } from '@base-ui/react/toast';
 import { CircleAlert, CircleCheck, Info, X } from 'lucide-react';
+import { useT } from '../i18n';
 
 const icons = {
   error: <CircleAlert size={16} className="text-danger" />,
@@ -9,6 +10,7 @@ const icons = {
 
 export function Toasts() {
   const { toasts } = Toast.useToastManager();
+  const t = useT();
   return (
     <Toast.Portal>
       <Toast.Viewport className="fixed right-3 bottom-9.5 z-70 flex w-80 max-w-[calc(100vw-1.5rem)] flex-col-reverse gap-2 outline-none">
@@ -23,7 +25,7 @@ export function Toasts() {
               <Toast.Title className="text-[calc(13px*var(--font-scale))] font-medium text-text" />
               <Toast.Description className="mt-0.5 text-[calc(12.5px*var(--font-scale))] leading-snug break-words text-dim select-text" />
             </div>
-            <Toast.Close aria-label="Schließen" className="flex size-5 shrink-0 items-center justify-center rounded text-faint hover:bg-raised hover:text-text">
+            <Toast.Close aria-label={t.common.close} className="flex size-5 shrink-0 items-center justify-center rounded text-faint hover:bg-raised hover:text-text">
               <X size={13} />
             </Toast.Close>
           </Toast.Root>

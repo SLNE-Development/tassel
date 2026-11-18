@@ -2,6 +2,7 @@ import { isTauri } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { Copy, Minus, Square, X } from 'lucide-react';
 import { useEffect, useState, type MouseEvent } from 'react';
+import { useT } from '../i18n';
 import { notifyError } from './toast';
 
 // The native title bar is switched off (tauri.conf.json: decorations false), so the top bar
@@ -21,6 +22,7 @@ const buttonClass = 'flex h-full w-11.5 items-center justify-center text-dim out
 
 export function WindowControls() {
   const [maximized, setMaximized] = useState(false);
+  const t = useT();
 
   useEffect(() => {
     if (!isTauri()) return;
@@ -38,18 +40,18 @@ export function WindowControls() {
 
   return (
     <div className="flex h-full shrink-0 items-stretch">
-      <button className={`${buttonClass} hover:bg-raised`} aria-label="Minimieren" onClick={() => win.minimize().catch(notifyError)}>
+      <button className={`${buttonClass} hover:bg-raised`} aria-label={t.topBar.minimize} onClick={() => win.minimize().catch(notifyError)}>
         <Minus size={15} strokeWidth={1.5} />
       </button>
       <button
         className={`${buttonClass} hover:bg-raised`}
-        aria-label={maximized ? 'Verkleinern' : 'Maximieren'}
+        aria-label={maximized ? t.topBar.restore : t.topBar.maximize}
         onClick={() => win.toggleMaximize().catch(notifyError)}
       >
         {maximized ? <Copy size={12.5} strokeWidth={1.5} className="-scale-x-100" /> : <Square size={12} strokeWidth={1.5} />}
       </button>
       {/* close() goes through the close guard, so unsaved changes still ask first. */}
-      <button className={`${buttonClass} hover:bg-danger hover:text-white`} aria-label="Schließen" onClick={() => win.close().catch(notifyError)}>
+      <button className={`${buttonClass} hover:bg-danger hover:text-white`} aria-label={t.common.close} onClick={() => win.close().catch(notifyError)}>
         <X size={15} strokeWidth={1.5} />
       </button>
     </div>

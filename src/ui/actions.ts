@@ -2,7 +2,7 @@ import { execute, selectDocState, useApp } from '../app/store';
 import { exportGltf, openProject, saveProject } from '../bridge/files';
 import { primitiveTypes } from '../core/mesh/primitives';
 import { elementModes, shadings, tools, viewPresets, workspaces, type ViewPreset } from '../core/types';
-import { elementLabels, primitiveLabels, shadingLabels, toolLabels, viewLabels, workspaceLabels } from './labels';
+import { getT, type Dictionary } from '../i18n';
 import { runOp } from './live';
 import { notifyError, notifyInfo, notifySuccess } from './toast';
 import { useUi } from './uiStore';
@@ -13,8 +13,9 @@ import { useUi } from './uiStore';
  */
 export interface Action {
   id: string;
+  /** In the current UI language; read it while rendering, never store it. */
   title: string;
-  /** Palette group, e.g. "Datei". */
+  /** Palette group, e.g. "Datei" / "File". */
   group: string;
   /** Shortcuts like "Ctrl+Shift+Z", "Delete" or "Numpad1". The first one is shown in the UI. */
   keys?: readonly string[];
@@ -31,6 +32,19 @@ export interface Action {
   run(): unknown;
 }
 
+type Text = (t: Dictionary) => string;
+
+/** Defines an action whose title and palette group follow the UI language: both are looked up on every read. */
+const action = ({ title, group, ...rest }: Omit<Action, 'title' | 'group'> & { title: Text; group: keyof Dictionary['groups'] }): Action => ({
+  ...rest,
+  get title() {
+    return title(getT());
+  },
+  get group() {
+    return getT().groups[group];
+  },
+});
+
 export const inEditMode = () => selectDocState(useApp.getState()).edit !== null;
 
 /** Whether the action is offered in the current mode. */
@@ -38,32 +52,37 @@ export const isAvailable = (action: Action) => !action.when || action.when === (
 
 function toggleEditMode() {
   const state = selectDocState(useApp.getState());
-  if (!state.edit && !state.activeId) return notifyInfo('Kein aktives Objekt', 'Wähle ein Objekt aus, um sein Netz zu bearbeiten.');
+  if (!state.edit && !state.activeId) return notifyInfo(getT().toasts.noActiveObject, getT().toasts.noActiveObjectHint);
   return execute('edit.toggle');
 }
 
 /** A mesh operation: runs with its defaults and then offers its parameters in the "Letzte Aktion" panel. */
-const meshOp = (id: string, title: string, command: string, keys?: readonly string[], params?: Record<string, unknown>): Action => ({
-  id,
-  title,
-  group: 'Netz',
-  keys,
-  when: 'edit',
-  command,
-  // "Verschmelzen: Mitte" is just "Verschmelzen" in the panel, which shows the rest as a field.
-  run: () => runOp(command, params, title.split(':')[0]),
-});
+const meshOp = (id: string, title: Text, command: string, keys?: readonly string[], params?: Record<string, unknown>, panelTitle = title): Action =>
+  action({
+    id,
+    title,
+    group: 'mesh',
+    keys,
+    when: 'edit',
+    command,
+    run: () => runOp(command, params, panelTitle),
+  });
+
+/** "Verschmelzen: Mitte" is just "Verschmelzen" in the panel, which shows the rest as a field. */
+const mergeOp = (id: string, title: Text, command: string, params?: Record<string, unknown>): Action =>
+  meshOp(id, title, command, undefined, params, (t) => t.actions.merge);
 
 /** A mesh selection command (not undoable, no parameters). */
-const meshSelect = (command: string, title: string, keys: readonly string[]): Action => ({
-  id: command,
-  title,
-  group: 'Netz',
-  keys,
-  when: 'edit',
-  command,
-  run: () => execute(command),
-});
+const meshSelect = (command: string, title: Text, keys: readonly string[]): Action =>
+  action({
+    id: command,
+    title,
+    group: 'mesh',
+    keys,
+    when: 'edit',
+    command,
+    run: () => execute(command),
+  });
 
 const elementKeys = { vertex: '1', edge: '2', face: '3' } as const;
 
@@ -71,7 +90,7 @@ const hasSelection = () => selectDocState(useApp.getState()).selection.length > 
 
 /** Runs `fn` on the selection, or tells the user that nothing is selected. */
 function onSelection(fn: () => unknown) {
-  return () => (hasSelection() ? fn() : notifyInfo('Nichts ausgewählt'));
+  return () => (hasSelection() ? fn() : notifyInfo(getT().toasts.nothingSelected));
 }
 
 const viewKeys: Partial<Record<ViewPreset, string>> = {
@@ -95,41 +114,41 @@ export function requestCloseDoc(id: string): unknown {
 
 export async function saveActiveDoc(saveAs = false): Promise<boolean> {
   const saved = await saveProject({ saveAs });
-  if (saved) notifySuccess('Gespeichert', useApp.getState().docs[useApp.getState().activeDocId]?.name);
+  if (saved) notifySuccess(getT().toasts.saved, useApp.getState().docs[useApp.getState().activeDocId]?.name);
   return saved;
 }
 
 async function exportActiveDoc(binary: boolean) {
-  if (await exportGltf({ binary })) notifySuccess('Exportiert', binary ? 'GLB-Datei geschrieben' : 'glTF-Datei geschrieben');
+  if (await exportGltf({ binary })) notifySuccess(getT().toasts.exported, binary ? getT().toasts.glbWritten : getT().toasts.gltfWritten);
 }
 
 export const actions: readonly Action[] = [
   // Datei
-  { id: 'file.new', title: 'Neu', group: 'Datei', keys: ['Ctrl+N'], inInputs: true, command: 'document.new', run: () => execute('document.new') },
-  { id: 'file.open', title: 'Öffnen…', group: 'Datei', keys: ['Ctrl+O'], inInputs: true, run: () => openProject() },
-  { id: 'file.save', title: 'Speichern', group: 'Datei', keys: ['Ctrl+S'], inInputs: true, run: () => saveActiveDoc() },
-  { id: 'file.save_as', title: 'Speichern unter…', group: 'Datei', keys: ['Ctrl+Shift+S'], inInputs: true, run: () => saveActiveDoc(true) },
-  { id: 'file.export_glb', title: 'Als GLB exportieren', group: 'Datei', command: 'export.gltf', run: () => exportActiveDoc(true) },
-  { id: 'file.export_gltf', title: 'Als glTF exportieren', group: 'Datei', run: () => exportActiveDoc(false) },
-  { id: 'file.close', title: 'Schließen', group: 'Datei', command: 'document.close', run: () => requestCloseDoc(useApp.getState().activeDocId) },
+  action({ id: 'file.new', title: (t) => t.actions.new, group: 'file', keys: ['Ctrl+N'], inInputs: true, command: 'document.new', run: () => execute('document.new') }),
+  action({ id: 'file.open', title: (t) => t.actions.open, group: 'file', keys: ['Ctrl+O'], inInputs: true, run: () => openProject() }),
+  action({ id: 'file.save', title: (t) => t.actions.save, group: 'file', keys: ['Ctrl+S'], inInputs: true, run: () => saveActiveDoc() }),
+  action({ id: 'file.save_as', title: (t) => t.actions.saveAs, group: 'file', keys: ['Ctrl+Shift+S'], inInputs: true, run: () => saveActiveDoc(true) }),
+  action({ id: 'file.export_glb', title: (t) => t.actions.exportGlb, group: 'file', command: 'export.gltf', run: () => exportActiveDoc(true) }),
+  action({ id: 'file.export_gltf', title: (t) => t.actions.exportGltf, group: 'file', run: () => exportActiveDoc(false) }),
+  action({ id: 'file.close', title: (t) => t.actions.close, group: 'file', command: 'document.close', run: () => requestCloseDoc(useApp.getState().activeDocId) }),
 
   // Bearbeiten
-  { id: 'edit.undo', title: 'Rückgängig', group: 'Bearbeiten', keys: ['Ctrl+Z'], command: 'history.undo', run: () => execute('history.undo') },
-  { id: 'edit.redo', title: 'Wiederholen', group: 'Bearbeiten', keys: ['Ctrl+Shift+Z', 'Ctrl+Y'], command: 'history.redo', run: () => execute('history.redo') },
-  { id: 'edit.duplicate', when: 'object', title: 'Duplizieren', group: 'Bearbeiten', keys: ['Shift+D'], command: 'scene.duplicate_objects', run: onSelection(() => execute('scene.duplicate_objects')) },
-  { id: 'edit.delete', when: 'object', title: 'Löschen', group: 'Bearbeiten', keys: ['X', 'Delete'], command: 'scene.delete_objects', run: onSelection(() => execute('scene.delete_objects')) },
-  { id: 'edit.select_all', when: 'object', title: 'Alles auswählen', group: 'Bearbeiten', keys: ['A'], command: 'scene.select_all', run: () => execute('scene.select_all') },
-  { id: 'edit.deselect', when: 'object', title: 'Auswahl aufheben', group: 'Bearbeiten', keys: ['Alt+A'], run: () => execute('scene.select', { ids: [] }) },
+  action({ id: 'edit.undo', title: (t) => t.actions.undo, group: 'edit', keys: ['Ctrl+Z'], command: 'history.undo', run: () => execute('history.undo') }),
+  action({ id: 'edit.redo', title: (t) => t.actions.redo, group: 'edit', keys: ['Ctrl+Shift+Z', 'Ctrl+Y'], command: 'history.redo', run: () => execute('history.redo') }),
+  action({ id: 'edit.duplicate', when: 'object', title: (t) => t.actions.duplicate, group: 'edit', keys: ['Shift+D'], command: 'scene.duplicate_objects', run: onSelection(() => execute('scene.duplicate_objects')) }),
+  action({ id: 'edit.delete', when: 'object', title: (t) => t.actions.delete, group: 'edit', keys: ['X', 'Delete'], command: 'scene.delete_objects', run: onSelection(() => execute('scene.delete_objects')) }),
+  action({ id: 'edit.select_all', when: 'object', title: (t) => t.actions.selectAll, group: 'edit', keys: ['A'], command: 'scene.select_all', run: () => execute('scene.select_all') }),
+  action({ id: 'edit.deselect', when: 'object', title: (t) => t.actions.deselect, group: 'edit', keys: ['Alt+A'], run: () => execute('scene.select', { ids: [] }) }),
 
   // Modus
-  { id: 'mode.toggle', title: 'Bearbeitungsmodus umschalten', group: 'Modus', keys: ['Tab'], command: 'edit.toggle', run: toggleEditMode },
-  { id: 'mode.object', title: 'Objektmodus', group: 'Modus', when: 'edit', command: 'edit.exit', run: () => execute('edit.exit') },
-  { id: 'mode.edit', title: 'Bearbeitungsmodus', group: 'Modus', when: 'object', command: 'edit.enter', run: toggleEditMode },
-  ...elementModes.map(
-    (mode): Action => ({
+  action({ id: 'mode.toggle', title: (t) => t.actions.toggleEditMode, group: 'mode', keys: ['Tab'], command: 'edit.toggle', run: toggleEditMode }),
+  action({ id: 'mode.object', title: (t) => t.actions.objectMode, group: 'mode', when: 'edit', command: 'edit.exit', run: () => execute('edit.exit') }),
+  action({ id: 'mode.edit', title: (t) => t.actions.editMode, group: 'mode', when: 'object', command: 'edit.enter', run: toggleEditMode }),
+  ...elementModes.map((mode) =>
+    action({
       id: `element.${mode}`,
-      title: `Auswahlmodus: ${elementLabels[mode].title}`,
-      group: 'Modus',
+      title: (t) => t.actions.elementMode(t.elements[mode].title),
+      group: 'mode',
       keys: [elementKeys[mode]],
       when: 'edit',
       command: 'edit.set_element_mode',
@@ -138,90 +157,92 @@ export const actions: readonly Action[] = [
   ),
 
   // Netz (edit mode)
-  meshOp('mesh.extrude', 'Extrudieren', 'mesh.extrude', ['E']),
-  meshOp('mesh.inset', 'Einsetzen', 'mesh.inset', ['I']),
-  meshOp('mesh.bevel', 'Abschrägen', 'mesh.bevel', ['Ctrl+B']),
-  meshOp('mesh.loop_cut', 'Schleifenschnitt', 'mesh.loop_cut', ['Ctrl+R']),
-  meshOp('mesh.subdivide', 'Unterteilen', 'mesh.subdivide'),
-  { id: 'mesh.merge_menu', title: 'Verschmelzen', group: 'Netz', keys: ['M'], when: 'edit', hidden: true, run: () => useUi.setState({ mergeMenuOpen: true }) },
-  meshOp('mesh.merge_center', 'Verschmelzen: Mitte', 'mesh.merge', undefined, { at: 'center' }),
-  meshOp('mesh.merge_first', 'Verschmelzen: Erster', 'mesh.merge', undefined, { at: 'first' }),
-  meshOp('mesh.merge_last', 'Verschmelzen: Letzter', 'mesh.merge', undefined, { at: 'last' }),
-  meshOp('mesh.merge_by_distance', 'Verschmelzen: Nach Abstand', 'mesh.merge_by_distance'),
-  meshOp('mesh.fill', 'Füllen', 'mesh.fill', ['F']),
-  meshOp('mesh.flip_normals', 'Normalen umkehren', 'mesh.flip_normals'),
-  meshOp('mesh.delete', 'Löschen', 'mesh.delete', ['X', 'Delete']),
-  meshSelect('mesh.select_all', 'Alles auswählen', ['A']),
-  meshSelect('mesh.select_none', 'Nichts auswählen', ['Alt+A']),
-  meshSelect('mesh.select_invert', 'Auswahl umkehren', ['Ctrl+I']),
-  meshSelect('mesh.select_linked', 'Verbundene auswählen', ['Ctrl+L']),
-  meshSelect('mesh.select_more', 'Auswahl erweitern', ['Ctrl+NumpadAdd']),
-  meshSelect('mesh.select_less', 'Auswahl verkleinern', ['Ctrl+NumpadSubtract']),
+  meshOp('mesh.extrude', (t) => t.actions.extrude, 'mesh.extrude', ['E']),
+  meshOp('mesh.inset', (t) => t.actions.inset, 'mesh.inset', ['I']),
+  meshOp('mesh.bevel', (t) => t.actions.bevel, 'mesh.bevel', ['Ctrl+B']),
+  meshOp('mesh.loop_cut', (t) => t.actions.loopCut, 'mesh.loop_cut', ['Ctrl+R']),
+  meshOp('mesh.subdivide', (t) => t.actions.subdivide, 'mesh.subdivide'),
+  action({ id: 'mesh.merge_menu', title: (t) => t.actions.merge, group: 'mesh', keys: ['M'], when: 'edit', hidden: true, run: () => useUi.setState({ mergeMenuOpen: true }) }),
+  mergeOp('mesh.merge_center', (t) => t.actions.mergeCenter, 'mesh.merge', { at: 'center' }),
+  mergeOp('mesh.merge_first', (t) => t.actions.mergeFirst, 'mesh.merge', { at: 'first' }),
+  mergeOp('mesh.merge_last', (t) => t.actions.mergeLast, 'mesh.merge', { at: 'last' }),
+  mergeOp('mesh.merge_by_distance', (t) => t.actions.mergeByDistance, 'mesh.merge_by_distance'),
+  meshOp('mesh.fill', (t) => t.actions.fill, 'mesh.fill', ['F']),
+  meshOp('mesh.flip_normals', (t) => t.actions.flipNormals, 'mesh.flip_normals'),
+  meshOp('mesh.delete', (t) => t.actions.delete, 'mesh.delete', ['X', 'Delete']),
+  meshSelect('mesh.select_all', (t) => t.actions.selectAll, ['A']),
+  meshSelect('mesh.select_none', (t) => t.actions.selectNone, ['Alt+A']),
+  meshSelect('mesh.select_invert', (t) => t.actions.selectInvert, ['Ctrl+I']),
+  meshSelect('mesh.select_linked', (t) => t.actions.selectLinked, ['Ctrl+L']),
+  meshSelect('mesh.select_more', (t) => t.actions.selectMore, ['Ctrl+NumpadAdd']),
+  meshSelect('mesh.select_less', (t) => t.actions.selectLess, ['Ctrl+NumpadSubtract']),
 
   // Hinzufügen
-  { id: 'add.menu', title: 'Hinzufügen', group: 'Hinzufügen', keys: ['Shift+A'], hidden: true, run: () => useUi.setState({ addMenuOpen: true }) },
-  ...primitiveTypes.map(
-    (type): Action => ({
+  action({ id: 'add.menu', title: (t) => t.actions.addMenu, group: 'add', keys: ['Shift+A'], hidden: true, run: () => useUi.setState({ addMenuOpen: true }) }),
+  ...primitiveTypes.map((type) =>
+    action({
       id: `add.${type}`,
-      title: `${primitiveLabels[type].title} hinzufügen`,
-      group: 'Hinzufügen',
-      run: () => runOp('scene.add_primitive', { type }, primitiveLabels[type].title),
+      title: (t) => t.actions.addPrimitive(t.primitives[type]),
+      group: 'add',
+      // The new object is named in the UI language; the command's own default name is German.
+      run: () => runOp('scene.add_primitive', { type, name: getT().primitives[type] }, (t) => t.primitives[type]),
     }),
   ),
 
   // Ansicht
-  ...shadings.map(
-    (shading): Action => ({
+  ...shadings.map((shading) =>
+    action({
       id: `shading.${shading}`,
-      title: `Darstellung: ${shadingLabels[shading].title}`,
-      group: 'Ansicht',
+      title: (t) => t.actions.shading(t.shadings[shading]),
+      group: 'view',
       run: () => execute('view.set_shading', { shading }),
     }),
   ),
-  {
+  action({
     id: 'shading.cycle',
-    title: 'Darstellung wechseln',
-    group: 'Ansicht',
+    title: (t) => t.actions.cycleShading,
+    group: 'view',
     keys: ['Z'],
     command: 'view.set_shading',
     run: () => {
       const next = shadings[(shadings.indexOf(useApp.getState().shading) + 1) % shadings.length];
       return execute('view.set_shading', { shading: next });
     },
-  },
-  ...viewPresets.map(
-    (preset): Action => ({
+  }),
+  ...viewPresets.map((preset) =>
+    action({
       id: `view.${preset}`,
-      title: `Ansicht: ${viewLabels[preset]}`,
-      group: 'Ansicht',
+      title: (t) => t.actions.view(t.views[preset]),
+      group: 'view',
       keys: viewKeys[preset] ? [viewKeys[preset]] : undefined,
       run: () => execute('view.set_view', { preset }),
     }),
   ),
-  { id: 'view.frame', title: 'Fokussieren', group: 'Ansicht', keys: ['F', 'NumpadDecimal'], editKeys: ['NumpadDecimal'], command: 'view.frame', run: () => execute('view.frame') },
+  action({ id: 'view.frame', title: (t) => t.actions.frame, group: 'view', keys: ['F', 'NumpadDecimal'], editKeys: ['NumpadDecimal'], command: 'view.frame', run: () => execute('view.frame') }),
 
   // Werkzeug
-  ...tools.map(
-    (tool): Action => ({
+  ...tools.map((tool) =>
+    action({
       id: `tool.${tool}`,
-      title: `Werkzeug: ${toolLabels[tool].title}`,
-      group: 'Werkzeug',
+      title: (t) => t.actions.tool(t.tools[tool]),
+      group: 'tool',
       keys: [toolKeys[tool]],
       run: () => execute('view.set_tool', { tool }),
     }),
   ),
 
   // Arbeitsbereich
-  ...workspaces.map(
-    (workspace): Action => ({
+  ...workspaces.map((workspace) =>
+    action({
       id: `workspace.${workspace}`,
-      title: `Arbeitsbereich: ${workspaceLabels[workspace].title}`,
-      group: 'Arbeitsbereich',
+      title: (t) => t.actions.workspace(t.workspaces[workspace]),
+      group: 'workspace',
       run: () => execute('app.set_workspace', { workspace }),
     }),
   ),
 
-  { id: 'palette.open', title: 'Befehlspalette', group: 'Ansicht', keys: ['Ctrl+K'], inInputs: true, hidden: true, run: () => useUi.setState((s) => ({ paletteOpen: !s.paletteOpen })) },
+  action({ id: 'preferences.open', title: (t) => t.actions.preferences, group: 'file', keys: ['Ctrl+,'], inInputs: true, run: () => useUi.setState({ preferencesOpen: true }) }),
+  action({ id: 'palette.open', title: (t) => t.actions.palette, group: 'view', keys: ['Ctrl+K'], inInputs: true, hidden: true, run: () => useUi.setState((s) => ({ paletteOpen: !s.paletteOpen })) }),
 ];
 
 const actionsById = new Map(actions.map((a) => [a.id, a]));
@@ -261,21 +282,12 @@ function parseCombo(text: string): Combo {
   return { key: key.toLowerCase(), ctrl: parts.includes('Ctrl'), shift: parts.includes('Shift'), alt: parts.includes('Alt') };
 }
 
-const keyNames: Record<string, string> = {
-  Ctrl: 'Strg',
-  Shift: 'Umschalt',
-  Alt: 'Alt',
-  Delete: 'Entf',
-  NumpadAdd: 'Num +',
-  NumpadSubtract: 'Num −',
-  NumpadDecimal: 'Num ,',
-};
-
-/** German label for a combo: "Ctrl+Shift+Z" becomes "Strg+Umschalt+Z". */
+/** Label for a combo in the current UI language: "Ctrl+Shift+Z" becomes "Strg+Umschalt+Z" in German. */
 export function formatCombo(text: string): string {
+  const { numpad, ...names } = getT().keys;
   return text
     .split('+')
-    .map((part) => keyNames[part] ?? part.replace(/^Numpad/, 'Num '))
+    .map((part) => (names as Record<string, string>)[part] ?? part.replace(/^Numpad/, numpad))
     .join('+');
 }
 
@@ -287,8 +299,8 @@ export function comboLabel(action: Action, edit: boolean): string | undefined {
 }
 
 /**
- * Shortcut label of an action in the current mode. Not reactive: call it while rendering something
- * that re-renders on mode changes (or only exists while it is open, like a menu).
+ * Shortcut label of an action in the current mode and UI language. Not reactive: call it while rendering
+ * something that re-renders on mode and language changes (or only exists while it is open, like a menu).
  */
 export function shortcutLabel(actionId: string): string | undefined {
   return comboLabel(getAction(actionId), inEditMode());

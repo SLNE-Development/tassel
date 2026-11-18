@@ -4,6 +4,7 @@ import { initPreferences } from './app/preferences';
 import { execute, services, useApp } from './app/store';
 import { startMcpBridge } from './bridge/mcp';
 import { initModifiers } from './core/modifiers/evaluate';
+import { syncDocumentLanguage } from './i18n';
 import { gltfExporter } from './io/gltf';
 import { App } from './ui/App';
 import { installCloseGuard } from './ui/closeGuard';
@@ -11,6 +12,7 @@ import { notifyError } from './ui/toast';
 import './index.css';
 
 initPreferences();
+syncDocumentLanguage();
 services.exporter = gltfExporter;
 startMcpBridge().catch(notifyError);
 installCloseGuard();

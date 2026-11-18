@@ -1,7 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { services } from '../app/store';
 import { ViewportEngine } from './engine';
-import { VIEWPORT_COLORS } from './theme';
 
 /** The 3D viewport of the active document. Fills its parent. */
 export function Viewport() {
@@ -21,7 +20,7 @@ export function Viewport() {
     <div
       ref={container}
       className="h-full w-full"
-      style={{ position: 'relative', width: '100%', height: '100%', overflow: 'hidden', background: VIEWPORT_COLORS.background }}
+      style={{ position: 'relative', width: '100%', height: '100%', overflow: 'hidden' }}
       onContextMenu={(event) => event.preventDefault()}
     />
   );

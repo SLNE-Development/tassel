@@ -3,10 +3,12 @@
 /*
  * Tessel design tokens.
  * Slate with a slight green-grey cast ("Schiefer") and one brass accent ("Messing").
- * --accent is the single accent variable; the viewport's selection highlight should use the same one.
+ * Surfaces step towards the light as they rise in both themes: --ink is the recessed base (wells,
+ * tracks), --panel the shell, --raised hovered and active controls, --overlay menus and dialogs.
+ * --font-scale, --accent and --accent-ink are set from the preferences (src/app/preferences.ts);
+ * the values here are what applies until then. The viewport palette lives in src/viewport/theme.ts.
  */
 :root {
-  /* Set from the preferences (fontScale). */
   --font-scale: 1;
 
   --accent: #e9b949;
@@ -29,7 +31,41 @@
   --danger: #e8695e;
   --ok: #6fc28b;
 
+  --scrim: rgb(0 0 0 / 0.42);
+  --pop-shadow: 0 1px 0 0 rgb(255 255 255 / 0.04) inset, 0 12px 32px -8px rgb(0 0 0 / 0.55), 0 2px 6px rgb(0 0 0 / 0.3);
+
   color-scheme: dark;
+}
+
+/*
+ * Light theme: the same slate as worn, warm paper-grey stone. The brass darkens to an aged
+ * tone so that it still reads as text and outline on the pale surfaces.
+ */
+[data-theme='light'] {
+  --accent: #8c6f2c;
+  --accent-ink: #ffffff;
+
+  --ink: #d9d8cf;
+  --panel: #e8e7e0;
+  --raised: #f6f5f0;
+  --overlay: #fbfaf6;
+  --line: #cfcec4;
+  --line-strong: #b3b2a6;
+
+  --text: #1c2123;
+  --dim: #4a5456;
+  --faint: #687173;
+
+  --axis-x: #c4443a;
+  --axis-y: #4a8a2a;
+  --axis-z: #2c6fc4;
+  --danger: #c0392d;
+  --ok: #2c8451;
+
+  --scrim: rgb(40 42 36 / 0.28);
+  --pop-shadow: 0 1px 0 0 rgb(255 255 255 / 0.7) inset, 0 14px 34px -10px rgb(48 46 36 / 0.32), 0 2px 6px rgb(48 46 36 / 0.14);
+
+  color-scheme: light;
 }
 
 @theme inline {
@@ -53,7 +89,9 @@
   --font-sans: 'Segoe UI Variable Text', 'Segoe UI', system-ui, -apple-system, 'Helvetica Neue', sans-serif;
   --font-display: 'Segoe UI Variable Display', 'Segoe UI', system-ui, -apple-system, 'Helvetica Neue', sans-serif;
 
-  --shadow-pop: 0 1px 0 0 rgb(255 255 255 / 0.04) inset, 0 12px 32px -8px rgb(0 0 0 / 0.55), 0 2px 6px rgb(0 0 0 / 0.3);
+  --color-scrim: var(--scrim);
+
+  --shadow-pop: var(--pop-shadow);
 }
 
 @layer base {

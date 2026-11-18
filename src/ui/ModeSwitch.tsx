@@ -1,7 +1,7 @@
 import { selectDocState, useApp } from '../app/store';
 import { elementModes, type ElementMode } from '../core/types';
+import { useT } from '../i18n';
 import { runAction, shortcutLabel } from './actions';
-import { elementLabels } from './labels';
 import { Tip } from './Tip';
 
 /** Element-mode glyphs: the same square with its corners, an edge or its face picked out. */
@@ -26,15 +26,16 @@ export function ModeSwitch() {
   const editing = elementMode !== undefined;
   const canEdit = editing || hasActive;
   const toggle = shortcutLabel('mode.toggle');
+  const t = useT();
   return (
     <div className="absolute top-3 left-3 flex items-center gap-2">
-      <div role="radiogroup" aria-label="Modus" className={group}>
-        <Tip label="Objekte anordnen" shortcut={editing ? toggle : undefined}>
+      <div role="radiogroup" aria-label={t.modeSwitch.mode} className={group}>
+        <Tip label={t.modeSwitch.objectTip} shortcut={editing ? toggle : undefined}>
           <button role="radio" aria-checked={!editing} className={`${segment(!editing)} px-2.5`} onClick={() => editing && void runAction('mode.object')}>
-            Objekt
+            {t.modeSwitch.object}
           </button>
         </Tip>
-        <Tip label={canEdit ? 'Netz des aktiven Objekts bearbeiten' : 'Wähle zuerst ein Objekt aus'} shortcut={!editing && canEdit ? toggle : undefined}>
+        <Tip label={canEdit ? t.modeSwitch.editTip : t.modeSwitch.selectFirst} shortcut={!editing && canEdit ? toggle : undefined}>
           <button
             role="radio"
             aria-checked={editing}
@@ -43,20 +44,20 @@ export function ModeSwitch() {
             className={`${segment(editing)} px-2.5 ${canEdit ? '' : 'cursor-default text-faint hover:text-faint'}`}
             onClick={() => canEdit && !editing && void runAction('mode.edit')}
           >
-            Bearbeiten
+            {t.modeSwitch.edit}
           </button>
         </Tip>
       </div>
       {editing && (
-        <div role="radiogroup" aria-label="Auswahlmodus" className={group}>
+        <div role="radiogroup" aria-label={t.modeSwitch.selectMode} className={group}>
           {elementModes.map((mode) => {
             const active = mode === elementMode;
             return (
-              <Tip key={mode} label={elementLabels[mode].title} shortcut={shortcutLabel(`element.${mode}`)}>
+              <Tip key={mode} label={t.elements[mode].title} shortcut={shortcutLabel(`element.${mode}`)}>
                 <button
                   role="radio"
                   aria-checked={active}
-                  aria-label={elementLabels[mode].title}
+                  aria-label={t.elements[mode].title}
                   className={`${segment(active)} w-7 justify-center ${active ? 'text-accent!' : ''}`}
                   onClick={() => void runAction(`element.${mode}`)}
                 >

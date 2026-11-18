@@ -1,6 +1,7 @@
 import { AlertDialog } from '@base-ui/react/alert-dialog';
 import type { ReactNode } from 'react';
 import { execute, useApp } from '../app/store';
+import { useT } from '../i18n';
 import { saveActiveDoc } from './actions';
 import { dirtyDocNames, quitNow } from './closeGuard';
 import { notifyError } from './toast';
@@ -24,6 +25,7 @@ function Confirm({
   children: ReactNode;
   actions: ReactNode;
 }) {
+  const t = useT();
   return (
     <AlertDialog.Root open={open} onOpenChange={(next) => !next && onClose()}>
       <AlertDialog.Portal>
@@ -32,7 +34,7 @@ function Confirm({
           <AlertDialog.Title className="font-display text-[calc(15px*var(--font-scale))] font-semibold text-text">{title}</AlertDialog.Title>
           <AlertDialog.Description className="mt-1.5 text-[calc(13px*var(--font-scale))] leading-relaxed text-dim">{children}</AlertDialog.Description>
           <div className="mt-5 flex justify-end gap-2">
-            <AlertDialog.Close className={`${quietButton} mr-auto`}>Abbrechen</AlertDialog.Close>
+            <AlertDialog.Close className={`${quietButton} mr-auto`}>{t.dialogs.cancel}</AlertDialog.Close>
             {actions}
           </div>
         </AlertDialog.Popup>
@@ -45,6 +47,7 @@ function CloseDocDialog() {
   const id = useUi((s) => s.closeDocId);
   const name = useApp((s) => (id ? s.docs[id]?.name : undefined));
   const close = () => useUi.setState({ closeDocId: null });
+  const t = useT();
 
   const discard = () => {
     close();
@@ -67,19 +70,19 @@ function CloseDocDialog() {
     <Confirm
       open={id !== null && name !== undefined}
       onClose={close}
-      title="Änderungen speichern?"
+      title={t.dialogs.unsavedTitle}
       actions={
         <>
           <button className={dangerButton} onClick={discard}>
-            Verwerfen
+            {t.dialogs.discard}
           </button>
           <button className={primaryButton} onClick={() => void saveAndClose()}>
-            Speichern
+            {t.dialogs.save}
           </button>
         </>
       }
     >
-      „{name}“ hat ungespeicherte Änderungen. Wenn du sie verwirfst, sind sie weg.
+      {t.dialogs.unsavedText(name ?? '')}
     </Confirm>
   );
 }
@@ -88,11 +91,12 @@ function QuitDialog() {
   const open = useUi((s) => s.quitOpen);
   const names = open ? dirtyDocNames() : [];
   const close = () => useUi.setState({ quitOpen: false });
+  const t = useT();
   return (
     <Confirm
       open={open}
       onClose={close}
-      title="Tessel beenden?"
+      title={t.dialogs.quitTitle}
       actions={
         <button
           className={dangerButton}
@@ -101,14 +105,11 @@ function QuitDialog() {
             quitNow();
           }}
         >
-          Beenden ohne Speichern
+          {t.dialogs.quitWithoutSaving}
         </button>
       }
     >
-      {names.length === 1
-        ? `„${names[0]}“ hat ungespeicherte Änderungen.`
-        : `${names.length} Dokumente haben ungespeicherte Änderungen: ${names.join(', ')}.`}{' '}
-      Beim Beenden gehen sie verloren.
+      {t.dialogs.quitText(names)}
     </Confirm>
   );
 }

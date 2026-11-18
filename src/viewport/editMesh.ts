@@ -2,6 +2,7 @@ import {
   Box3,
   BufferAttribute,
   BufferGeometry,
+  Color,
   DoubleSide,
   Group,
   InstancedBufferAttribute,
@@ -18,7 +19,6 @@ import {
 import {
   attribute,
   cameraProjectionMatrix,
-  color,
   float,
   max,
   mix,
@@ -26,6 +26,7 @@ import {
   positionGeometry,
   screenDPR,
   step,
+  uniform,
   vec4,
   viewportSize,
 } from 'three/tsl';
@@ -33,16 +34,13 @@ import { LineSegmentsGeometry } from 'three/addons/lines/LineSegmentsGeometry.js
 import { LineSegments2 } from 'three/addons/lines/webgpu/LineSegments2.js';
 import { triangulate } from '../core/mesh/polymesh';
 import type { EditState, ElementMode, PolyMesh, Shading } from '../core/types';
-import { ACCENT_COLOR, VIEWPORT_COLORS } from './theme';
+import type { ViewportPalette } from './theme';
 
 /** Materials shared by all edit views, so that a mesh edit never compiles a shader. */
 export class EditMaterials {
   /** All edges for [solid, wireframe] shading. */
-  readonly wire = [VIEWPORT_COLORS.editEdge, VIEWPORT_COLORS.wire].map(
-    (c) => new LineBasicMaterial({ color: c, fog: false }),
-  );
+  readonly wire = [0, 1].map(() => new LineBasicMaterial({ fog: false }));
   readonly tint = new MeshBasicMaterial({
-    color: ACCENT_COLOR,
     transparent: true,
     opacity: 0.4,
     depthWrite: false,
@@ -51,7 +49,6 @@ export class EditMaterials {
   });
   /** Slightly in front of the thin edge lines it covers. */
   readonly highlight = new Line2NodeMaterial({
-    color: ACCENT_COLOR,
     linewidth: 3,
     worldUnits: false,
     polygonOffset: true,
@@ -64,6 +61,9 @@ export class EditMaterials {
    * (0 or 1) makes them accent coloured and a little larger.
    */
   readonly points = new MeshBasicNodeMaterial({ fog: false });
+  private readonly vertexColor = uniform(new Color());
+  private readonly vertexRimColor = uniform(new Color());
+  private readonly accentColor = uniform(new Color());
 
   constructor() {
     this.highlight.fog = false;
@@ -75,8 +75,19 @@ export class EditMaterials {
     // Pulled towards the camera a little, so that the faces around a vertex do not cut into its square.
     this.points.vertexNode = vec4(clip.xy.add(offset), clip.z.sub(clip.w.mul(POINT_DEPTH_BIAS)), clip.w);
     const rim = step(0.34, max(corner.x.abs(), corner.y.abs()));
-    const unselected = mix(color(VIEWPORT_COLORS.editVertex), color(VIEWPORT_COLORS.editVertexRim), rim);
-    this.points.colorNode = mix(unselected, color(ACCENT_COLOR), selected);
+    const unselected = mix(this.vertexColor, this.vertexRimColor, rim);
+    this.points.colorNode = mix(unselected, this.accentColor, selected);
+  }
+
+  /** Colours are uniforms and material properties, so a theme change compiles nothing. */
+  setColors(palette: ViewportPalette, accent: string): void {
+    this.wire[0].color.set(palette.editEdge);
+    this.wire[1].color.set(palette.wire);
+    this.tint.color.set(accent);
+    this.highlight.color.set(accent);
+    this.vertexColor.value.set(palette.editVertex);
+    this.vertexRimColor.value.set(palette.editVertexRim);
+    this.accentColor.value.set(accent);
   }
 
   dispose(): void {

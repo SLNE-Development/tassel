@@ -4,6 +4,14 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="color-scheme" content="dark" />
+    <script>
+      // Set the saved theme before the first paint so a light-theme start does not flash dark.
+      try {
+        var p = JSON.parse(localStorage.getItem('tessel.preferences') || '{}');
+        var light = p.theme === 'light' || (p.theme === 'system' && matchMedia('(prefers-color-scheme: light)').matches);
+        document.documentElement.dataset.theme = light ? 'light' : 'dark';
+      } catch (e) {}
+    </script>
     <link rel="icon" type="image/svg+xml" href="/logo.svg" />
     <title>Tessel</title>
   </head>

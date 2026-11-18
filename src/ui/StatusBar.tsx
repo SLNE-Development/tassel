@@ -4,12 +4,10 @@ import { selectDocState, useApp } from '../app/store';
 import { getMcpStatus, type McpStatus } from '../bridge/mcp';
 import { meshStats } from '../core/mesh/polymesh';
 import type { EditState, PolyMesh } from '../core/types';
-import { elementLabels } from './labels';
+import { useT } from '../i18n';
 import { itemClass, popupClass } from './menu';
 import { notifyError, notifySuccess } from './toast';
 import { Tip } from './Tip';
-
-const count = (n: number, one: string, many: string) => `${n.toLocaleString('de-DE')} ${n === 1 ? one : many}`;
 
 function Selection() {
   const selected = useApp((s) => selectDocState(s).selection.length);
@@ -17,11 +15,12 @@ function Selection() {
     const state = selectDocState(s);
     return state.activeId ? state.objects[state.activeId]?.name : undefined;
   });
-  if (selected === 0) return <span className="text-faint">Nichts ausgewählt</span>;
+  const t = useT();
+  if (selected === 0) return <span className="text-faint">{t.status.nothingSelected}</span>;
   return (
     <span className="min-w-0 truncate">
       <span className="text-text">{activeName}</span>
-      {selected > 1 && <span className="text-dim"> und {count(selected - 1, 'weiteres', 'weitere')}</span>}
+      {selected > 1 && <span className="text-dim">{t.status.andMore(selected - 1)}</span>}
     </span>
   );
 }
@@ -44,10 +43,11 @@ function Mode() {
     return state.edit ? state.objects[state.edit.objectId]?.name : undefined;
   });
   const counts = useMemo(() => (edit && mesh ? elementCounts(edit, mesh) : null), [edit, mesh]);
+  const t = useT();
   if (!edit || !counts) {
     return (
       <>
-        <span className="shrink-0 text-dim">Objektmodus</span>
+        <span className="shrink-0 text-dim">{t.status.objectMode}</span>
         <div aria-hidden className="h-3 w-px shrink-0 bg-line-strong" />
         <Selection />
       </>
@@ -55,13 +55,13 @@ function Mode() {
   }
   return (
     <>
-      <span className="shrink-0 text-accent">Bearbeitungsmodus</span>
+      <span className="shrink-0 text-accent">{t.status.editMode}</span>
       <div aria-hidden className="h-3 w-px shrink-0 bg-line-strong" />
       <span className="min-w-0 truncate">
         <span className="text-text">{name}</span>
         <span className="tnum text-dim">
           {' – '}
-          {counts.selected.toLocaleString('de-DE')} von {counts.total.toLocaleString('de-DE')} {elementLabels[edit.elementMode].of(counts.total)} ausgewählt
+          {t.status.elementsSelected(counts.selected, counts.total, edit.elementMode)}
         </span>
       </span>
     </>
@@ -80,11 +80,12 @@ function Totals() {
     }
     return { objects: list.length, vertices, faces };
   }, [objects]);
+  const t = useT();
   return (
     <div className="tnum flex shrink-0 gap-4 text-dim">
-      <span>{count(totals.objects, 'Objekt', 'Objekte')}</span>
-      <span>{count(totals.vertices, 'Eckpunkt', 'Eckpunkte')}</span>
-      <span>{count(totals.faces, 'Fläche', 'Flächen')}</span>
+      <span>{t.status.objects(totals.objects)}</span>
+      <span>{t.status.vertices(totals.vertices)}</span>
+      <span>{t.status.faces(totals.faces)}</span>
     </div>
   );
 }
@@ -92,6 +93,7 @@ function Totals() {
 function Mcp() {
   // undefined = not asked yet, null = not running in the desktop app.
   const [status, setStatus] = useState<McpStatus | null | undefined>(undefined);
+  const t = useT();
 
   useEffect(() => {
     let alive = true;
@@ -112,37 +114,37 @@ function Mcp() {
     return (
       <span className="flex shrink-0 items-center gap-2 text-faint">
         <span aria-hidden className="size-1.5 rounded-full bg-line-strong" />
-        MCP nur in der Desktop-App
+        {t.mcp.desktopOnly}
       </span>
     );
   }
 
-  const state = status.running ? 'läuft' : status.error ? 'Fehler' : 'gestoppt';
+  const state = status.running ? t.mcp.running : status.error ? t.mcp.error : t.mcp.stopped;
   const dot = status.running ? 'bg-ok' : status.error ? 'bg-danger' : 'bg-faint';
   const header = `Authorization: Bearer ${status.token}`;
   // What an MCP client needs to connect: the server requires the token on every request.
   const copies = [
     {
-      label: 'Befehl für Claude Code kopieren',
+      label: t.mcp.copyClaudeCommand,
       text: `claude mcp add --transport http tessel ${status.url} --header "${header}"`,
     },
     {
-      label: 'JSON-Konfiguration kopieren',
+      label: t.mcp.copyJson,
       text: JSON.stringify(
         { mcpServers: { tessel: { type: 'http', url: status.url, headers: { Authorization: `Bearer ${status.token}` } } } },
         null,
         2,
       ),
     },
-    { label: 'Adresse kopieren', text: status.url },
-    { label: 'Zugriffstoken kopieren', text: status.token },
+    { label: t.mcp.copyUrl, text: status.url },
+    { label: t.mcp.copyToken, text: status.token },
   ];
   const copy = (label: string, text: string) =>
-    navigator.clipboard.writeText(text).then(() => notifySuccess('In die Zwischenablage kopiert', label), notifyError);
+    navigator.clipboard.writeText(text).then(() => notifySuccess(t.toasts.copied, label), notifyError);
 
   return (
     <Menu.Root>
-      <Tip label={status.error ?? (status.running ? 'KI-Client verbinden' : 'MCP-Server läuft nicht')} side="top">
+      <Tip label={status.error ?? (status.running ? t.mcp.connect : t.mcp.notRunning)} side="top">
         <Menu.Trigger
           className="tnum flex h-5 shrink-0 items-center gap-2 rounded px-1.5 text-dim hover:bg-raised hover:text-text disabled:pointer-events-none"
           disabled={!status.url}

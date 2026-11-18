@@ -1,10 +1,11 @@
 import { useRef, useState, type PointerEvent } from 'react';
+import { useT } from '../i18n';
 
-function format(value: number): string {
+function formatNumber(value: number, locale: string): string {
   // Three decimals, or six for tiny values such as a merge distance of 0.0001.
   const scale = value !== 0 && Math.abs(value) < 0.001 ? 1e6 : 1e3;
   // Avoid "-0" and float noise like 0.30000000000000004.
-  return (Math.round(value * scale) / scale + 0).toLocaleString('de-DE', { maximumFractionDigits: 6, useGrouping: false });
+  return (Math.round(value * scale) / scale + 0).toLocaleString(locale, { maximumFractionDigits: 6, useGrouping: false });
 }
 
 /** Accepts both "1,5" and "1.5". Returns null for anything that is not a finite number. */
@@ -51,6 +52,9 @@ export function ScrubField({
   onScrub?(value: number): void;
   onScrubEnd?(): void;
 }) {
+  const t = useT();
+  // Decimal comma or point, as the UI language writes numbers. Typing accepts both.
+  const format = (v: number) => formatNumber(v, t.locale);
   // `draft` is the text while editing or scrubbing; null shows the committed value.
   const [draft, setDraft] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -110,7 +114,7 @@ export function ScrubField({
           wide ? 'pr-1 pl-2 text-[calc(12px*var(--font-scale))]' : 'w-6 justify-center text-[calc(11.5px*var(--font-scale))] font-semibold'
         }`}
         style={{ color }}
-        title="Ziehen, um den Wert zu ändern"
+        title={t.controls.dragToChange}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}

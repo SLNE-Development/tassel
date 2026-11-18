@@ -4,8 +4,9 @@ import type { ReactNode } from 'react';
 import { selectActiveDoc, useApp } from '../app/store';
 import { primitiveTypes } from '../core/mesh/primitives';
 import { elementModes, shadings, viewPresets } from '../core/types';
+import { useT } from '../i18n';
 import { shortcutLabel } from './actions';
-import { elementLabels, meshToolIcons, primitiveLabels, shadingLabels, viewLabels } from './labels';
+import { meshToolIcons, primitiveIcons } from './labels';
 import { ActionItem, MenuLabel, MenuPopup, MenuSeparator, RadioActionItem, Submenu } from './menu';
 
 function TopMenu({ title, disabled, children }: { title: string; disabled?: boolean; children: ReactNode }) {
@@ -27,6 +28,7 @@ function EditItems() {
   const hasSelection = useApp((s) => selectActiveDoc(s).state.selection.length > 0);
   const hasObjects = useApp((s) => selectActiveDoc(s).state.order.length > 0);
   const editing = useApp((s) => selectActiveDoc(s).state.edit !== null);
+  const t = useT();
   return (
     <>
       <ActionItem id="edit.undo" disabled={!canUndo} />
@@ -39,7 +41,7 @@ function EditItems() {
           <ActionItem id="mesh.delete" />
           <MenuSeparator />
           <ActionItem id="mesh.select_all" />
-          <ActionItem id="mesh.select_none" title="Auswahl aufheben" />
+          <ActionItem id="mesh.select_none" title={t.menu.deselect} />
         </>
       ) : (
         <>
@@ -50,25 +52,27 @@ function EditItems() {
         </>
       )}
       <MenuSeparator />
-      <ActionItem id="mode.toggle" title={editing ? 'Objektmodus' : 'Bearbeitungsmodus'} disabled={!editing && !hasSelection} />
+      <ActionItem id="mode.toggle" title={editing ? t.menu.objectMode : t.menu.editMode} disabled={!editing && !hasSelection} />
     </>
   );
 }
 
 export function MergeItems() {
+  const t = useT();
   return (
     <>
-      <ActionItem id="mesh.merge_center" title="Mitte" />
-      <ActionItem id="mesh.merge_first" title="Erster" />
-      <ActionItem id="mesh.merge_last" title="Letzter" />
+      <ActionItem id="mesh.merge_center" title={t.menu.mergeCenter} />
+      <ActionItem id="mesh.merge_first" title={t.menu.mergeFirst} />
+      <ActionItem id="mesh.merge_last" title={t.menu.mergeLast} />
       <MenuSeparator />
-      <ActionItem id="mesh.merge_by_distance" title="Nach Abstand" />
+      <ActionItem id="mesh.merge_by_distance" title={t.menu.mergeByDistance} />
     </>
   );
 }
 
 function MeshItems() {
   const mode = useApp((s) => selectActiveDoc(s).state.edit?.elementMode);
+  const t = useT();
   return (
     <>
       <ActionItem id="mesh.extrude" icon={meshToolIcons['mesh.extrude']} />
@@ -76,7 +80,7 @@ function MeshItems() {
       <ActionItem id="mesh.bevel" icon={meshToolIcons['mesh.bevel']} />
       <ActionItem id="mesh.loop_cut" icon={meshToolIcons['mesh.loop_cut']} />
       <ActionItem id="mesh.subdivide" icon={meshToolIcons['mesh.subdivide']} />
-      <Submenu title="Verschmelzen" icon={meshToolIcons['mesh.merge_menu']} shortcut={shortcutLabel('mesh.merge_menu')}>
+      <Submenu title={t.menu.merge} icon={meshToolIcons['mesh.merge_menu']} shortcut={shortcutLabel('mesh.merge_menu')}>
         <MergeItems />
       </Submenu>
       <ActionItem id="mesh.fill" icon={meshToolIcons['mesh.fill']} />
@@ -84,19 +88,19 @@ function MeshItems() {
       <ActionItem id="mesh.delete" icon={meshToolIcons['mesh.delete']} />
       <MenuSeparator />
       <Menu.Group>
-        <MenuLabel>Auswählen</MenuLabel>
-        <ActionItem id="mesh.select_all" title="Alles" />
-        <ActionItem id="mesh.select_none" title="Nichts" />
-        <ActionItem id="mesh.select_invert" title="Umkehren" />
-        <ActionItem id="mesh.select_linked" title="Verbundene" />
-        <ActionItem id="mesh.select_more" title="Mehr" />
-        <ActionItem id="mesh.select_less" title="Weniger" />
+        <MenuLabel>{t.menu.select}</MenuLabel>
+        <ActionItem id="mesh.select_all" title={t.menu.selectAll} />
+        <ActionItem id="mesh.select_none" title={t.menu.selectNone} />
+        <ActionItem id="mesh.select_invert" title={t.menu.selectInvert} />
+        <ActionItem id="mesh.select_linked" title={t.menu.selectLinked} />
+        <ActionItem id="mesh.select_more" title={t.menu.selectMore} />
+        <ActionItem id="mesh.select_less" title={t.menu.selectLess} />
       </Menu.Group>
       <MenuSeparator />
-      <Submenu title="Auswahlmodus">
+      <Submenu title={t.menu.selectMode}>
         <Menu.RadioGroup value={mode ?? ''}>
           {elementModes.map((m) => (
-            <RadioActionItem key={m} id={`element.${m}`} value={m} title={elementLabels[m].title} />
+            <RadioActionItem key={m} id={`element.${m}`} value={m} title={t.elements[m].title} />
           ))}
         </Menu.RadioGroup>
       </Submenu>
@@ -106,8 +110,9 @@ function MeshItems() {
 
 function MeshMenu() {
   const editing = useApp((s) => selectActiveDoc(s).state.edit !== null);
+  const t = useT();
   return (
-    <TopMenu title="Netz" disabled={!editing}>
+    <TopMenu title={t.menu.mesh} disabled={!editing}>
       <MeshItems />
     </TopMenu>
   );
@@ -115,66 +120,71 @@ function MeshMenu() {
 
 function ViewItems() {
   const shading = useApp((s) => s.shading);
+  const t = useT();
   return (
     <>
       <Menu.Group>
-        <MenuLabel>Darstellung</MenuLabel>
+        <MenuLabel>{t.menu.shading}</MenuLabel>
         <Menu.RadioGroup value={shading}>
           {shadings.map((s) => (
-            <RadioActionItem key={s} id={`shading.${s}`} value={s} title={shadingLabels[s].title} />
+            <RadioActionItem key={s} id={`shading.${s}`} value={s} title={t.shadings[s]} />
           ))}
         </Menu.RadioGroup>
       </Menu.Group>
-      <ActionItem id="shading.cycle" title="Nächste Darstellung" />
+      <ActionItem id="shading.cycle" title={t.menu.nextShading} />
       <MenuSeparator />
       <Menu.Group>
-        <MenuLabel>Blickrichtung</MenuLabel>
+        <MenuLabel>{t.menu.viewDirection}</MenuLabel>
         {viewPresets.map((preset) => (
-          <ActionItem key={preset} id={`view.${preset}`} title={viewLabels[preset]} />
+          <ActionItem key={preset} id={`view.${preset}`} title={t.views[preset]} />
         ))}
       </Menu.Group>
       <MenuSeparator />
       <ActionItem id="view.frame" />
       <MenuSeparator />
-      <ActionItem id="palette.open" title="Befehlspalette…" />
+      <ActionItem id="palette.open" title={t.menu.palette} />
     </>
   );
 }
 
 export function AddItems() {
+  const t = useT();
   return (
     <>
       {primitiveTypes.map((type) => (
-        <ActionItem key={type} id={`add.${type}`} title={primitiveLabels[type].title} icon={primitiveLabels[type].icon} />
+        <ActionItem key={type} id={`add.${type}`} title={t.primitives[type]} icon={primitiveIcons[type]} />
       ))}
     </>
   );
 }
 
 export function MenuBar() {
+  const t = useT();
   return (
     <Menubar className="flex items-center gap-0.5">
-      <TopMenu title="Datei">
+      <TopMenu title={t.menu.file}>
         <ActionItem id="file.new" />
         <ActionItem id="file.open" />
         <MenuSeparator />
         <ActionItem id="file.save" />
         <ActionItem id="file.save_as" />
-        <Submenu title="Exportieren">
-          <ActionItem id="file.export_glb" title="GLB (binär)" />
-          <ActionItem id="file.export_gltf" title="glTF (JSON)" />
+        <Submenu title={t.menu.export}>
+          <ActionItem id="file.export_glb" title={t.menu.exportGlb} />
+          <ActionItem id="file.export_gltf" title={t.menu.exportGltf} />
         </Submenu>
+        <MenuSeparator />
+        <ActionItem id="preferences.open" />
         <MenuSeparator />
         <ActionItem id="file.close" />
       </TopMenu>
-      <TopMenu title="Bearbeiten">
+      <TopMenu title={t.menu.edit}>
         <EditItems />
       </TopMenu>
-      <TopMenu title="Hinzufügen">
+      <TopMenu title={t.menu.add}>
         <AddItems />
       </TopMenu>
       <MeshMenu />
-      <TopMenu title="Ansicht">
+      <TopMenu title={t.menu.view}>
         <ViewItems />
       </TopMenu>
     </Menubar>

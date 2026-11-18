@@ -25,8 +25,10 @@ import {
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { TransformControls } from 'three/addons/controls/TransformControls.js';
 import { LineSegments2 } from 'three/addons/lines/webgpu/LineSegments2.js';
+import { getAppearance, onAppearanceChange } from '../app/preferences';
 import { execute, useApp } from '../app/store';
 import { evaluateObject } from '../core/modifiers/evaluate';
+import type { Preferences } from '../core/preferences';
 import type {
   AppState,
   CameraPose,
@@ -46,7 +48,7 @@ import { ElementPicker } from './editPick';
 import { DEFAULT_SPHERE, fitClipPlanes, fitDistance, placeCamera, viewDirection } from './framing';
 import { GeometryStore, type MeshGeometry } from './geometry';
 import { GroundGrid } from './grid';
-import { ACCENT_ACTIVE_COLOR, ACCENT_COLOR, VIEWPORT_COLORS } from './theme';
+import { VIEWPORT_PALETTES } from './theme';
 
 /** 0 = not selected, 1 = selected, 2 = active. */
 type Highlight = 0 | 1 | 2;
@@ -80,7 +82,8 @@ const gizmoModes: Record<Exclude<Tool, 'select'>, 'translate' | 'rotate' | 'scal
 const CLICK_TOLERANCE_PX = 4;
 /** How close (in CSS pixels) a click must be to a vertex or edge to pick it. */
 const PICK_TOLERANCE_PX = 10;
-const FOV = 40;
+/** Wheel zoom factor of the orbit controls at zoomSpeed 1. */
+const BASE_ZOOM_SPEED = 1.2;
 
 const round = (n: number) => Math.round(n * 1e6) / 1e6;
 const toVec3 = (v: { x: number; y: number; z: number }): Vec3 => [round(v.x), round(v.y), round(v.z)];
@@ -109,7 +112,7 @@ export class ViewportEngine {
   private readonly renderer: WebGPURenderer;
   private readonly canvas: HTMLCanvasElement;
   private readonly scene = new Scene();
-  private readonly camera = new PerspectiveCamera(FOV, 1, 0.1, 1000);
+  private readonly camera = new PerspectiveCamera(50, 1, 0.1, 1000);
   private readonly orbit: OrbitControls;
   private readonly gizmo: TransformControls;
   private readonly gizmoHelper: ReturnType<TransformControls['getHelper']>;
@@ -121,22 +124,21 @@ export class ViewportEngine {
   private readonly raycaster = new Raycaster();
   private readonly resizeObserver: ResizeObserver;
   private readonly unsubscribe: () => void;
+  private readonly unsubscribeAppearance: () => void;
   private readonly ready: Promise<void>;
   private readonly cameraByDoc = new Map<string, CameraPose>();
 
   private readonly clay: MeshStandardMaterial[];
   /** Wireframe shading for [not selected, selected, active]. */
-  private readonly wireMaterials = [VIEWPORT_COLORS.wire, ACCENT_COLOR, ACCENT_ACTIVE_COLOR].map(
-    (color) => new LineBasicMaterial({ color, fog: false }),
-  );
+  private readonly wireMaterials = [0, 1, 2].map(() => new LineBasicMaterial({ fog: false }));
   /** Faint all-edges overlay on solid objects for [selected, active]. */
-  private readonly overlayMaterials = [ACCENT_COLOR, ACCENT_ACTIVE_COLOR].map(
-    (color) => new LineBasicMaterial({ color, fog: false, transparent: true, opacity: 0.4, depthWrite: false }),
+  private readonly overlayMaterials = [0, 1].map(
+    () => new LineBasicMaterial({ fog: false, transparent: true, opacity: 0.4, depthWrite: false }),
   );
   private readonly outlineMaterials: Line2NodeMaterial[];
   /** Other objects while one is being edited. */
   private readonly clayDim: MeshStandardMaterial;
-  private readonly wireDim = new LineBasicMaterial({ color: VIEWPORT_COLORS.wireDim, fog: false });
+  private readonly wireDim = new LineBasicMaterial({ fog: false });
   private readonly editMaterials = new EditMaterials();
   /** The gizmo attaches to this in edit mode; a child of the edited object's group. */
   private readonly pivot = new Object3D();
@@ -148,6 +150,7 @@ export class ViewportEngine {
   private frameRequest = 0;
   private needsSync = true;
   private docId: string | null = null;
+  private preferences: Preferences | null = null;
   private pointerDown: { x: number; y: number; onGizmo: boolean; box: boolean } | null = null;
   private drag: Drag | null = null;
 
@@ -161,12 +164,10 @@ export class ViewportEngine {
       position: 'absolute',
       pointerEvents: 'none',
       boxSizing: 'border-box',
-      border: `1px solid ${ACCENT_COLOR}`,
-      background: `${ACCENT_COLOR}26`,
     });
     container.appendChild(this.boxElement);
 
-    this.scene.background = new Color(VIEWPORT_COLORS.background);
+    this.scene.background = new Color();
     this.scene.fog = this.grid.fog;
     this.scene.add(this.grid.object, this.content, this.lightRig);
 
@@ -179,23 +180,21 @@ export class ViewportEngine {
     this.lightRig.add(key, fill);
 
     // Clay for [not selected, selected, active]; the offset keeps edge overlays free of z-fighting.
-    const clay = (color: string, glow: number) =>
+    const clay = (glow: number) =>
       new MeshStandardMaterial({
-        color,
         roughness: 0.9,
         metalness: 0,
         side: DoubleSide,
-        emissive: ACCENT_COLOR,
         emissiveIntensity: glow,
         fog: false,
         polygonOffset: true,
         polygonOffsetFactor: 1,
         polygonOffsetUnits: 1,
       });
-    this.clay = [0, 0.06, 0.1].map((glow) => clay(VIEWPORT_COLORS.clay, glow));
-    this.clayDim = clay(VIEWPORT_COLORS.clayDim, 0);
-    this.outlineMaterials = [ACCENT_COLOR, ACCENT_ACTIVE_COLOR].map((color) => {
-      const material = new Line2NodeMaterial({ color, linewidth: 2, worldUnits: false });
+    this.clay = [0, 0.06, 0.1].map(clay);
+    this.clayDim = clay(0);
+    this.outlineMaterials = [0, 1].map(() => {
+      const material = new Line2NodeMaterial({ linewidth: 2, worldUnits: false });
       material.fog = false;
       return material;
     });
@@ -203,7 +202,6 @@ export class ViewportEngine {
     this.camera.position.set(6.5, 4.5, 8);
     this.orbit = new OrbitControls(this.camera, this.canvas);
     this.orbit.enableDamping = false;
-    this.orbit.zoomSpeed = 1.2;
     // Left is reserved for selection. With shift (or ctrl) a rotate drag pans.
     this.orbit.mouseButtons = { LEFT: null, MIDDLE: MOUSE.ROTATE, RIGHT: MOUSE.ROTATE };
     this.orbit.addEventListener('change', this.invalidate);
@@ -226,7 +224,13 @@ export class ViewportEngine {
 
     this.resizeObserver = new ResizeObserver(() => this.resize());
     this.resizeObserver.observe(container);
-    this.unsubscribe = useApp.subscribe(() => {
+    // A change of the interface zoom changes the device pixel ratio, not always the viewport's size.
+    window.addEventListener('resize', this.onWindowResize);
+    this.applyAppearance();
+    this.unsubscribeAppearance = onAppearanceChange(this.applyAppearance);
+    this.applyPreferences(useApp.getState().preferences);
+    this.unsubscribe = useApp.subscribe((app) => {
+      this.applyPreferences(app.preferences);
       this.needsSync = true;
       this.invalidate();
     });
@@ -258,6 +262,8 @@ export class ViewportEngine {
     this.disposed = true;
     cancelAnimationFrame(this.frameRequest);
     this.unsubscribe();
+    this.unsubscribeAppearance();
+    window.removeEventListener('resize', this.onWindowResize);
     this.resizeObserver.disconnect();
     this.canvas.removeEventListener('pointerdown', this.onPointerDown);
     this.canvas.removeEventListener('pointermove', this.onPointerMove);
@@ -311,16 +317,65 @@ export class ViewportEngine {
     this.renderer.render(this.scene, camera);
   }
 
+  private readonly onWindowResize = (): void => this.resize();
+
+  /**
+   * Sizes the drawing buffer to the canvas as it appears on screen, so the image stays sharp at
+   * every interface scale. The webview zoom of the desktop app is part of devicePixelRatio; a CSS
+   * zoom (plain browser) is not, and shows as the difference between the bounding rectangle (what
+   * is on screen, and what pointer positions refer to) and the layout size.
+   */
   private resize(): void {
-    const width = Math.max(1, Math.floor(this.container.clientWidth));
-    const height = Math.max(1, Math.floor(this.container.clientHeight));
+    const width = Math.max(1, this.container.clientWidth);
+    const height = Math.max(1, this.container.clientHeight);
+    const cssZoom = this.container.getBoundingClientRect().width / width || 1;
     this.camera.aspect = width / height;
     this.camera.updateProjectionMatrix();
     if (!this.initialised) return;
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    this.renderer.setPixelRatio(Math.min((window.devicePixelRatio || 1) * cssZoom, 2));
     this.renderer.setSize(width, height, false);
     // Resizing clears the canvas, so draw right away instead of waiting for the next frame.
     this.renderNow();
+  }
+
+  // ---------------------------------------------------------------- theme and preferences
+
+  /** Colours everything for the current theme and accent. Only material properties and uniforms change. */
+  private readonly applyAppearance = (): void => {
+    const { theme, accent, accentActive } = getAppearance();
+    const palette = VIEWPORT_PALETTES[theme];
+    this.container.style.background = palette.background;
+    (this.scene.background as Color).set(palette.background);
+    this.grid.setPalette(palette);
+    for (const material of this.clay) {
+      material.color.set(palette.clay);
+      material.emissive.set(accent);
+    }
+    this.clayDim.color.set(palette.clayDim);
+    this.wireDim.color.set(palette.wireDim);
+    [palette.wire, accent, accentActive].forEach((color, i) => this.wireMaterials[i].color.set(color));
+    [accent, accentActive].forEach((color, i) => {
+      this.overlayMaterials[i].color.set(color);
+      this.outlineMaterials[i].color.set(color);
+    });
+    this.editMaterials.setColors(palette, accent);
+    this.boxElement.style.border = `1px solid ${accent}`;
+    this.boxElement.style.background = `${accent}26`;
+    this.invalidate();
+  };
+
+  private applyPreferences(preferences: Preferences): void {
+    if (preferences === this.preferences) return;
+    this.preferences = preferences;
+    this.grid.setVisible(preferences.showGrid, preferences.showAxes);
+    this.orbit.rotateSpeed = preferences.orbitSpeed;
+    // A negative speed makes the orbit controls zoom the other way.
+    this.orbit.zoomSpeed = BASE_ZOOM_SPEED * preferences.zoomSpeed * (preferences.invertZoom ? -1 : 1);
+    if (this.camera.fov !== preferences.fieldOfView) {
+      this.camera.fov = preferences.fieldOfView;
+      this.camera.updateProjectionMatrix();
+    }
+    this.invalidate();
   }
 
   // ---------------------------------------------------------------- state → scene

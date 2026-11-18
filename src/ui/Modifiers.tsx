@@ -4,9 +4,10 @@ import type { ReactNode } from 'react';
 import { selectDocState, useApp } from '../app/store';
 import { evaluateObject } from '../core/modifiers/evaluate';
 import { booleanOperations, modifierTypes, type Modifier, type Vec3 } from '../core/types';
+import { useT } from '../i18n';
 import { dispatch } from './actions';
 import { PickMenu, Segmented, Switch } from './controls';
-import { booleanLabels, modifierLabels } from './labels';
+import { modifierIcons } from './labels';
 import { useLiveEdit } from './live';
 import { itemClass, popupClass } from './menu';
 import { ScrubField } from './ScrubField';
@@ -34,6 +35,7 @@ function Params({ objectId, modifier }: { objectId: string; modifier: Modifier }
   const live = useLiveEdit();
   const order = useApp((s) => selectDocState(s).order);
   const objects = useApp((s) => selectDocState(s).objects);
+  const t = useT().modifiers;
   const params = (change: Record<string, unknown>) => ({ objectId, modifierId: modifier.id, ...change });
   const update = (change: Record<string, unknown>) => void dispatch('modifier.update', params(change));
   /** Scrub handlers: live preview that ends up as one undo step. */
@@ -47,15 +49,15 @@ function Params({ objectId, modifier }: { objectId: string; modifier: Modifier }
     case 'mirror':
       return (
         <>
-          <Row title="Achsen">
-            <div role="group" aria-label="Spiegelachsen" className="grid grid-cols-3 gap-1">
+          <Row title={t.axes}>
+            <div role="group" aria-label={t.mirrorAxes} className="grid grid-cols-3 gap-1">
               {axes.map((axis) => {
                 const on = modifier.axes[axis.key];
                 return (
                   <button
                     key={axis.key}
                     aria-pressed={on}
-                    aria-label={`Spiegeln an ${axis.label}`}
+                    aria-label={t.mirrorAcross(axis.label)}
                     className={`h-7 rounded-md text-[calc(11.5px*var(--font-scale))] font-semibold ring-1 ring-inset ${on ? 'bg-raised ring-line-strong' : 'bg-ink opacity-45 ring-line hover:opacity-80'}`}
                     style={{ color: axis.color }}
                     onClick={() => update({ axes: { [axis.key]: !on } })}
@@ -66,22 +68,22 @@ function Params({ objectId, modifier }: { objectId: string; modifier: Modifier }
               })}
             </div>
           </Row>
-          <ScrubField wide label="Verschmelzabstand" ariaLabel="Verschmelzabstand" color="var(--dim)" value={modifier.mergeDistance} step={0.001} min={0} {...scrub((v) => ({ mergeDistance: v }))} />
+          <ScrubField wide label={t.mergeDistance} ariaLabel={t.mergeDistance} color="var(--dim)" value={modifier.mergeDistance} step={0.001} min={0} {...scrub((v) => ({ mergeDistance: v }))} />
         </>
       );
     case 'subdivision':
       return (
-        <Row title="Stufen">
-          <Segmented label="Stufen" value={modifier.levels} options={[1, 2, 3, 4].map((n) => ({ value: n, title: n, ariaLabel: `${n}` }))} onChange={(levels) => update({ levels })} />
+        <Row title={t.levels}>
+          <Segmented label={t.levels} value={modifier.levels} options={[1, 2, 3, 4].map((n) => ({ value: n, title: n, ariaLabel: `${n}` }))} onChange={(levels) => update({ levels })} />
         </Row>
       );
     case 'array':
       return (
         <>
-          <ScrubField wide label="Anzahl" ariaLabel="Anzahl" color="var(--dim)" value={modifier.count} step={0.1} integer min={1} max={1000} {...scrub((v) => ({ count: v }))} />
-          <div role="group" aria-label="Versatz">
+          <ScrubField wide label={t.count} ariaLabel={t.count} color="var(--dim)" value={modifier.count} step={0.1} integer min={1} max={1000} {...scrub((v) => ({ count: v }))} />
+          <div role="group" aria-label={t.offset}>
             <div className="mb-1 flex items-baseline gap-1.5 text-[calc(12px*var(--font-scale))]">
-              <span className="text-dim">Versatz</span>
+              <span className="text-dim">{t.offset}</span>
               <span className="text-faint">m</span>
             </div>
             <div className="grid grid-cols-3 gap-1">
@@ -89,7 +91,7 @@ function Params({ objectId, modifier }: { objectId: string; modifier: Modifier }
                 <ScrubField
                   key={axis.key}
                   label={axis.label}
-                  ariaLabel={`Versatz ${axis.label}`}
+                  ariaLabel={`${t.offset} ${axis.label}`}
                   color={axis.color}
                   value={modifier.offset[i]}
                   step={0.01}
@@ -104,12 +106,12 @@ function Params({ objectId, modifier }: { objectId: string; modifier: Modifier }
       const options = order.filter((id) => id !== objectId).map((id) => ({ value: id, title: objects[id].name }));
       return (
         <>
-          <Segmented label="Operation" value={modifier.operation} options={booleanOperations.map((op) => ({ value: op, title: booleanLabels[op] }))} onChange={(operation) => update({ operation })} />
-          <Row title="Zielobjekt">
+          <Segmented label={t.operation} value={modifier.operation} options={booleanOperations.map((op) => ({ value: op, title: t.operations[op] }))} onChange={(operation) => update({ operation })} />
+          <Row title={t.target}>
             <PickMenu
-              label="Zielobjekt"
+              label={t.target}
               value={modifier.targetId}
-              placeholder={options.length ? 'Objekt wählen' : 'Kein weiteres Objekt'}
+              placeholder={options.length ? t.pickTarget : t.noTarget}
               options={options}
               onChange={(targetId) => update({ targetId })}
             />
@@ -121,7 +123,9 @@ function Params({ objectId, modifier }: { objectId: string; modifier: Modifier }
 }
 
 function Card({ objectId, modifier, index, count, error: failure, editing }: { objectId: string; modifier: Modifier; index: number; count: number; error?: string; editing: boolean }) {
-  const { title, icon: Icon } = modifierLabels[modifier.type];
+  const t = useT().modifiers;
+  const title = t.names[modifier.type];
+  const Icon = modifierIcons[modifier.type];
   // A boolean without a target is unfinished rather than broken; its picker already asks for one.
   const error = modifier.type === 'boolean' && !modifier.targetId ? undefined : failure;
   const ref = { objectId, modifierId: modifier.id };
@@ -130,23 +134,23 @@ function Card({ objectId, modifier, index, count, error: failure, editing }: { o
       <div className="flex h-8 items-center gap-1 pr-1 pl-2">
         <Icon size={14} strokeWidth={1.75} className={`shrink-0 ${modifier.enabled ? 'text-dim' : 'text-faint'}`} />
         <span className={`min-w-0 flex-1 truncate pl-1 text-[calc(12.5px*var(--font-scale))] ${modifier.enabled ? 'text-text' : 'text-faint'}`}>{title}</span>
-        <Tip label={modifier.enabled ? 'Ausschalten' : 'Einschalten'}>
+        <Tip label={modifier.enabled ? t.disable : t.enable}>
           <span className="mr-1 flex">
-            <Switch label={`${title} aktiv`} checked={modifier.enabled} onChange={(enabled) => void dispatch('modifier.update', { ...ref, enabled })} />
+            <Switch label={t.enabled(title)} checked={modifier.enabled} onChange={(enabled) => void dispatch('modifier.update', { ...ref, enabled })} />
           </span>
         </Tip>
-        <Tip label="Nach oben">
-          <button aria-label="Nach oben" className={iconButton} disabled={index === 0} onClick={() => void dispatch('modifier.move', { ...ref, index: index - 1 })}>
+        <Tip label={t.moveUp}>
+          <button aria-label={t.moveUp} className={iconButton} disabled={index === 0} onClick={() => void dispatch('modifier.move', { ...ref, index: index - 1 })}>
             <ArrowUp size={13} />
           </button>
         </Tip>
-        <Tip label="Nach unten">
-          <button aria-label="Nach unten" className={iconButton} disabled={index === count - 1} onClick={() => void dispatch('modifier.move', { ...ref, index: index + 1 })}>
+        <Tip label={t.moveDown}>
+          <button aria-label={t.moveDown} className={iconButton} disabled={index === count - 1} onClick={() => void dispatch('modifier.move', { ...ref, index: index + 1 })}>
             <ArrowDown size={13} />
           </button>
         </Tip>
-        <Tip label="Entfernen">
-          <button aria-label="Entfernen" className={iconButton} onClick={() => void dispatch('modifier.remove', ref)}>
+        <Tip label={t.remove}>
+          <button aria-label={t.remove} className={iconButton} onClick={() => void dispatch('modifier.remove', ref)}>
             <X size={13} />
           </button>
         </Tip>
@@ -160,7 +164,7 @@ function Card({ objectId, modifier, index, count, error: failure, editing }: { o
           </p>
         )}
         <div className="flex justify-end">
-          <Tip label={editing ? 'Geht nur im Objektmodus' : 'Ins Netz einrechnen und entfernen'}>
+          <Tip label={editing ? t.applyInEditMode : t.applyTip}>
             <button
               // Not `disabled`, so the tooltip can still say why.
               aria-disabled={editing}
@@ -169,7 +173,7 @@ function Card({ objectId, modifier, index, count, error: failure, editing }: { o
               }`}
               onClick={() => !editing && void dispatch('modifier.apply', ref)}
             >
-              Anwenden
+              {t.apply}
             </button>
           </Tip>
         </div>
@@ -184,30 +188,31 @@ export function Modifiers({ id }: { id: string }) {
   const editing = useApp((s) => selectDocState(s).edit !== null);
   // Evaluation is cached, so asking again after every state change is cheap.
   const errors = useApp((s) => (selectDocState(s).objects[id]?.modifiers.length ? evaluateObject(selectDocState(s), id).errors : undefined));
+  const t = useT().modifiers;
   if (!modifiers) return null;
   return (
     <div>
       <div className="mb-1.5 flex items-center justify-between border-t border-line pt-2">
-        <h3 className="text-[calc(12px*var(--font-scale))] font-semibold text-dim">Modifikatoren</h3>
+        <h3 className="text-[calc(12px*var(--font-scale))] font-semibold text-dim">{t.title}</h3>
         <Menu.Root>
           <Menu.Trigger
-            aria-label="Modifikator hinzufügen"
+            aria-label={t.add}
             className="-mr-1 flex h-6 items-center gap-1 rounded-md pr-2 pl-1.5 text-[calc(12px*var(--font-scale))] text-dim hover:bg-raised hover:text-text data-[popup-open]:bg-raised data-[popup-open]:text-accent"
           >
             <Plus size={13} />
-            Hinzufügen
+            {t.addShort}
           </Menu.Trigger>
           <Menu.Portal>
             <Menu.Positioner side="bottom" align="end" sideOffset={4} className="z-50 outline-none">
               <Menu.Popup className={popupClass}>
                 {modifierTypes.map((type) => {
-                  const { title, icon: Icon } = modifierLabels[type];
+                  const Icon = modifierIcons[type];
                   return (
                     <Menu.Item key={type} className={itemClass} onClick={() => void dispatch('modifier.add', { objectId: id, type })}>
                       <span className="flex w-4 shrink-0 justify-center">
                         <Icon size={15} strokeWidth={1.75} />
                       </span>
-                      {title}
+                      {t.menuNames[type]}
                     </Menu.Item>
                   );
                 })}
@@ -217,9 +222,9 @@ export function Modifiers({ id }: { id: string }) {
         </Menu.Root>
       </div>
       {modifiers.length === 0 ? (
-        <p className="text-[calc(12.5px*var(--font-scale))] leading-relaxed text-faint">Modifikatoren verändern das Netz, ohne es anzutasten: spiegeln, glätten, vervielfachen, verschneiden.</p>
+        <p className="text-[calc(12.5px*var(--font-scale))] leading-relaxed text-faint">{t.empty}</p>
       ) : (
-        <ul aria-label="Modifikatoren" className="flex flex-col gap-1.5">
+        <ul aria-label={t.title} className="flex flex-col gap-1.5">
           {modifiers.map((modifier, index) => (
             <Card key={modifier.id} objectId={id} modifier={modifier} index={index} count={modifiers.length} error={errors?.[modifier.id]} editing={editing} />
           ))}

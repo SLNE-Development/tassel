@@ -1,9 +1,10 @@
 import { memo } from 'react';
 import { selectDocState, useApp } from '../app/store';
 import type { Workspace } from '../core/types';
+import { useT } from '../i18n';
 import { Viewport } from '../viewport/Viewport';
 import { shortcutLabel } from './actions';
-import { workspaceLabels } from './labels';
+import { workspaceIcons } from './labels';
 import { LastOpPanel } from './LastOpPanel';
 import { ModeSwitch } from './ModeSwitch';
 
@@ -22,33 +23,33 @@ const Key = ({ children }: { children: string }) => (
 
 function EmptyHint() {
   const empty = useApp((s) => selectDocState(s).order.length === 0);
+  const t = useT();
   if (!empty) return null;
   return (
     <div className="pointer-events-none absolute inset-x-0 bottom-[14%] flex justify-center px-4">
       <p className="rounded-full border border-line bg-panel/85 px-4 py-2 text-[calc(13px*var(--font-scale))] text-dim backdrop-blur-sm">
-        Die Szene ist leer. <Key>{shortcutLabel('add.menu')!}</Key> fügt ein Objekt hinzu, <Key>{shortcutLabel('palette.open')!}</Key> öffnet
-        alle Befehle.
+        {t.viewport.emptyScene.before}
+        <Key>{shortcutLabel('add.menu')!}</Key>
+        {t.viewport.emptyScene.between}
+        <Key>{shortcutLabel('palette.open')!}</Key>
+        {t.viewport.emptyScene.after}
       </p>
     </div>
   );
 }
 
-const upcoming: Partial<Record<Workspace, { phase: string; text: string }>> = {
-  uv: { phase: 'kommt in Phase 3', text: 'Hier wickelst du Netze ab und ordnest ihre UV-Inseln an.' },
-  paint: { phase: 'kommt in Phase 4', text: 'Hier malst du Farbe und Material direkt auf das Modell.' },
-};
-
-function Placeholder({ workspace }: { workspace: Workspace }) {
-  const info = upcoming[workspace];
-  if (!info) return null;
-  const { title, icon: Icon } = workspaceLabels[workspace];
+function Placeholder({ workspace }: { workspace: Exclude<Workspace, 'modeling'> }) {
+  const t = useT();
+  const info = t.viewport.upcoming[workspace];
+  const title = t.workspaces[workspace];
+  const Icon = workspaceIcons[workspace];
   return (
     <div className="dot-grid absolute inset-0 flex items-center justify-center bg-ink p-6">
       <div className="flex max-w-xs flex-col items-center text-center">
         <Icon size={28} strokeWidth={1.25} className="text-faint" />
         <h2 className="mt-4 font-display text-[calc(22px*var(--font-scale))] leading-tight font-semibold text-text">{title}</h2>
         <p className="mt-1 text-[calc(13px*var(--font-scale))] text-accent">{info.phase}</p>
-        <p className="mt-3 text-[calc(13px*var(--font-scale))] leading-relaxed text-dim">{info.text} Bis dahin findest du alles Fertige unter Modellieren.</p>
+        <p className="mt-3 text-[calc(13px*var(--font-scale))] leading-relaxed text-dim">{info.text} {t.viewport.untilThen}</p>
       </div>
     </div>
   );

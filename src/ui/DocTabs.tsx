@@ -1,6 +1,7 @@
 import { Plus, X } from 'lucide-react';
 import { memo, useEffect, useRef } from 'react';
 import { useApp } from '../app/store';
+import { useT } from '../i18n';
 import { dispatch, requestCloseDoc, runAction, shortcutLabel } from './actions';
 import { Tip } from './Tip';
 
@@ -9,6 +10,7 @@ const DocTab = memo(function DocTab({ id }: { id: string }) {
   const dirty = useApp((s) => s.docs[id]?.dirty ?? false);
   const active = useApp((s) => s.activeDocId === id);
   const ref = useRef<HTMLDivElement>(null);
+  const t = useT();
 
   useEffect(() => {
     if (active) ref.current?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
@@ -37,10 +39,10 @@ const DocTab = memo(function DocTab({ id }: { id: string }) {
           className={`size-1.5 shrink-0 rounded-full ${dirty ? 'bg-accent' : 'bg-transparent'}`}
         />
         <span className="truncate">{name}</span>
-        {dirty && <span className="sr-only">, ungespeichert</span>}
+        {dirty && <span className="sr-only">{t.topBar.unsaved}</span>}
       </button>
       <button
-        aria-label={`${name} schließen`}
+        aria-label={t.topBar.closeDocument(name)}
         className={`mr-1 flex size-5 shrink-0 items-center justify-center rounded text-faint hover:bg-line-strong hover:text-text focus-visible:opacity-100 ${
           active ? '' : 'opacity-0 group-hover:opacity-100'
         }`}
@@ -54,16 +56,17 @@ const DocTab = memo(function DocTab({ id }: { id: string }) {
 
 export function DocTabs() {
   const docOrder = useApp((s) => s.docOrder);
+  const t = useT();
   return (
     <div className="flex min-w-0 flex-1 items-center gap-1">
-      <div role="tablist" aria-label="Dokumente" className="no-scrollbar flex min-w-0 items-center gap-1 overflow-x-auto py-1">
+      <div role="tablist" aria-label={t.topBar.documents} className="no-scrollbar flex min-w-0 items-center gap-1 overflow-x-auto py-1">
         {docOrder.map((id) => (
           <DocTab key={id} id={id} />
         ))}
       </div>
-      <Tip label="Neues Modell" shortcut={shortcutLabel('file.new')}>
+      <Tip label={t.topBar.newModel} shortcut={shortcutLabel('file.new')}>
         <button
-          aria-label="Neues Modell"
+          aria-label={t.topBar.newModel}
           className="flex size-7 shrink-0 items-center justify-center rounded-md text-faint hover:bg-raised hover:text-text"
           onClick={() => void runAction('file.new')}
         >

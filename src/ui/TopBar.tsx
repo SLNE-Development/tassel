@@ -1,8 +1,8 @@
 import { useApp } from '../app/store';
 import { workspaces } from '../core/types';
+import { useT } from '../i18n';
 import { dispatch } from './actions';
 import { DocTabs } from './DocTabs';
-import { workspaceLabels } from './labels';
 import { MenuBar } from './MenuBar';
 import { dragWindow, WindowControls } from './WindowControls';
 
@@ -19,8 +19,9 @@ function Mark() {
 
 function WorkspaceSwitch() {
   const workspace = useApp((s) => s.workspace);
+  const t = useT();
   return (
-    <div role="radiogroup" aria-label="Arbeitsbereich" className="flex shrink-0 items-center rounded-lg bg-ink p-0.5">
+    <div role="radiogroup" aria-label={t.topBar.workspace} className="flex shrink-0 items-center rounded-lg bg-ink p-0.5">
       {workspaces.map((w) => {
         const active = w === workspace;
         return (
@@ -33,7 +34,7 @@ function WorkspaceSwitch() {
             }`}
             onClick={() => void dispatch('app.set_workspace', { workspace: w })}
           >
-            {workspaceLabels[w].title}
+            {t.workspaces[w]}
           </button>
         );
       })}

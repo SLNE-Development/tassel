@@ -8,7 +8,7 @@ import {
   LineSegments,
   Vector3,
 } from 'three/webgpu';
-import { VIEWPORT_COLORS } from './theme';
+import type { ViewportPalette } from './theme';
 
 const HALF_CELLS = 200;
 const MAJOR_EVERY = 10;
@@ -21,34 +21,49 @@ const MAJOR_EVERY = 10;
  */
 export class GroundGrid {
   readonly object = new Group();
-  readonly fog = new Fog(VIEWPORT_COLORS.background, 1, 100);
+  readonly fog = new Fog(0, 1, 100);
   private readonly grid: LineSegments;
   private readonly axisX: LineSegments;
   private readonly axisZ: LineSegments;
 
   constructor() {
     const positions: number[] = [];
-    const colors: number[] = [];
-    const minor = new Color(VIEWPORT_COLORS.gridMinor);
-    const major = new Color(VIEWPORT_COLORS.gridMajor);
     for (let i = -HALF_CELLS; i <= HALF_CELLS; i++) {
-      const c = i % MAJOR_EVERY === 0 ? major : minor;
       positions.push(i, 0, -HALF_CELLS, i, 0, HALF_CELLS, -HALF_CELLS, 0, i, HALF_CELLS, 0, i);
-      for (let k = 0; k < 4; k++) colors.push(c.r, c.g, c.b);
     }
     const geometry = new BufferGeometry();
     geometry.setAttribute('position', new Float32BufferAttribute(positions, 3));
-    geometry.setAttribute('color', new Float32BufferAttribute(colors, 3));
+    geometry.setAttribute('color', new Float32BufferAttribute(new Float32Array(positions.length), 3));
     this.grid = new LineSegments(geometry, new LineBasicMaterial({ vertexColors: true, depthWrite: false }));
     this.grid.renderOrder = -2;
 
-    this.axisX = axisLine(new Vector3(1, 0, 0), VIEWPORT_COLORS.axisX);
-    this.axisZ = axisLine(new Vector3(0, 0, 1), VIEWPORT_COLORS.axisZ);
+    this.axisX = axisLine(new Vector3(1, 0, 0));
+    this.axisZ = axisLine(new Vector3(0, 0, 1));
 
     for (const o of [this.grid, this.axisX, this.axisZ]) {
       o.frustumCulled = false;
       this.object.add(o);
     }
+  }
+
+  setPalette(palette: ViewportPalette): void {
+    this.fog.color.set(palette.background);
+    const minor = new Color(palette.gridMinor);
+    const major = new Color(palette.gridMajor);
+    const colors = this.grid.geometry.getAttribute('color');
+    for (let i = -HALF_CELLS, n = 0; i <= HALF_CELLS; i++) {
+      const c = i % MAJOR_EVERY === 0 ? major : minor;
+      for (let k = 0; k < 4; k++) colors.setXYZ(n++, c.r, c.g, c.b);
+    }
+    colors.needsUpdate = true;
+    (this.axisX.material as LineBasicMaterial).color.set(palette.axisX);
+    (this.axisZ.material as LineBasicMaterial).color.set(palette.axisZ);
+  }
+
+  setVisible(grid: boolean, axes: boolean): void {
+    this.grid.visible = grid;
+    this.axisX.visible = axes;
+    this.axisZ.visible = axes;
   }
 
   /** Adapts cell size, position and fade to the current point of interest and camera distance. */
@@ -77,11 +92,11 @@ export class GroundGrid {
   }
 }
 
-function axisLine(direction: Vector3, color: string): LineSegments {
+function axisLine(direction: Vector3): LineSegments {
   const geometry = new BufferGeometry();
   const d = direction;
   geometry.setAttribute('position', new Float32BufferAttribute([-d.x, -d.y, -d.z, d.x, d.y, d.z], 3));
-  const line = new LineSegments(geometry, new LineBasicMaterial({ color, depthWrite: false }));
+  const line = new LineSegments(geometry, new LineBasicMaterial({ depthWrite: false }));
   line.renderOrder = -1;
   return line;
 }

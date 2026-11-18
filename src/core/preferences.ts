@@ -20,7 +20,7 @@ export const preferencesSchema = z.object({
     .describe('Accent colour as #rrggbb (selection highlights, active controls).'),
   showGrid: z.boolean().default(true).describe('Show the ground grid in the viewport.'),
   showAxes: z.boolean().default(true).describe('Show the X / Z axis lines in the viewport.'),
-  fieldOfView: z.number().min(20).max(100).default(50).describe('Vertical field of view of the viewport camera in degrees.'),
+  fieldOfView: z.number().min(20).max(100).default(40).describe('Vertical field of view of the viewport camera in degrees.'),
   orbitSpeed: z.number().min(0.25).max(3).default(1).describe('Orbit sensitivity of the viewport camera.'),
   zoomSpeed: z.number().min(0.25).max(3).default(1).describe('Zoom sensitivity of the viewport camera.'),
   invertZoom: z.boolean().default(false).describe('Reverse the mouse-wheel zoom direction.'),

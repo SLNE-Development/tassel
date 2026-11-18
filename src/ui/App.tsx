@@ -1,9 +1,11 @@
 import { Toast } from '@base-ui/react/toast';
 import { Tooltip } from '@base-ui/react/tooltip';
+import { useT } from '../i18n';
 import { Centre } from './Centre';
 import { CommandPalette } from './CommandPalette';
 import { Dialogs } from './Dialogs';
 import { Outliner } from './Outliner';
+import { Preferences } from './Preferences';
 import { Properties } from './Properties';
 import { StatusBar } from './StatusBar';
 import { toastManager } from './toast';
@@ -12,9 +14,10 @@ import { ToolRail } from './ToolRail';
 import { TopBar } from './TopBar';
 import { useShortcuts } from './useShortcuts';
 
-/** The editor shell. It subscribes to nothing itself, so state changes only re-render the panels that care. */
+/** The editor shell. It subscribes to nothing but the UI language, so state changes only re-render the panels that care. */
 export function App() {
   useShortcuts();
+  const t = useT();
   return (
     <Toast.Provider toastManager={toastManager} limit={4}>
       <Tooltip.Provider delay={450} closeDelay={0}>
@@ -23,7 +26,7 @@ export function App() {
           <div className="grid min-h-0 grid-cols-[44px_minmax(0,1fr)_272px]">
             <ToolRail />
             <Centre />
-            <aside aria-label="Szene und Eigenschaften" className="grid min-h-0 min-w-0 grid-cols-[minmax(0,1fr)] grid-rows-[minmax(7rem,2fr)_minmax(0,3fr)] border-l border-line bg-panel">
+            <aside aria-label={t.app.sidebar} className="grid min-h-0 min-w-0 grid-cols-[minmax(0,1fr)] grid-rows-[minmax(7rem,2fr)_minmax(0,3fr)] border-l border-line bg-panel">
               <Outliner />
               <Properties />
             </aside>
@@ -32,6 +35,7 @@ export function App() {
         </div>
         <CommandPalette />
         <Dialogs />
+        <Preferences />
         <Toasts />
       </Tooltip.Provider>
     </Toast.Provider>

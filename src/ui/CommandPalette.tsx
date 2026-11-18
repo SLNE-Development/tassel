@@ -3,6 +3,7 @@ import { Search } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { execute } from '../app/store';
 import { commands } from '../core/commands';
+import { commandTitle, getT, useT } from '../i18n';
 import { actions, comboLabel, inEditMode, isAvailable } from './actions';
 import { notifyError, notifyInfo } from './toast';
 import { useUi } from './uiStore';
@@ -33,16 +34,19 @@ function buildEntries(): Entry[] {
   const covered = new Set(actions.map((a) => a.command).filter(Boolean));
   const fromRegistry = commands
     .filter((c) => !covered.has(c.id) && c.params.safeParse({}).success)
-    .map((c): Entry => ({
-      id: c.id,
-      title: c.title,
-      group: 'Befehl',
-      haystack: `${c.title} ${c.id}`.toLowerCase(),
-      run: async () => {
-        await execute(c.id);
-        notifyInfo('Ausgeführt', c.title);
-      },
-    }));
+    .map((c): Entry => {
+      const title = commandTitle(c);
+      return {
+        id: c.id,
+        title,
+        group: getT().groups.command,
+        haystack: `${title} ${c.id}`.toLowerCase(),
+        run: async () => {
+          await execute(c.id);
+          notifyInfo(getT().palette.executed, commandTitle(c));
+        },
+      };
+    });
   return [...fromActions, ...fromRegistry];
 }
 
@@ -65,7 +69,9 @@ function fuzzyScore(query: string, text: string): number | null {
 }
 
 function PaletteBody({ close }: { close(): void }) {
-  const entries = useMemo(buildEntries, []);
+  const t = useT();
+  // Built once per opening and language: titles and groups are in the UI language.
+  const entries = useMemo(buildEntries, [t]);
   const [query, setQuery] = useState('');
   const [cursor, setCursor] = useState(0);
 
@@ -109,8 +115,8 @@ function PaletteBody({ close }: { close(): void }) {
           aria-expanded
           aria-controls="palette-list"
           aria-activedescendant={results.length ? `palette-${index}` : undefined}
-          aria-label="Befehl suchen"
-          placeholder="Befehl suchen"
+          aria-label={t.palette.search}
+          placeholder={t.palette.search}
           spellCheck={false}
           className="h-full min-w-0 flex-1 bg-transparent text-[calc(14px*var(--font-scale))] text-text outline-none placeholder:text-faint"
           value={query}
@@ -132,8 +138,8 @@ function PaletteBody({ close }: { close(): void }) {
           }}
         />
       </div>
-      <div id="palette-list" role="listbox" aria-label="Befehle" className="max-h-[min(22rem,55vh)] overflow-y-auto p-1">
-        {results.length === 0 && <p className="px-3 py-5 text-center text-[calc(13px*var(--font-scale))] text-faint">Kein Befehl passt zu „{query.trim()}“.</p>}
+      <div id="palette-list" role="listbox" aria-label={t.palette.commands} className="max-h-[min(22rem,55vh)] overflow-y-auto p-1">
+        {results.length === 0 && <p className="px-3 py-5 text-center text-[calc(13px*var(--font-scale))] text-faint">{t.palette.noMatch(query.trim())}</p>}
         {results.map((entry, i) => (
           <div
             key={entry.id}
@@ -159,6 +165,7 @@ function PaletteBody({ close }: { close(): void }) {
 export function CommandPalette() {
   const open = useUi((s) => s.paletteOpen);
   const setOpen = (paletteOpen: boolean) => useUi.setState({ paletteOpen });
+  const t = useT();
   // Every opening starts with an empty query, even one that interrupts the closing animation.
   const [session, setSession] = useState(0);
   const [wasOpen, setWasOpen] = useState(open);
@@ -171,10 +178,10 @@ export function CommandPalette() {
       <Dialog.Portal>
         <Dialog.Backdrop className="fixed inset-0 z-40 bg-black/35" />
         <Dialog.Popup
-          aria-label="Befehlspalette"
+          aria-label={t.palette.title}
           className="anim-pop fixed top-[16vh] left-1/2 z-50 w-[min(34rem,calc(100vw-2rem))] -translate-x-1/2 overflow-hidden rounded-xl border border-line-strong bg-overlay shadow-pop outline-none"
         >
-          <Dialog.Title className="sr-only">Befehlspalette</Dialog.Title>
+          <Dialog.Title className="sr-only">{t.palette.title}</Dialog.Title>
           <PaletteBody key={session} close={() => setOpen(false)} />
         </Dialog.Popup>
       </Dialog.Portal>

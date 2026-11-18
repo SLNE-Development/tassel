@@ -9,6 +9,7 @@ export interface UiState {
   /** Document waiting for the "unsaved changes" confirmation. */
   closeDocId: string | null;
   quitOpen: boolean;
+  preferencesOpen: boolean;
   /** Object being renamed inline in the outliner. */
   renamingId: string | null;
 }
@@ -19,5 +20,6 @@ export const useUi = create<UiState>(() => ({
   mergeMenuOpen: false,
   closeDocId: null,
   quitOpen: false,
+  preferencesOpen: false,
   renamingId: null,
 }));

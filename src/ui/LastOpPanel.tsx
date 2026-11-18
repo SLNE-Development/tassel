@@ -1,49 +1,10 @@
 import { useMemo } from 'react';
 import { z } from 'zod';
 import { commandsById } from '../core/commands';
+import { commandTitle, useT } from '../i18n';
 import { PickMenu, Switch } from './controls';
 import { tweakOp, useLastOp } from './live';
 import { ScrubField } from './ScrubField';
-
-/** German names of command parameters. Unknown parameters show their own name. */
-const paramLabels: Record<string, string> = {
-  distance: 'Abstand',
-  thickness: 'Stärke',
-  depth: 'Tiefe',
-  individual: 'Einzeln',
-  width: 'Breite',
-  segments: 'Segmente',
-  cuts: 'Schnitte',
-  at: 'Ziel',
-  kind: 'Elemente',
-  size: 'Größe',
-  radius: 'Radius',
-  height: 'Höhe',
-  rings: 'Ringe',
-  subdivisions: 'Unterteilungen',
-  minorRadius: 'Rohrradius',
-  minorSegments: 'Rohrsegmente',
-  position: 'Position',
-  rotation: 'Drehung',
-  scale: 'Skalierung',
-  translate: 'Verschiebung',
-  rotate: 'Drehung',
-  pivot: 'Drehpunkt',
-  count: 'Anzahl',
-  offset: 'Versatz',
-  levels: 'Stufen',
-  angle: 'Winkel',
-  smooth: 'Glätten',
-};
-
-const valueLabels: Record<string, string> = {
-  center: 'Mitte',
-  first: 'Erster',
-  last: 'Letzter',
-  vertices: 'Eckpunkte',
-  edges: 'Kanten',
-  faces: 'Flächen',
-};
 
 /** Parameters a command shows in the panel when not all of them make sense. */
 const shown: Record<string, (params: Record<string, unknown>) => readonly string[]> = {
@@ -118,6 +79,7 @@ const rowLabel = 'min-w-0 flex-1 truncate text-[calc(12px*var(--font-scale))] te
  */
 export function LastOpPanel() {
   const op = useLastOp((s) => s.op);
+  const t = useT();
   const fields = useMemo(() => (op ? fieldsOf(op.commandId) : []), [op?.commandId]);
   if (!op) return null;
 
@@ -127,17 +89,21 @@ export function LastOpPanel() {
     // A number or vector needs a value to start from.
     (f) => f.kind === 'enum' || (op.params[f.key] ?? f.fallback) !== undefined,
   );
-  const title = op.title ?? commandsById.get(op.commandId)?.title ?? op.commandId;
+  const def = commandsById.get(op.commandId);
+  const title = op.title?.(t) ?? (def ? commandTitle(def) : op.commandId);
+  // Unknown parameters and values show their own name.
+  const paramLabels: Record<string, string> = t.lastAction.params;
+  const valueLabels: Record<string, string> = t.lastAction.values;
   const set = (key: string, value: unknown) => tweakOp({ ...op.params, [key]: value });
 
   return (
     <section
-      aria-label="Letzte Aktion"
+      aria-label={t.lastAction.title}
       className="anim-pop absolute bottom-3 left-3 flex max-h-[calc(100%-4.5rem)] w-56 flex-col rounded-lg border border-line-strong bg-overlay/95 shadow-pop backdrop-blur-sm"
     >
       <header className="flex h-8 shrink-0 items-center justify-between gap-2 pr-2.5 pl-3">
         <h2 className="min-w-0 truncate text-[calc(12.5px*var(--font-scale))] font-semibold text-text">{title}</h2>
-        <span className="shrink-0 text-[calc(11.5px*var(--font-scale))] text-faint">Letzte Aktion</span>
+        <span className="shrink-0 text-[calc(11.5px*var(--font-scale))] text-faint">{t.lastAction.title}</span>
       </header>
       {visible.length > 0 && (
         <div className="flex min-h-0 flex-col gap-1 overflow-y-auto px-2 pb-2">
@@ -178,7 +144,7 @@ export function LastOpPanel() {
                     <PickMenu
                       label={label}
                       value={(value as string | undefined) ?? null}
-                      placeholder="Standard"
+                      placeholder={t.lastAction.defaultValue}
                       options={field.options.map((o) => ({ value: o, title: valueLabels[o] ?? o }))}
                       onChange={(v) => set(field.key, v)}
                     />
