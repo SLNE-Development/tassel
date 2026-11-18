@@ -21,6 +21,7 @@ function object(id: string, mesh: PolyMesh, modifiers: Modifier[] = [], transfor
     mesh,
     modifiers,
     smooth: false,
+    groupId: null,
   };
 }
 
@@ -28,6 +29,8 @@ function scene(...objects: SceneObject[]): DocState {
   return {
     objects: Object.fromEntries(objects.map((o) => [o.id, o])),
     order: objects.map((o) => o.id),
+    groups: {},
+    groupOrder: [],
     selection: [],
     activeId: null,
     edit: null,

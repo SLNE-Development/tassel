@@ -61,6 +61,19 @@ export interface SceneObject {
   readonly modifiers: readonly Modifier[];
   /** Smooth (averaged vertex normals) instead of flat shading. */
   readonly smooth: boolean;
+  /** The group this object is filed under, or null at top level. */
+  readonly groupId: string | null;
+}
+
+/**
+ * An organisational folder for objects and other groups. It has no transform of its own:
+ * "selecting a group" means selecting the objects inside it. Helpers are in core/groups.ts.
+ */
+export interface Group {
+  readonly id: string;
+  readonly name: string;
+  /** The group this group is nested in, or null at top level. Never forms a cycle. */
+  readonly parentId: string | null;
 }
 
 export const elementModes = ['vertex', 'edge', 'face'] as const;
@@ -84,6 +97,9 @@ export interface DocState {
   readonly objects: Readonly<Record<string, SceneObject>>;
   /** Object ids in outliner order. */
   readonly order: readonly string[];
+  readonly groups: Readonly<Record<string, Group>>;
+  /** All group ids (exactly the keys of `groups`); siblings are shown in this relative order. */
+  readonly groupOrder: readonly string[];
   readonly selection: readonly string[];
   /** Last selected object; the gizmo attaches to it. Always part of `selection` or null. */
   readonly activeId: string | null;

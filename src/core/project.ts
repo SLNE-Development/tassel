@@ -1,8 +1,9 @@
 import { z } from 'zod';
 import { polyMeshSchema } from './mesh/polymesh';
 import { modifierSchema } from './modifiers/schema';
+import { repairGroups } from './groups';
 import { newId } from './state';
-import type { Doc, DocState, SceneObject } from './types';
+import type { Doc, DocState, Group, SceneObject } from './types';
 
 // Project file format (.tessel): JSON, validated on load because files are untrusted input.
 
@@ -22,8 +23,13 @@ const projectSchema = z.object({
       // Added after the first version of the format; older files simply lack them.
       modifiers: z.array(modifierSchema).default([]),
       smooth: z.boolean().default(false),
+      groupId: z.string().nullable().default(null),
     }),
   ),
+  // In sibling order (DocState.groupOrder). Files written before groups existed have none.
+  groups: z
+    .array(z.object({ id: z.string().min(1), name: z.string(), parentId: z.string().nullable().default(null) }))
+    .default([]),
 });
 
 export const PROJECT_EXTENSION = 'tessel';
@@ -34,6 +40,7 @@ export function serializeProject(doc: Doc): string {
     version: 1,
     name: doc.name,
     objects: doc.state.order.map((id) => doc.state.objects[id]),
+    groups: doc.state.groupOrder.map((id) => doc.state.groups[id]),
   };
   return JSON.stringify(project);
 }
@@ -55,5 +62,17 @@ export function parseProject(json: string): { name: string; state: DocState } {
     objects[id] = { ...obj, id };
     order.push(id);
   }
-  return { name: parsed.data.name, state: { objects, order, selection: [], activeId: null, edit: null } };
+  const groups: Record<string, Group> = {};
+  const groupOrder: string[] = [];
+  for (const group of parsed.data.groups) {
+    const id = group.id in groups ? newId() : group.id;
+    groups[id] = { ...group, id };
+    groupOrder.push(id);
+  }
+  // Broken group references are repaired rather than rejected: the geometry is what matters.
+  const repaired = repairGroups(objects, groups);
+  return {
+    name: parsed.data.name,
+    state: { ...repaired, order, groupOrder, selection: [], activeId: null, edit: null },
+  };
 }

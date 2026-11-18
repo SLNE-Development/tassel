@@ -1,4 +1,5 @@
 import { documentCommands } from './document';
+import { groupCommands } from './group';
 import { meshCommands } from './mesh';
 import { modifierCommands } from './modifier';
 import { preferencesCommands } from './preferences';
@@ -10,6 +11,7 @@ export const commands: readonly AnyCommand[] = [
   ...viewCommands,
   ...documentCommands,
   ...sceneCommands,
+  ...groupCommands,
   ...meshCommands,
   ...modifierCommands,
   ...preferencesCommands,
