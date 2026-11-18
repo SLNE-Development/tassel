@@ -575,10 +575,12 @@ describe('project files', () => {
     expect(parsed.name).toBe('Test');
     // Files written before modifiers and groups existed get the defaults.
     expect(parsed.state).toEqual({
-      objects: { a: object({ modifiers: [], smooth: false, groupId: null }) },
+      objects: { a: object({ modifiers: [], smooth: false, groupId: null, materialId: null }) },
       order: ['a'],
       groups: {},
       groupOrder: [],
+      materials: {},
+      textures: {},
       selection: [],
       activeId: null,
       edit: null,

@@ -73,14 +73,16 @@ function select(ctx: CommandContext, elements: MeshSelection, action: z.infer<ty
  * selection (so undo restores both). `keepSelection` is for operations that do not renumber elements.
  */
 function applyOp(ctx: CommandContext, result: MeshOpResult, keepSelection = false) {
-  const { edit } = requireEdit(docState(ctx));
+  const { edit, mesh: before } = requireEdit(docState(ctx));
   const sel: MeshSelection = keepSelection ? edit : selectionFromElements(result.mesh, edit.elementMode, result);
+  // Operations that change the topology cannot keep the UVs; say so, the caller may want to unwrap again.
+  const uvsDropped = before.uvs && !result.mesh.uvs ? { uvsDropped: true } : {};
   updateDocState(ctx, (s) => ({
     ...s,
     objects: { ...s.objects, [edit.objectId]: { ...s.objects[edit.objectId], mesh: result.mesh } },
     edit: { ...edit, ...sel },
   }));
-  return { ...meshStats(result.mesh), ...selectionResult(sel) };
+  return { ...meshStats(result.mesh), ...selectionResult(sel), ...uvsDropped };
 }
 
 /** The selection as faces, or an error naming the command that needs them. */
@@ -118,6 +120,7 @@ function enterEdit(ctx: CommandContext, objectId: string | undefined) {
 const afterwards = 'Afterwards the selection is';
 const needsEdit = 'Requires edit mode.';
 const noUndo = 'Not an undo step.';
+const dropsUvs = 'Removes the UVs of the mesh if it has any (`uvsDropped: true` in the result); unwrap again with uv.unwrap.';
 
 export const meshCommands = [
   // ---- Mode ------------------------------------------------------------------------------------
@@ -375,7 +378,7 @@ export const meshCommands = [
       'and new side faces connect them to the rest of the mesh. Edges between selected faces are not duplicated. ' +
       'Needs at least one selected face (in vertex / edge mode: faces whose vertices are all selected); fails if the selected faces face opposite ways. ' +
       `${afterwards} the moved faces, so a following mesh.transform or another mesh.extrude continues from them. ` +
-      'Returns the new mesh statistics.',
+      `Returns the new mesh statistics. ${dropsUvs}`,
     params: z.object({ distance: z.number().default(0.5).describe('Meters along the averaged face normal.') }),
     run(ctx, p) {
       const { edit, mesh } = requireEdit(docState(ctx));
@@ -391,7 +394,7 @@ export const meshCommands = [
       '`thickness` is the width of that ring in meters (keep it below half the width of the faces), ' +
       '`depth` additionally moves the inner faces along their normal (negative = sunk in). ' +
       '`individual` insets every selected face on its own instead of the region as a whole. ' +
-      `${afterwards} the inner faces (same count as before), so mesh.inset followed by mesh.extrude makes a panel or a window.`,
+      `${afterwards} the inner faces (same count as before), so mesh.inset followed by mesh.extrude makes a panel or a window. ${dropsUvs}`,
     params: z.object({
       thickness: z.number().min(0).default(0.2),
       depth: z.number().default(0),
@@ -409,7 +412,7 @@ export const meshCommands = [
     description:
       'Bevel the selected edges: each edge is replaced by a strip of faces, cutting the corner. ' +
       '`width` is how far the new edges are offset along the adjacent faces (meters), `segments` the number of faces across the strip (more = rounder). ' +
-      `Needs at least one selected edge (in vertex / face mode: edges whose two vertices are selected). ${afterwards} the new bevel faces.`,
+      `Needs at least one selected edge (in vertex / face mode: edges whose two vertices are selected). ${afterwards} the new bevel faces. ${dropsUvs}`,
     params: z.object({ width: z.number().positive().default(0.1), segments: z.number().int().min(1).max(32).default(1) }),
     run(ctx, p) {
       const { edit, mesh } = requireEdit(docState(ctx));
@@ -426,7 +429,7 @@ export const meshCommands = [
       'Insert `cuts` evenly spaced edge loops across the ring of quads that runs through an edge: every edge of the ring ' +
       '(the given edge and the edges opposite to it, quad by quad) is split, like slicing a cylinder into shorter sections. ' +
       '`edge` is a [vertexA, vertexB] pair; it defaults to the selected edge when exactly one edge is selected. ' +
-      `${afterwards} the new edges.`,
+      `${afterwards} the new edges. ${dropsUvs}`,
     params: z.object({ edge: edgeParam.optional(), cuts: z.number().int().min(1).max(100).default(1) }),
     run(ctx, p) {
       const { edit, mesh } = requireEdit(docState(ctx));
@@ -449,7 +452,7 @@ export const meshCommands = [
       'Subdivide the selected faces with `cuts` cuts per edge: a quad becomes (cuts+1)^2 quads, a triangle (cuts+1)^2 triangles, ' +
       'a face with more than 4 vertices a fan of triangles around its centre. The shape does not change. ' +
       'Unselected neighbouring faces receive the new edge vertices (they become n-gons), so the mesh stays closed. ' +
-      `${afterwards} the new faces.`,
+      `${afterwards} the new faces. ${dropsUvs}`,
     params: z.object({ cuts: z.number().int().min(1).max(10).default(1) }),
     run(ctx, p) {
       const { edit, mesh } = requireEdit(docState(ctx));
@@ -464,7 +467,7 @@ export const meshCommands = [
       'Merge all selected vertices (in edge / face mode: the vertices of the selected elements) into a single vertex. ' +
       "`at`: 'center' = the average of their positions, 'first' / 'last' = the position of the first / last selected vertex (selection order of mesh.select). " +
       'Faces that collapse are removed, e.g. merging the top face of a cube gives a pyramid. ' +
-      `${afterwards} the merged vertex (in edge / face mode usually nothing).`,
+      `${afterwards} the merged vertex (in edge / face mode usually nothing). The remaining faces keep their UVs.`,
     params: z.object({ at: z.enum(['center', 'first', 'last']).default('center') }),
     run(ctx, p) {
       const { edit, mesh } = requireEdit(docState(ctx));
@@ -480,7 +483,7 @@ export const meshCommands = [
     description:
       'Weld vertices that are closer than `distance` meters to each other, removing doubled vertices, collapsed faces and duplicate faces. ' +
       'Works on the selected vertices, or on the whole mesh if nothing is selected. ' +
-      `Returns \`removedVertices\`. ${afterwards} the remaining vertices of the previous selection.`,
+      `Returns \`removedVertices\`. ${afterwards} the remaining vertices of the previous selection. The remaining faces keep their UVs.`,
     params: z.object({ distance: z.number().min(0).default(0.0001) }),
     run(ctx, p) {
       const { edit, mesh } = requireEdit(docState(ctx));
@@ -500,7 +503,7 @@ export const meshCommands = [
       'Delete the selected elements. `kind` says what to delete and defaults to the current element mode: ' +
       "'faces' removes just the selected faces (leaving a hole), 'vertices' / 'edges' remove the selected vertices / edges together with every face that uses them. " +
       'The selection is converted to `kind` first. Vertices that no face uses any more are removed. ' +
-      `${afterwards} empty. A hole can be closed again with mesh.fill.`,
+      `${afterwards} empty. A hole can be closed again with mesh.fill. The remaining faces keep their UVs.`,
     params: z.object({ kind: z.enum(['vertices', 'edges', 'faces']).optional() }),
     run(ctx, p) {
       const { edit, mesh } = requireEdit(docState(ctx));
@@ -524,7 +527,7 @@ export const meshCommands = [
       'Applied in the order scale, rotate, translate. `translate` is an offset in meters, `rotate` Euler XYZ angles in degrees, `scale` a factor per axis. ' +
       'Rotation and scaling happen about `pivot`, which defaults to the centre of the bounding box of the selected vertices ' +
       '(so scale [0.5,0.5,0.5] shrinks a face in place, scale [1,0,1] flattens the selection in Y). ' +
-      'The topology and the selection do not change.',
+      'The topology, the selection and the UVs do not change.',
     params: z.object({
       translate: vec3.optional(),
       rotate: vec3.optional().describe('Euler XYZ in degrees'),
@@ -545,7 +548,7 @@ export const meshCommands = [
     title: 'Normalen umkehren',
     description:
       'Flip the selected faces so that they face the other way (reverses their vertex order). With nothing selected, all faces are flipped. ' +
-      'Use it when faces look dark or inside out. The selection does not change.',
+      'Use it when faces look dark or inside out. The selection does not change; UVs are kept.',
     params: z.object({}),
     run(ctx) {
       const { edit, mesh } = requireEdit(docState(ctx));
@@ -562,7 +565,7 @@ export const meshCommands = [
       'or in vertex mode its vertices; the face follows that loop and is oriented like its neighbours. ' +
       'An open chain of edges also works: the face closes it with one new edge. ' +
       'Fails with an explanation if the selection is not one loop or one chain of open edges. ' +
-      `${afterwards} the new face.`,
+      `${afterwards} the new face. ${dropsUvs}`,
     params: z.object({}),
     run(ctx) {
       const { edit, mesh } = requireEdit(docState(ctx));

@@ -6,6 +6,7 @@ export const polyMeshSchema = z
   .object({
     positions: z.array(z.number().finite()),
     faces: z.array(z.array(z.number().int().nonnegative()).min(3)),
+    uvs: z.array(z.array(z.number().finite())).optional(),
   })
   .superRefine((m, ctx) => {
     if (m.positions.length % 3 !== 0) {
@@ -17,6 +18,15 @@ export const polyMeshSchema = z
       if (face.some((i) => i >= count)) {
         ctx.addIssue({ code: 'custom', message: 'face references a vertex that does not exist' });
         return;
+      }
+    }
+    if (m.uvs) {
+      if (m.uvs.length !== m.faces.length) {
+        ctx.addIssue({ code: 'custom', message: 'uvs must have one entry per face' });
+        return;
+      }
+      if (m.uvs.some((uv, f) => uv.length !== m.faces[f].length * 2)) {
+        ctx.addIssue({ code: 'custom', message: 'uvs must hold two numbers per face corner' });
       }
     }
   });
@@ -45,10 +55,12 @@ export interface TriangleSoup {
   normals: Float32Array;
   /** Maps each triangle to the index of the face it came from. */
   triToFace: Uint32Array;
+  /** Texture coordinates, 6 floats per triangle (u, v per corner, same corner order as positions). Only if the mesh has UVs. */
+  uvs?: Float32Array;
 }
 
 /** Newell vector of a face: its direction is the face normal, its length twice the face area. */
-function newell(p: readonly number[], face: readonly number[]): Vec3 {
+export function newell(p: readonly number[], face: readonly number[]): Vec3 {
   let nx = 0;
   let ny = 0;
   let nz = 0;
@@ -73,7 +85,7 @@ function signedArea(p: readonly number[], a: number, b: number, c: number, n: Ve
   return (uy * vz - uz * vy) * n[0] + (uz * vx - ux * vz) * n[1] + (ux * vy - uy * vx) * n[2];
 }
 
-/** Ear clipping of a face projected onto its plane (normal `n`, not necessarily unit). Appends vertex index triples. */
+/** Ear clipping of a face projected onto its plane (normal `n`, not necessarily unit). Appends corner index triples. */
 function earClip(p: readonly number[], face: readonly number[], n: Vec3, out: number[]): void {
   // 2D coordinates in a basis (u, v) with u x v = n, so the polygon is counter-clockwise.
   const len = Math.hypot(n[0], n[1], n[2]) || 1;
@@ -123,20 +135,21 @@ function earClip(p: readonly number[], face: readonly number[], n: Vec3, out: nu
     if (ear === -1) ear = 0;
     const a = rest[(ear + rest.length - 1) % rest.length];
     const c = rest[(ear + 1) % rest.length];
-    out.push(face[a], face[rest[ear]], face[c]);
+    out.push(a, rest[ear], c);
     rest.splice(ear, 1);
   }
-  out.push(face[rest[0]], face[rest[1]], face[rest[2]]);
+  out.push(rest[0], rest[1], rest[2]);
 }
 
 /**
- * Splits one face into triangles (appended to `out` as vertex index triples), keeping the winding.
- * Convex faces are fanned from their first vertex; concave ones are ear clipped in the face plane.
+ * Splits one face into triangles, appended to `out` as triples of corner indices (positions within
+ * `face`), keeping the winding. Convex faces are fanned from their first vertex; concave ones are
+ * ear clipped in the face plane.
  */
-export function triangulateFace(mesh: PolyMesh, face: readonly number[], out: number[]): void {
+export function triangulateFaceCorners(mesh: PolyMesh, face: readonly number[], out: number[]): void {
   const count = face.length;
   if (count === 3) {
-    out.push(face[0], face[1], face[2]);
+    out.push(0, 1, 2);
     return;
   }
   const p = mesh.positions;
@@ -147,13 +160,20 @@ export function triangulateFace(mesh: PolyMesh, face: readonly number[], out: nu
   let fan = true;
   for (let i = 1; i < count - 1 && fan; i++) fan = signedArea(p, face[0], face[i], face[i + 1], n) >= tolerance;
   if (fan) {
-    for (let i = 1; i < count - 1; i++) out.push(face[0], face[i], face[i + 1]);
+    for (let i = 1; i < count - 1; i++) out.push(0, i, i + 1);
   } else if (count === 4) {
     // Concave quad with the reflex corner at vertex 1 or 3: use the other diagonal.
-    out.push(face[1], face[2], face[3], face[1], face[3], face[0]);
+    out.push(1, 2, 3, 1, 3, 0);
   } else {
     earClip(p, face, n, out);
   }
+}
+
+/** Like `triangulateFaceCorners`, but appends vertex index triples. */
+export function triangulateFace(mesh: PolyMesh, face: readonly number[], out: number[]): void {
+  const start = out.length;
+  triangulateFaceCorners(mesh, face, out);
+  for (let i = start; i < out.length; i++) out[i] = face[out[i]];
 }
 
 /**
@@ -166,6 +186,7 @@ export function triangulate(mesh: PolyMesh, smooth = false): TriangleSoup {
   const positions = new Float32Array(triCount * 9);
   const normals = new Float32Array(triCount * 9);
   const triToFace = new Uint32Array(triCount);
+  const uvs = mesh.uvs ? new Float32Array(triCount * 6) : undefined;
   const p = mesh.positions;
 
   let vertexNormals: Float64Array | null = null;
@@ -192,11 +213,16 @@ export function triangulate(mesh: PolyMesh, smooth = false): TriangleSoup {
   const corners: number[] = [];
   mesh.faces.forEach((face, fi) => {
     corners.length = 0;
-    triangulateFace(mesh, face, corners);
+    triangulateFaceCorners(mesh, face, corners);
     const n = vertexNormals ? null : faceNormal(mesh, face);
+    const uv = uvs && mesh.uvs![fi];
     for (let c = 0; c < corners.length; c++) {
-      const src = corners[c] * 3;
+      const src = face[corners[c]] * 3;
       const dst = t * 9 + (c % 3) * 3;
+      if (uv) {
+        uvs[t * 6 + (c % 3) * 2] = uv[corners[c] * 2];
+        uvs[t * 6 + (c % 3) * 2 + 1] = uv[corners[c] * 2 + 1];
+      }
       positions[dst] = p[src];
       positions[dst + 1] = p[src + 1];
       positions[dst + 2] = p[src + 2];
@@ -206,7 +232,7 @@ export function triangulate(mesh: PolyMesh, smooth = false): TriangleSoup {
       if (c % 3 === 2) triToFace[t++] = fi;
     }
   });
-  return { positions, normals, triToFace };
+  return uvs ? { positions, normals, triToFace, uvs } : { positions, normals, triToFace };
 }
 
 /** Unique edges as vertex index pairs [a, b] with a < b. */

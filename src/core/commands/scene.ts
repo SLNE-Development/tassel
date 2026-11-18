@@ -40,6 +40,7 @@ function summary(obj: SceneObject) {
     name: obj.name,
     visible: obj.visible,
     groupId: obj.groupId,
+    materialId: obj.materialId,
     transform: obj.transform,
     ...meshStats(obj.mesh),
   };
@@ -52,7 +53,7 @@ export const sceneCommands = [
     id: 'scene.list_objects',
     title: 'Objekte auflisten',
     description:
-      'List all objects of the active document with transform, mesh statistics and groupId (the group an object is in, null at top level; see group.list for the group tree).',
+      'List all objects of the active document with transform, mesh statistics, groupId (the group an object is in, null at top level; see group.list for the group tree) and materialId (its material or null; see material.list).',
     params: z.object({}),
     run(ctx) {
       const state = docState(ctx);
@@ -64,7 +65,7 @@ export const sceneCommands = [
     id: 'scene.get_object',
     title: 'Objekt abfragen',
     description:
-      'Get one object: transform, groupId (its group or null), base mesh statistics and local bounding box, its modifiers, smooth shading flag, and "evaluated": the statistics of the mesh after all enabled modifiers (what is rendered and exported). "errors" maps modifier ids to the reason why that modifier is currently skipped. Set includeMesh to also get the vertex positions and faces of the base mesh.',
+      'Get one object: transform, groupId (its group or null), materialId (its material or null), base mesh statistics and local bounding box, its modifiers, smooth shading flag, and "evaluated": the statistics of the mesh after all enabled modifiers (what is rendered and exported). "errors" maps modifier ids to the reason why that modifier is currently skipped. Set includeMesh to also get the vertex positions and faces of the base mesh.',
     params: z.object({ id: z.string(), includeMesh: z.boolean().default(false) }),
     async run(ctx, p) {
       // Booleans can only be evaluated once the WASM is there; a load failure shows up in `errors`.
@@ -89,7 +90,7 @@ export const sceneCommands = [
     id: 'scene.add_primitive',
     title: 'Grundkörper hinzufügen',
     description:
-      'Add a primitive mesh object (centered on its origin, Y is up, units are meters) and select it. Pass groupId to put it into an existing group. Returns the new object id.',
+      'Add a primitive mesh object (centered on its origin, Y is up, units are meters) and select it. Pass groupId to put it into an existing group and materialId to give it an existing material. Returns the new object id.',
     params: z.object({
       type: z.enum(primitiveTypes),
       name: z.string().min(1).optional(),
@@ -97,12 +98,14 @@ export const sceneCommands = [
       rotation: vec3.default([0, 0, 0]).describe('Euler XYZ in degrees'),
       scale: vec3.default([1, 1, 1]),
       groupId: z.string().nullable().default(null).describe('Group to add the object to. Default: top level.'),
+      materialId: z.string().nullable().default(null).describe('Material of the object. Default: none.'),
       ...primitiveShape,
     }),
     run(ctx, p) {
-      const { type, name, position, rotation, scale, groupId, ...shape } = p;
+      const { type, name, position, rotation, scale, groupId, materialId, ...shape } = p;
       const state = docState(ctx);
       if (groupId !== null && !state.groups[groupId]) throw new Error(`Group "${groupId}" does not exist`);
+      if (materialId !== null && !state.materials[materialId]) throw new Error(`Material "${materialId}" does not exist`);
       const mesh = createPrimitive(type, shape);
       const obj: SceneObject = {
         id: newId(),
@@ -113,6 +116,7 @@ export const sceneCommands = [
         modifiers: [],
         smooth: false,
         groupId,
+        materialId,
       };
       updateDocState(ctx, (s) => ({
         ...s,
@@ -153,7 +157,7 @@ export const sceneCommands = [
     id: 'scene.duplicate_objects',
     title: 'Objekte duplizieren',
     description:
-      'Duplicate objects (defaults to the current selection) and select the copies. Each copy stays in the group of its original. Returns the new ids.',
+      'Duplicate objects (defaults to the current selection) and select the copies. Each copy stays in the group of its original and shares its material. Returns the new ids.',
     params: z.object({ ids: idsParam, offset: vec3.default([0, 0, 0]).describe('Translation applied to the copies') }),
     run(ctx, p) {
       const state = docState(ctx);

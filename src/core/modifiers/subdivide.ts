@@ -14,6 +14,7 @@ interface EdgeInfo {
  * Boundary edges and vertices follow the cubic B-spline curve rules, so open borders keep their
  * outline; edges with more than two faces are treated like boundaries (creases).
  * Result vertices: the original ones (moved), then one per edge, then one per face.
+ * UVs are interpolated linearly within each face (per face corner), so UV seams stay where they are.
  */
 function catmullClarkStep(mesh: PolyMesh): PolyMesh {
   const src = mesh.positions;
@@ -86,16 +87,32 @@ function catmullClarkStep(mesh: PolyMesh): PolyMesh {
   }
 
   const faces: number[][] = [];
+  const uvs: number[][] | undefined = mesh.uvs ? [] : undefined;
   mesh.faces.forEach((face, fi) => {
     const n = face.length;
+    const uv = mesh.uvs?.[fi];
+    let centreU = 0;
+    let centreV = 0;
+    if (uv) {
+      for (let i = 0; i < n; i++) {
+        centreU += uv[i * 2] / n;
+        centreV += uv[i * 2 + 1] / n;
+      }
+    }
     for (let i = 0; i < n; i++) {
       const v = face[i];
       const next = edges.get(edgeKey(v, face[(i + 1) % n]))!.point;
       const prev = edges.get(edgeKey(face[(i + n - 1) % n], v))!.point;
       faces.push([v, next, faceOffset + fi, prev]);
+      if (uv) {
+        const [u0, v0] = [uv[i * 2], uv[i * 2 + 1]];
+        const j = ((i + 1) % n) * 2;
+        const k = ((i + n - 1) % n) * 2;
+        uvs!.push([u0, v0, (u0 + uv[j]) / 2, (v0 + uv[j + 1]) / 2, centreU, centreV, (uv[k] + u0) / 2, (uv[k + 1] + v0) / 2]);
+      }
     }
   });
-  return { positions: out, faces };
+  return uvs ? { positions: out, faces, uvs } : { positions: out, faces };
 }
 
 export function subdivide(mesh: PolyMesh, levels: number): PolyMesh {

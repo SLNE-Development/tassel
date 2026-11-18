@@ -28,7 +28,7 @@ function rotationMatrix([rx, ry, rz]: Vec3): number[] {
   ];
 }
 
-/** Moves the given vertices: scaled, then rotated (both about the pivot), then translated. Keeps the selection. */
+/** Moves the given vertices: scaled, then rotated (both about the pivot), then translated. Keeps the selection and the UVs. */
 export function transformVertices(mesh: PolyMesh, vertices: readonly number[], t: VertexTransform): MeshOpResult {
   const list = [...new Set(vertices)];
   if (list.length === 0) throw new Error('Select at least one vertex to transform');
@@ -49,5 +49,5 @@ export function transformVertices(mesh: PolyMesh, vertices: readonly number[], t
     positions[v * 3 + 1] = m[3] * x + m[4] * y + m[5] * z + pivot[1] + move[1] + 0;
     positions[v * 3 + 2] = m[6] * x + m[7] * y + m[8] * z + pivot[2] + move[2] + 0;
   }
-  return { mesh: { positions, faces: mesh.faces }, vertices: list };
+  return { mesh: mesh.uvs ? { positions, faces: mesh.faces, uvs: mesh.uvs } : { positions, faces: mesh.faces }, vertices: list };
 }

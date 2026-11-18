@@ -23,7 +23,7 @@ export function edgeFaces(mesh: PolyMesh): Map<string, number[]> {
   return map;
 }
 
-/** Drops vertices no face uses. `remap[old]` is the new index, or -1 for removed vertices. */
+/** Drops vertices no face uses (faces and their UVs stay as they are). `remap[old]` is the new index, or -1 for removed vertices. */
 export function compact(mesh: PolyMesh): { mesh: PolyMesh; remap: Int32Array } {
   const count = mesh.positions.length / 3;
   const remap = new Int32Array(count).fill(-1);
@@ -36,5 +36,6 @@ export function compact(mesh: PolyMesh): { mesh: PolyMesh; remap: Int32Array } {
       }
     }
   }
-  return { mesh: { positions, faces: mesh.faces.map((f) => f.map((v) => remap[v])) }, remap };
+  const faces = mesh.faces.map((f) => f.map((v) => remap[v]));
+  return { mesh: mesh.uvs ? { positions, faces, uvs: mesh.uvs } : { positions, faces }, remap };
 }

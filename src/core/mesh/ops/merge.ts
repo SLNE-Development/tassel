@@ -4,7 +4,8 @@ import { add, position, scale, vertexCount, weld } from './util';
 
 /**
  * Merges the given vertices into one. `at`: 'center' = the average of their positions, 'first' /
- * 'last' = the position of the first / last vertex of the list. Faces that collapse are removed.
+ * 'last' = the position of the first / last vertex of the list. Faces that collapse are removed;
+ * the surviving faces keep their UVs.
  * Selects the merged vertex.
  */
 export function mergeVertices(mesh: PolyMesh, vertices: readonly number[], at: 'center' | 'first' | 'last'): MeshOpResult {
@@ -23,7 +24,7 @@ export function mergeVertices(mesh: PolyMesh, vertices: readonly number[], at: '
   positions.splice(keep * 3, 3, ...where);
   const target = Int32Array.from({ length: count }, (_, i) => i);
   for (const v of list) target[v] = keep;
-  const result = weld({ positions, faces: mesh.faces }, target);
+  const result = weld(mesh.uvs ? { positions, faces: mesh.faces, uvs: mesh.uvs } : { positions, faces: mesh.faces }, target);
   return { mesh: result.mesh, vertices: result.remap[keep] === -1 ? [] : [result.remap[keep]] };
 }
 

@@ -10,6 +10,42 @@ export type Vec3 = [number, number, number];
 export interface PolyMesh {
   readonly positions: readonly number[];
   readonly faces: readonly (readonly number[])[];
+  /**
+   * Optional texture coordinates per face corner: `uvs[f]` holds u,v for every corner of `faces[f]`
+   * (length = 2 * faces[f].length), v pointing up. Absent = the mesh has not been unwrapped.
+   */
+  readonly uvs?: readonly (readonly number[])[];
+}
+
+export const textureMimeTypes = ['image/png', 'image/jpeg', 'image/webp'] as const;
+
+/** An image stored inside the document. */
+export interface Texture {
+  readonly id: string;
+  readonly name: string;
+  readonly mimeType: (typeof textureMimeTypes)[number];
+  /** The encoded image file as base64 (no data: prefix). */
+  readonly data: string;
+  readonly width: number;
+  readonly height: number;
+}
+
+export const textureSlots = ['baseColor', 'normal', 'roughness', 'metallic', 'emissive', 'occlusion'] as const;
+export type TextureSlot = (typeof textureSlots)[number];
+
+/** PBR material (metallic-roughness, as in glTF). Colours are #rrggbb in sRGB. */
+export interface Material {
+  readonly id: string;
+  readonly name: string;
+  readonly baseColor: string;
+  readonly metallic: number;
+  readonly roughness: number;
+  readonly emissive: string;
+  readonly emissiveStrength: number;
+  /** Strength of the normal map. */
+  readonly normalScale: number;
+  /** Texture id per slot. Scalar maps (roughness, metallic, occlusion) are read from the image's luminance. */
+  readonly maps: Readonly<Partial<Record<TextureSlot, string>>>;
 }
 
 export interface Transform {
@@ -63,6 +99,8 @@ export interface SceneObject {
   readonly smooth: boolean;
   /** The group this object is filed under, or null at top level. */
   readonly groupId: string | null;
+  /** The object's material (a key of `DocState.materials`), or null for the default clay look. */
+  readonly materialId: string | null;
 }
 
 /**
@@ -100,6 +138,10 @@ export interface DocState {
   readonly groups: Readonly<Record<string, Group>>;
   /** All group ids (exactly the keys of `groups`); siblings are shown in this relative order. */
   readonly groupOrder: readonly string[];
+  /** Materials by id, in no particular order. Unused materials stay until deleted explicitly. */
+  readonly materials: Readonly<Record<string, Material>>;
+  /** Embedded images by id, in no particular order. */
+  readonly textures: Readonly<Record<string, Texture>>;
   readonly selection: readonly string[];
   /** Last selected object; the gizmo attaches to it. Always part of `selection` or null. */
   readonly activeId: string | null;

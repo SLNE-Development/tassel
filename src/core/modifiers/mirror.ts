@@ -4,7 +4,7 @@ import type { PolyMesh } from '../types';
 /**
  * Mirrors across the plane `axis = 0` (0 = x, 1 = y, 2 = z). Vertices within `mergeDistance` of the
  * plane are snapped onto it and shared with the mirrored half; faces lying in the plane are dropped,
- * so an open half becomes a closed mesh.
+ * so an open half becomes a closed mesh. The mirrored half uses the same UVs as the original.
  */
 function mirrorAxis(mesh: PolyMesh, axis: number, mergeDistance: number): PolyMesh {
   const positions = [...mesh.positions];
@@ -21,9 +21,20 @@ function mirrorAxis(mesh: PolyMesh, axis: number, mergeDistance: number): PolyMe
       positions.push(p[0], p[1], p[2]);
     }
   }
-  const kept = mesh.faces.filter((face) => face.some((v) => mirrored[v] !== v));
+  const keep = mesh.faces.map((face) => face.some((v) => mirrored[v] !== v));
+  const kept = mesh.faces.filter((_, f) => keep[f]);
   const faces = [...kept, ...kept.map((face) => face.map((v) => mirrored[v]).reverse())];
-  const result = { positions, faces };
+  let result: PolyMesh = { positions, faces };
+  if (mesh.uvs) {
+    const uvs = mesh.uvs.filter((_, f) => keep[f]);
+    // The mirrored faces run backwards, so their corner UVs do too.
+    const reversed = uvs.map((uv) => {
+      const out: number[] = [];
+      for (let c = uv.length / 2 - 1; c >= 0; c--) out.push(uv[c * 2], uv[c * 2 + 1]);
+      return out;
+    });
+    result = { positions, faces, uvs: [...uvs, ...reversed] };
+  }
   return kept.length === mesh.faces.length ? result : compact(result).mesh;
 }
 

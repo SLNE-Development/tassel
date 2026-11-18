@@ -10,6 +10,8 @@ export const emptyDocState: DocState = {
   order: [],
   groups: {},
   groupOrder: [],
+  materials: {},
+  textures: {},
   selection: [],
   activeId: null,
   edit: null,

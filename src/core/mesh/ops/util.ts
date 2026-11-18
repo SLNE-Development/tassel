@@ -73,6 +73,7 @@ export function boundsCentre(mesh: PolyMesh, vertices: readonly number[]): Vec3 
 /**
  * Drops vertices no face uses. Unlike `compact` in topology.ts the remaining vertices keep their
  * order, so indices only shift down. `remap[old]` is the new index, or -1 for removed vertices.
+ * Faces are not touched, so UVs are carried over.
  */
 export function dropUnused(mesh: PolyMesh): { mesh: PolyMesh; remap: Int32Array } {
   const count = vertexCount(mesh);
@@ -85,20 +86,22 @@ export function dropUnused(mesh: PolyMesh): { mesh: PolyMesh; remap: Int32Array 
     positions.push(mesh.positions[v * 3], mesh.positions[v * 3 + 1], mesh.positions[v * 3 + 2]);
   }
   if (positions.length === mesh.positions.length) return { mesh, remap };
-  return { mesh: { positions, faces: mesh.faces.map((f) => f.map((v) => remap[v])) }, remap };
+  const faces = mesh.faces.map((f) => f.map((v) => remap[v]));
+  return { mesh: mesh.uvs ? { positions, faces, uvs: mesh.uvs } : { positions, faces }, remap };
 }
 
 /**
  * Splits a vertex loop that may visit vertices more than once into simple loops and drops the
  * ones with fewer than three vertices. [a, a, b, c] -> [[a, b, c]]; [x, a, b, x, c, d] -> two triangles.
+ * The loops are returned as corner indices (positions within `loop`), so that per-corner data can follow.
  */
 function simpleLoops(loop: readonly number[]): number[][] {
   const out: number[][] = [];
   const path: number[] = [];
-  for (const v of loop) {
-    const at = path.indexOf(v);
+  for (let corner = 0; corner < loop.length; corner++) {
+    const at = path.findIndex((c) => loop[c] === loop[corner]);
     if (at === -1) {
-      path.push(v);
+      path.push(corner);
       continue;
     }
     // Returned to a vertex of the path: what lies in between is a loop of its own.
@@ -124,10 +127,18 @@ function cycleKey(face: readonly number[]): { key: string; reversed: boolean } {
  * Faces that collapse below three distinct vertices are removed, pinched faces are split, of
  * identical faces one is kept, and two faces lying back to back on the same vertices (they enclose
  * nothing) are both removed. Unused vertices are dropped; `remap[old]` is the new index or -1.
+ * UVs follow the surviving face corners (a welded corner keeps the UV of the first corner welded into it).
  */
 export function weld(mesh: PolyMesh, target: ArrayLike<number>): { mesh: PolyMesh; remap: Int32Array } {
   const candidates: number[][] = [];
-  for (const face of mesh.faces) candidates.push(...simpleLoops(face.map((v) => target[v])));
+  const candidateUvs: number[][] = [];
+  mesh.faces.forEach((face, f) => {
+    const welded = face.map((v) => target[v]);
+    for (const corners of simpleLoops(welded)) {
+      candidates.push(corners.map((c) => welded[c]));
+      if (mesh.uvs) candidateUvs.push(corners.flatMap((c) => [mesh.uvs![f][c * 2], mesh.uvs![f][c * 2 + 1]]));
+    }
+  });
 
   // Per vertex cycle: how many faces use it in each orientation.
   const groups = new Map<string, { forward: number; backward: number; kept: boolean }>();
@@ -139,7 +150,7 @@ export function weld(mesh: PolyMesh, target: ArrayLike<number>): { mesh: PolyMes
     groups.set(key, group);
     return { key, reversed };
   });
-  const faces = candidates.filter((_, i) => {
+  const keep = candidates.map((_, i) => {
     const group = groups.get(keys[i].key)!;
     // Back-to-back pairs cancel out; of what remains keep the first face of the majority orientation.
     if (group.kept || group.forward === group.backward) return false;
@@ -147,8 +158,10 @@ export function weld(mesh: PolyMesh, target: ArrayLike<number>): { mesh: PolyMes
     group.kept = true;
     return true;
   });
+  const faces = candidates.filter((_, i) => keep[i]);
+  const uvs = mesh.uvs && candidateUvs.filter((_, i) => keep[i]);
 
-  const compacted = dropUnused({ positions: mesh.positions, faces });
+  const compacted = dropUnused(uvs ? { positions: mesh.positions, faces, uvs } : { positions: mesh.positions, faces });
   const remap = new Int32Array(vertexCount(mesh));
   for (let v = 0; v < remap.length; v++) remap[v] = compacted.remap[target[v]];
   return { mesh: compacted.mesh, remap };
