@@ -127,6 +127,27 @@ label[for],
   scrollbar-width: none;
 }
 
+/* Tool rail buttons shrink on short windows so the edit-mode tools fit without scrolling. */
+.rail-button {
+  width: 2rem;
+  height: 2rem;
+}
+
+.rail-group {
+  gap: 0.25rem;
+}
+
+@media (max-height: 720px) {
+  .rail-button {
+    width: 1.75rem;
+    height: 1.75rem;
+  }
+
+  .rail-group {
+    gap: 0.125rem;
+  }
+}
+
 /* Drafting-paper dot grid for the placeholder workspaces. */
 .dot-grid {
   background-image: radial-gradient(circle, var(--line) 1px, transparent 1.2px);

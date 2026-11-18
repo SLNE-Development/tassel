@@ -4,6 +4,8 @@ import type { Workspace } from '../core/types';
 import { Viewport } from '../viewport/Viewport';
 import { shortcutLabel } from './actions';
 import { workspaceLabels } from './labels';
+import { LastOpPanel } from './LastOpPanel';
+import { ModeSwitch } from './ModeSwitch';
 
 // Never re-rendered by UI state: it takes no props and its parent passes none.
 const ViewportHost = memo(function ViewportHost() {
@@ -58,7 +60,15 @@ export function Centre() {
     <main className="relative min-h-0 min-w-0 overflow-hidden bg-ink">
       {/* The viewport stays mounted in every workspace so its camera and the screenshot service survive. */}
       <ViewportHost />
-      {workspace === 'modeling' ? <EmptyHint /> : <Placeholder workspace={workspace} />}
+      {workspace === 'modeling' ? (
+        <>
+          <EmptyHint />
+          <ModeSwitch />
+          <LastOpPanel />
+        </>
+      ) : (
+        <Placeholder workspace={workspace} />
+      )}
     </main>
   );
 }

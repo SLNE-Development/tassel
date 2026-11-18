@@ -3,7 +3,7 @@ import { Search } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { execute } from '../app/store';
 import { commands } from '../core/commands';
-import { actions, formatCombo } from './actions';
+import { actions, comboLabel, inEditMode, isAvailable } from './actions';
 import { notifyError, notifyInfo } from './toast';
 import { useUi } from './uiStore';
 
@@ -18,13 +18,14 @@ interface Entry {
 }
 
 function buildEntries(): Entry[] {
+  const edit = inEditMode();
   const fromActions = actions
-    .filter((a) => !a.hidden)
+    .filter((a) => !a.hidden && isAvailable(a))
     .map((a): Entry => ({
       id: a.id,
       title: a.title,
       group: a.group,
-      shortcut: a.keys?.[0] ? formatCombo(a.keys[0]) : undefined,
+      shortcut: comboLabel(a, edit),
       haystack: `${a.title} ${a.group}`.toLowerCase(),
       run: a.run,
     }));

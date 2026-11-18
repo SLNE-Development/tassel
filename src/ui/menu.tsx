@@ -66,13 +66,14 @@ export function RadioActionItem({ id, value, title }: { id: string; value: strin
   );
 }
 
-export function Submenu({ title, children }: { title: string; children: ReactNode }) {
+export function Submenu({ title, icon, shortcut, children }: { title: string; icon?: LucideIcon; shortcut?: string; children: ReactNode }) {
   return (
     <Menu.SubmenuRoot>
       <Menu.SubmenuTrigger className={itemClass}>
-        <Slot />
+        <Slot icon={icon} />
         <span>{title}</span>
-        <ChevronRight size={14} className="ml-auto opacity-60" />
+        <Shortcut label={shortcut} />
+        <ChevronRight size={14} className={`${shortcut ? '-mr-1' : 'ml-auto'} opacity-60`} />
       </Menu.SubmenuTrigger>
       <Menu.Portal>
         <Menu.Positioner side="right" align="start" sideOffset={2} alignOffset={-5} className="z-50 outline-none">

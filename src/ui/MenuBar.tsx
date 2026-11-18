@@ -3,14 +3,15 @@ import { Menubar } from '@base-ui/react/menubar';
 import type { ReactNode } from 'react';
 import { selectActiveDoc, useApp } from '../app/store';
 import { primitiveTypes } from '../core/mesh/primitives';
-import { shadings, viewPresets } from '../core/types';
-import { primitiveLabels, shadingLabels, viewLabels } from './labels';
+import { elementModes, shadings, viewPresets } from '../core/types';
+import { shortcutLabel } from './actions';
+import { elementLabels, meshToolIcons, primitiveLabels, shadingLabels, viewLabels } from './labels';
 import { ActionItem, MenuLabel, MenuPopup, MenuSeparator, RadioActionItem, Submenu } from './menu';
 
-function TopMenu({ title, children }: { title: string; children: ReactNode }) {
+function TopMenu({ title, disabled, children }: { title: string; disabled?: boolean; children: ReactNode }) {
   return (
-    <Menu.Root>
-      <Menu.Trigger className="h-7 rounded-md px-2.5 text-[13px] text-dim outline-none hover:bg-raised hover:text-text focus-visible:bg-raised focus-visible:text-text data-[popup-open]:bg-raised data-[popup-open]:text-text">
+    <Menu.Root disabled={disabled}>
+      <Menu.Trigger className="h-7 rounded-md px-2.5 text-[13px] text-dim outline-none hover:bg-raised hover:text-text focus-visible:bg-raised focus-visible:text-text data-[disabled]:pointer-events-none data-[disabled]:text-faint/60 data-[popup-open]:bg-raised data-[popup-open]:text-text">
         {title}
       </Menu.Trigger>
       <MenuPopup>{children}</MenuPopup>
@@ -25,17 +26,90 @@ function EditItems() {
   const canRedo = useApp((s) => selectActiveDoc(s).future.length > 0);
   const hasSelection = useApp((s) => selectActiveDoc(s).state.selection.length > 0);
   const hasObjects = useApp((s) => selectActiveDoc(s).state.order.length > 0);
+  const editing = useApp((s) => selectActiveDoc(s).state.edit !== null);
   return (
     <>
       <ActionItem id="edit.undo" disabled={!canUndo} />
       <ActionItem id="edit.redo" disabled={!canRedo} />
       <MenuSeparator />
-      <ActionItem id="edit.duplicate" disabled={!hasSelection} />
-      <ActionItem id="edit.delete" disabled={!hasSelection} />
+      <ActionItem id="edit.duplicate" disabled={editing || !hasSelection} />
+      {/* In edit mode these act on the mesh elements, like their shortcuts. */}
+      {editing ? (
+        <>
+          <ActionItem id="mesh.delete" />
+          <MenuSeparator />
+          <ActionItem id="mesh.select_all" />
+          <ActionItem id="mesh.select_none" title="Auswahl aufheben" />
+        </>
+      ) : (
+        <>
+          <ActionItem id="edit.delete" disabled={!hasSelection} />
+          <MenuSeparator />
+          <ActionItem id="edit.select_all" disabled={!hasObjects} />
+          <ActionItem id="edit.deselect" disabled={!hasSelection} />
+        </>
+      )}
       <MenuSeparator />
-      <ActionItem id="edit.select_all" disabled={!hasObjects} />
-      <ActionItem id="edit.deselect" disabled={!hasSelection} />
+      <ActionItem id="mode.toggle" title={editing ? 'Objektmodus' : 'Bearbeitungsmodus'} disabled={!editing && !hasSelection} />
     </>
+  );
+}
+
+export function MergeItems() {
+  return (
+    <>
+      <ActionItem id="mesh.merge_center" title="Mitte" />
+      <ActionItem id="mesh.merge_first" title="Erster" />
+      <ActionItem id="mesh.merge_last" title="Letzter" />
+      <MenuSeparator />
+      <ActionItem id="mesh.merge_by_distance" title="Nach Abstand" />
+    </>
+  );
+}
+
+function MeshItems() {
+  const mode = useApp((s) => selectActiveDoc(s).state.edit?.elementMode);
+  return (
+    <>
+      <ActionItem id="mesh.extrude" icon={meshToolIcons['mesh.extrude']} />
+      <ActionItem id="mesh.inset" icon={meshToolIcons['mesh.inset']} />
+      <ActionItem id="mesh.bevel" icon={meshToolIcons['mesh.bevel']} />
+      <ActionItem id="mesh.loop_cut" icon={meshToolIcons['mesh.loop_cut']} />
+      <ActionItem id="mesh.subdivide" icon={meshToolIcons['mesh.subdivide']} />
+      <Submenu title="Verschmelzen" icon={meshToolIcons['mesh.merge_menu']} shortcut={shortcutLabel('mesh.merge_menu')}>
+        <MergeItems />
+      </Submenu>
+      <ActionItem id="mesh.fill" icon={meshToolIcons['mesh.fill']} />
+      <ActionItem id="mesh.flip_normals" icon={meshToolIcons['mesh.flip_normals']} />
+      <ActionItem id="mesh.delete" icon={meshToolIcons['mesh.delete']} />
+      <MenuSeparator />
+      <Menu.Group>
+        <MenuLabel>Auswählen</MenuLabel>
+        <ActionItem id="mesh.select_all" title="Alles" />
+        <ActionItem id="mesh.select_none" title="Nichts" />
+        <ActionItem id="mesh.select_invert" title="Umkehren" />
+        <ActionItem id="mesh.select_linked" title="Verbundene" />
+        <ActionItem id="mesh.select_more" title="Mehr" />
+        <ActionItem id="mesh.select_less" title="Weniger" />
+      </Menu.Group>
+      <MenuSeparator />
+      <Submenu title="Auswahlmodus">
+        <Menu.RadioGroup value={mode ?? ''}>
+          {elementModes.map((m) => (
+            <RadioActionItem key={m} id={`element.${m}`} value={m} title={elementLabels[m].title} />
+          ))}
+        </Menu.RadioGroup>
+      </Submenu>
+    </>
+  );
+}
+
+function MeshMenu() {
+  const editing = useApp((s) => selectActiveDoc(s).state.edit !== null);
+  return (
+    <TopMenu title="Netz" disabled={!editing}>
+      <MeshItems />
+    </TopMenu>
   );
 }
 
@@ -99,6 +173,7 @@ export function MenuBar() {
       <TopMenu title="Hinzufügen">
         <AddItems />
       </TopMenu>
+      <MeshMenu />
       <TopMenu title="Ansicht">
         <ViewItems />
       </TopMenu>

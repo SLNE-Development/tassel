@@ -4,6 +4,8 @@ import { create } from 'zustand';
 export interface UiState {
   paletteOpen: boolean;
   addMenuOpen: boolean;
+  /** The merge menu of the tool rail (edit mode). */
+  mergeMenuOpen: boolean;
   /** Document waiting for the "unsaved changes" confirmation. */
   closeDocId: string | null;
   quitOpen: boolean;
@@ -14,6 +16,7 @@ export interface UiState {
 export const useUi = create<UiState>(() => ({
   paletteOpen: false,
   addMenuOpen: false,
+  mergeMenuOpen: false,
   closeDocId: null,
   quitOpen: false,
   renamingId: null,

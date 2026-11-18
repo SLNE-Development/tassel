@@ -2,6 +2,9 @@ import { Menu } from '@base-ui/react/menu';
 import { useEffect, useMemo, useState } from 'react';
 import { selectDocState, useApp } from '../app/store';
 import { getMcpStatus, type McpStatus } from '../bridge/mcp';
+import { meshStats } from '../core/mesh/polymesh';
+import type { EditState, PolyMesh } from '../core/types';
+import { elementLabels } from './labels';
 import { itemClass, popupClass } from './menu';
 import { notifyError, notifySuccess } from './toast';
 import { Tip } from './Tip';
@@ -20,6 +23,48 @@ function Selection() {
       <span className="text-text">{activeName}</span>
       {selected > 1 && <span className="text-dim"> und {count(selected - 1, 'weiteres', 'weitere')}</span>}
     </span>
+  );
+}
+
+/** Number of selected and existing elements of the current element mode. */
+export function elementCounts(edit: EditState, mesh: PolyMesh): { selected: number; total: number } {
+  if (edit.elementMode === 'vertex') return { selected: edit.vertices.length, total: mesh.positions.length / 3 };
+  if (edit.elementMode === 'edge') return { selected: edit.edges.length, total: meshStats(mesh).edges };
+  return { selected: edit.faces.length, total: mesh.faces.length };
+}
+
+function Mode() {
+  const edit = useApp((s) => selectDocState(s).edit);
+  const mesh = useApp((s) => {
+    const state = selectDocState(s);
+    return state.edit ? state.objects[state.edit.objectId]?.mesh : undefined;
+  });
+  const name = useApp((s) => {
+    const state = selectDocState(s);
+    return state.edit ? state.objects[state.edit.objectId]?.name : undefined;
+  });
+  const counts = useMemo(() => (edit && mesh ? elementCounts(edit, mesh) : null), [edit, mesh]);
+  if (!edit || !counts) {
+    return (
+      <>
+        <span className="shrink-0 text-dim">Objektmodus</span>
+        <div aria-hidden className="h-3 w-px shrink-0 bg-line-strong" />
+        <Selection />
+      </>
+    );
+  }
+  return (
+    <>
+      <span className="shrink-0 text-accent">Bearbeitungsmodus</span>
+      <div aria-hidden className="h-3 w-px shrink-0 bg-line-strong" />
+      <span className="min-w-0 truncate">
+        <span className="text-text">{name}</span>
+        <span className="tnum text-dim">
+          {' – '}
+          {counts.selected.toLocaleString('de-DE')} von {counts.total.toLocaleString('de-DE')} {elementLabels[edit.elementMode].of(counts.total)} ausgewählt
+        </span>
+      </span>
+    </>
   );
 }
 
@@ -125,8 +170,8 @@ function Mcp() {
 
 export function StatusBar() {
   return (
-    <footer className="flex h-6.5 items-center gap-4 border-t border-line bg-panel pr-2 pl-3 text-[12px]">
-      <Selection />
+    <footer className="flex h-6.5 items-center gap-3 border-t border-line bg-panel pr-2 pl-3 text-[12px]">
+      <Mode />
       <div className="flex-1" />
       <Totals />
       <div aria-hidden className="h-3 w-px shrink-0 bg-line-strong" />

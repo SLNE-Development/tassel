@@ -1,9 +1,15 @@
 import { useMemo, useRef } from 'react';
 import { selectDocState, useApp } from '../app/store';
 import { meshStats } from '../core/mesh/polymesh';
+import { evaluateObject } from '../core/modifiers/evaluate';
 import type { PolyMesh, Transform, Vec3 } from '../core/types';
 import { dispatch, shortcutLabel } from './actions';
+import { Switch } from './controls';
+import { elementLabels } from './labels';
+import { useLiveEdit } from './live';
+import { Modifiers } from './Modifiers';
 import { ScrubField } from './ScrubField';
+import { elementCounts } from './StatusBar';
 
 const axes = [
   { label: 'X', color: 'var(--axis-x)' },
@@ -46,7 +52,13 @@ function NameField({ id, name }: { id: string; name: string }) {
 
 function TransformRows({ id }: { id: string }) {
   const transform = useApp((s) => selectDocState(s).objects[id]?.transform);
+  const live = useLiveEdit();
   if (!transform) return null;
+  const params = (key: keyof Transform, i: number, value: number) => {
+    const next = [...transform[key]] as Vec3;
+    next[i] = value;
+    return { items: [{ id, [key]: next }] };
+  };
   return (
     <div className="flex flex-col gap-2.5">
       {rows.map(({ key, title, unit, step }) => (
@@ -64,11 +76,9 @@ function TransformRows({ id }: { id: string }) {
                 color={axis.color}
                 value={transform[key][i]}
                 step={step}
-                onCommit={(value) => {
-                  const next = [...transform[key]] as Vec3;
-                  next[i] = value;
-                  void dispatch('scene.set_transform', { items: [{ id, [key]: next }] });
-                }}
+                onCommit={(value) => void dispatch('scene.set_transform', params(key, i, value))}
+                onScrub={(value) => live.scrub('scene.set_transform', params(key, i, value))}
+                onScrubEnd={live.end}
               />
             ))}
           </div>
@@ -98,19 +108,72 @@ function MeshStats({ mesh }: { mesh: PolyMesh }) {
   );
 }
 
+/** What the modifiers make of the mesh, when they change it. */
+function EvaluatedStats({ id, mesh }: { id: string; mesh: PolyMesh }) {
+  const evaluated = useApp((s) => (selectDocState(s).objects[id] ? evaluateObject(selectDocState(s), id).mesh : mesh));
+  if (evaluated === mesh) return null;
+  const n = (value: number) => value.toLocaleString('de-DE');
+  return (
+    <div className="mt-2 text-[12.5px]">
+      <div className="mb-1 text-[12px] text-faint">Mit Modifikatoren</div>
+      <dl className="grid grid-cols-2 gap-x-4">
+        {(
+          [
+            ['Eckpunkte', evaluated.positions.length / 3],
+            ['Flächen', evaluated.faces.length],
+          ] as const
+        ).map(([title, count]) => (
+          <div key={title} className="flex items-baseline justify-between">
+            <dt className="text-dim">{title}</dt>
+            <dd className="tnum text-text">{n(count)}</dd>
+          </div>
+        ))}
+      </dl>
+    </div>
+  );
+}
+
+/** Edit mode: how much of the mesh is selected. */
+function ElementSelection({ mesh }: { mesh: PolyMesh }) {
+  const edit = useApp((s) => selectDocState(s).edit);
+  const counts = useMemo(() => (edit ? elementCounts(edit, mesh) : null), [edit, mesh]);
+  if (!edit || !counts) return null;
+  return (
+    <div className="flex items-baseline justify-between rounded-md bg-ink px-2 py-1.5 text-[12.5px] ring-1 ring-line ring-inset">
+      <span className="text-dim">Ausgewählt</span>
+      <span className="tnum">
+        <span className={counts.selected ? 'text-accent' : 'text-text'}>{counts.selected.toLocaleString('de-DE')}</span>
+        <span className="text-faint"> von </span>
+        <span className="text-text">
+          {counts.total.toLocaleString('de-DE')} {elementLabels[edit.elementMode].of(counts.total)}
+        </span>
+      </span>
+    </div>
+  );
+}
+
 function ObjectProperties({ id }: { id: string }) {
   const name = useApp((s) => selectDocState(s).objects[id]?.name ?? '');
   const mesh = useApp((s) => selectDocState(s).objects[id]?.mesh);
+  const smooth = useApp((s) => selectDocState(s).objects[id]?.smooth ?? false);
+  const editing = useApp((s) => selectDocState(s).edit !== null);
   return (
     <div className="flex flex-col gap-4 px-3 pb-4">
       <NameField id={id} name={name} />
-      <TransformRows id={id} />
+      {/* The transform belongs to object mode; edit mode shows what is selected in the mesh instead. */}
+      {editing ? mesh && <ElementSelection mesh={mesh} /> : <TransformRows id={id} />}
       {mesh && (
         <div>
           <h3 className="mb-1.5 border-t border-line pt-3 text-[12px] font-semibold text-dim">Netz</h3>
           <MeshStats mesh={mesh} />
+          <EvaluatedStats id={id} mesh={mesh} />
+          <div className="mt-2.5 flex items-center justify-between">
+            <span className="text-[12.5px] text-dim">Glätten</span>
+            <Switch label="Glätten" checked={smooth} onChange={(next) => void dispatch('scene.set_smooth', { ids: [id], smooth: next })} />
+          </div>
         </div>
       )}
+      <Modifiers id={id} />
     </div>
   );
 }
