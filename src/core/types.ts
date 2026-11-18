@@ -280,8 +280,76 @@ export interface ImportService {
   import(file: { format: ImportFormat; name: string; base64?: string; text?: string }): Promise<ImportedScene>;
 }
 
+/** One point of a brush stroke: texture coordinates (v up, 0..1) and optional pen pressure (0..1, default 1). */
+export type StrokePoint = readonly [u: number, v: number, pressure?: number];
+/** Stroke points as functions take them: `StrokePoint[]` and plain `number[][]` (as parsed from JSON) both fit. */
+export type StrokePoints = readonly (readonly (number | undefined)[])[];
+
+/** The brush of `paint.stroke` (see the command for the exact meaning of each value). */
+export interface PaintBrush {
+  /** #rrggbb (sRGB). Ignored when erasing. */
+  readonly color: string;
+  /** Diameter in texture pixels at pressure 1. */
+  readonly size: number;
+  /** 0..1, applied to the stroke as a whole. */
+  readonly opacity: number;
+  /** 1 = hard edge, 0 = soft from the centre. */
+  readonly hardness: number;
+  /** Stamp distance as a fraction of the diameter. */
+  readonly spacing: number;
+  /** Remove alpha instead of painting. */
+  readonly erase: boolean;
+}
+
+/**
+ * Pixel work for the paint commands (core itself never touches pixels). Implemented by src/imaging,
+ * registered at startup. Every PNG is base64 without a data: prefix, 8-bit RGBA, not premultiplied.
+ * All methods throw an Error with a clear English message when an image cannot be read or is too large.
+ */
+export interface ImagingService {
+  /** A PNG of the given size: one opaque colour (#rrggbb), or fully transparent for null. */
+  blank(width: number, height: number, color: string | null): Promise<string>;
+  /** The texture's image as a PNG of exactly `texture.width` x `texture.height` (returns `texture.data` itself if it already is one). */
+  baseLayer(texture: Texture): Promise<string>;
+  /**
+   * Paints the stroke into one layer of a layered texture. `flattened` is the same string as `layer` when the two images are identical.
+   * `breaks`: indices into `points` at which a new polyline of the same stroke starts (not connected to the point before).
+   */
+  stroke(texture: Texture, layerId: string, brush: PaintBrush, points: StrokePoints, breaks?: readonly number[]): Promise<{ layer: string; flattened: string }>;
+  /** Fills one layer with the colour at `opacity` (1 replaces every pixel). */
+  fill(texture: Texture, layerId: string, color: string, opacity: number): Promise<{ layer: string; flattened: string }>;
+  /** The visible layers (bottom first) composited onto transparency. */
+  flatten(width: number, height: number, layers: readonly PaintLayer[]): Promise<string>;
+  /** `upper` (with its opacity and blend mode) composited onto the pixels of `lower`. */
+  mergeDown(width: number, height: number, lower: PaintLayer, upper: PaintLayer): Promise<string>;
+  /** Tangent-space normal map (OpenGL convention) from the image's luminance as height. */
+  normalFromHeight(texture: Texture, strength: number, invert: boolean): Promise<string>;
+}
+
+/** What a bake computes; see the bake.* commands for the meaning of the fields. */
+export type BakeRequest =
+  | { type: 'normal'; targetId: string; sourceIds: readonly string[]; size: number; maxDistance?: number }
+  | { type: 'ao'; targetId: string; includeIds: readonly string[]; size: number; samples: number; distance?: number };
+
+export interface BakeOutput {
+  /** The baked image as a PNG of `size` x `size` pixels, base64 without a data: prefix. */
+  data: string;
+  /** Normal: share (0..1) of the target's texels that found a source surface. Ambient occlusion: 1. */
+  coverage: number;
+  /** The ray length that was used (the request's, or the default derived from the geometry). */
+  distance: number;
+}
+
+/** Implemented by src/bake (in a worker), registered at startup. */
+export interface BakeService {
+  /** Bakes from the evaluated meshes of `state`. Rejects with a clear English message, also when the bake is cancelled. */
+  bake(state: DocState, request: BakeRequest): Promise<BakeOutput>;
+}
+
 export interface Services {
   viewport: ViewportService | null;
   exporter: ExportService | null;
   importer?: ImportService | null;
+  imaging?: ImagingService | null;
+  baker?: BakeService | null;
 }

@@ -1,12 +1,11 @@
 import { memo } from 'react';
 import { selectDocState, useApp } from '../app/store';
-import type { Workspace } from '../core/types';
 import { useT } from '../i18n';
 import { Viewport } from '../viewport/Viewport';
 import { shortcutLabel } from './actions';
-import { workspaceIcons } from './labels';
 import { LastOpPanel } from './LastOpPanel';
 import { ModeSwitch } from './ModeSwitch';
+import { PaintHint, PaintOptions } from './paint/PaintOptions';
 import { SplitDivider } from './uv/SplitDivider';
 import { UvEditor } from './uv/UvEditor';
 import { UvOverlays } from './uv/UvMenu';
@@ -42,23 +41,6 @@ function EmptyHint() {
   );
 }
 
-function Placeholder({ workspace }: { workspace: Exclude<Workspace, 'modeling' | 'uv'> }) {
-  const t = useT();
-  const info = t.viewport.upcoming[workspace];
-  const title = t.workspaces[workspace];
-  const Icon = workspaceIcons[workspace];
-  return (
-    <div className="dot-grid absolute inset-0 flex items-center justify-center bg-ink p-6">
-      <div className="flex max-w-xs flex-col items-center text-center">
-        <Icon size={28} strokeWidth={1.25} className="text-faint" />
-        <h2 className="mt-4 font-display text-[calc(22px*var(--font-scale))] leading-tight font-semibold text-text">{title}</h2>
-        <p className="mt-1 text-[calc(13px*var(--font-scale))] text-accent">{info.phase}</p>
-        <p className="mt-3 text-[calc(13px*var(--font-scale))] leading-relaxed text-dim">{info.text} {t.viewport.untilThen}</p>
-      </div>
-    </div>
-  );
-}
-
 export function Centre() {
   const workspace = useApp((s) => s.workspace);
   const split = useUvUi((s) => s.split);
@@ -75,7 +57,13 @@ export function Centre() {
         {/* The viewport stays mounted in every workspace so its camera and the screenshot service survive. */}
         <ViewportHost />
         {workspace === 'modeling' && <EmptyHint />}
-        {workspace !== 'paint' && (
+        {workspace === 'paint' ? (
+          // The 3D view is the canvas; the brush options float over it.
+          <>
+            <PaintOptions />
+            <PaintHint />
+          </>
+        ) : (
           <>
             <ModeSwitch />
             <LastOpPanel />
@@ -83,7 +71,6 @@ export function Centre() {
         )}
       </div>
       {uv && <SplitDivider />}
-      {workspace === 'paint' && <Placeholder workspace={workspace} />}
       <UvOverlays />
     </main>
   );

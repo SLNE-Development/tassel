@@ -2,6 +2,7 @@ import { Toast } from '@base-ui/react/toast';
 import { Tooltip } from '@base-ui/react/tooltip';
 import { useT } from '../i18n';
 import { Centre } from './Centre';
+import { BakeDialog } from './bake/BakeDialog';
 import { CommandPalette } from './CommandPalette';
 import { Dialogs } from './Dialogs';
 import { Outliner } from './Outliner';
@@ -36,6 +37,7 @@ export function App() {
         <CommandPalette />
         <Dialogs />
         <Preferences />
+        <BakeDialog />
         <Toasts />
       </Tooltip.Provider>
     </Toast.Provider>

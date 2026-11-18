@@ -1,5 +1,6 @@
 // Pure helpers for materials and textures (see `Material` / `Texture` in types.ts).
 import { z } from 'zod';
+import { base64ImageSize } from './imageInfo';
 import { textureSlots } from './types';
 import type { Material, SceneObject, Texture, TextureSlot } from './types';
 
@@ -23,7 +24,7 @@ export const materialFields = {
   normalScale: z.number().min(0).max(10).describe('Strength of the normal map'),
 };
 
-function colorSchema(label: string) {
+export function colorSchema(label: string) {
   return z
     .string()
     .regex(/^#[0-9a-fA-F]{6}$/, 'Colour must be #rrggbb')
@@ -72,6 +73,20 @@ export function textureDataProblem(mimeType: Texture['mimeType'], data: string):
   if (data.length > MAX_TEXTURE_BASE64) return 'tooLarge';
   if (data.length % 4 !== 0 || !/^[A-Za-z0-9+/]*={0,2}$/.test(data)) return 'notBase64';
   return hasSignature(mimeType, leadingBytes(data, 12)) ? null : 'signature';
+}
+
+/**
+ * Compares the declared pixel size of a texture with the size in its image file header, so a file cannot
+ * claim to be small and decode huge. Returns null if they agree, the header's size if they differ, or
+ * 'unreadable' if the header has no size. Swapped sides are accepted: decoders rotate photos by their EXIF
+ * orientation, the header does not.
+ */
+export function textureSizeProblem(data: string, width: number, height: number): { width: number; height: number } | 'unreadable' | null {
+  const header = base64ImageSize(data);
+  if (!header) return 'unreadable';
+  const same = header.width === width && header.height === height;
+  const rotated = header.width === height && header.height === width;
+  return same || rotated ? null : header;
 }
 
 /** Size of the encoded image file in bytes. */

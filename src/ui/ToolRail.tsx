@@ -7,6 +7,7 @@ import { getAction, runAction, shortcutLabel } from './actions';
 import { meshToolIcons, shadingIcons, toolIcons } from './labels';
 import { MenuPopup } from './menu';
 import { AddItems, MergeItems } from './MenuBar';
+import { PaintRail } from './paint/PaintRail';
 import { Tip } from './Tip';
 import { useUi } from './uiStore';
 
@@ -117,13 +118,21 @@ function MeshTools() {
 
 export function ToolRail() {
   const editing = useApp((s) => selectDocState(s).edit !== null);
+  const painting = useApp((s) => s.workspace === 'paint');
   const t = useT();
   return (
     <nav aria-label={t.toolRail.tools} className="no-scrollbar flex flex-col items-center gap-2 overflow-y-auto border-r border-line bg-panel py-2">
-      <Tools />
-      <div aria-hidden className="h-px w-5 shrink-0 bg-line-strong" />
-      {/* Adding an object would leave edit mode, so the rail offers the mesh tools instead. */}
-      {editing ? <MeshTools /> : <AddButton />}
+      {painting ? (
+        // The paint workspace has its own tools; transforming and adding belong to modelling.
+        <PaintRail />
+      ) : (
+        <>
+          <Tools />
+          <div aria-hidden className="h-px w-5 shrink-0 bg-line-strong" />
+          {/* Adding an object would leave edit mode, so the rail offers the mesh tools instead. */}
+          {editing ? <MeshTools /> : <AddButton />}
+        </>
+      )}
       <div className="flex-1" />
       <Shading />
     </nav>

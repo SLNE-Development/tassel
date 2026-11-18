@@ -16,14 +16,32 @@ const ctx: CommandContext = {
   services,
 };
 
+/** The command currently running or queued last; null when idle. */
+let tail: Promise<void> | null = null;
+
 /**
  * Runs a command by id. This is the single entry point for the UI, shortcuts and MCP.
  * Rejects with an Error (invalid params, unknown object, ...) that callers should show to the user.
+ *
+ * Commands run one at a time: while an asynchronous command (painting, baking, import) is still
+ * working, later commands wait for it. Undo history is recorded by comparing the state before and
+ * after a command, which is only correct if no other command changes the state in between.
+ * When nothing is running, the command starts synchronously as before.
  */
 export function execute(id: string, params?: unknown): Promise<unknown> {
   const def = commandsById.get(id);
   if (!def) return Promise.reject(new Error(`Unknown command "${id}"`));
-  return runCommand(def, ctx, params);
+  const start = () => runCommand(def, ctx, params);
+  const result = tail ? tail.then(start) : start();
+  const settled: Promise<void> = result.then(
+    () => undefined,
+    () => undefined,
+  );
+  tail = settled;
+  void settled.then(() => {
+    if (tail === settled) tail = null;
+  });
+  return result;
 }
 
 export const selectActiveDoc = (app: AppState): Doc => activeDoc(app);

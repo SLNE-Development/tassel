@@ -1,8 +1,9 @@
 import { z } from 'zod';
-import { MAX_TEXTURE_BASE64, MAX_TEXTURE_SIZE, textureBytes, textureDataProblem, textureUsers } from '../materials';
+import { MAX_TEXTURE_BASE64, MAX_TEXTURE_SIZE, textureBytes, textureDataProblem, textureSizeProblem, textureUsers } from '../materials';
 import { newId, own, uniqueName } from '../state';
 import { textureMimeTypes, textureSlots } from '../types';
 import type { DocState, Texture } from '../types';
+import { requirePaintable } from './paint';
 import { defineCommand, docState, updateDocState } from './registry';
 
 function requireTexture(state: DocState, id: string): Texture {
@@ -55,6 +56,12 @@ export const textureCommands = [
       }
       if (problem === 'notBase64') throw new Error('Texture data is not valid base64 (expected the padded standard alphabet without a data: prefix)');
       if (problem === 'signature') throw new Error(`Texture data is not a ${p.mimeType} file (wrong file signature)`);
+      // The size comes from the caller; the file header must agree, or a small declared size could hide a huge image.
+      const header = textureSizeProblem(p.data, p.width, p.height);
+      if (header === 'unreadable') throw new Error(`Texture data has no readable image size in its ${p.mimeType} header (damaged file?)`);
+      if (header) {
+        throw new Error(`Texture size does not match the image: the file header says ${header.width} x ${header.height} pixels, not ${p.width} x ${p.height}`);
+      }
       const state = docState(ctx);
       // The data string is stored as given; all history states share this one texture object.
       const texture: Texture = {
@@ -106,6 +113,45 @@ export const textureCommands = [
       const name = uniqueName(textureNames(state, p.id), p.name);
       updateDocState(ctx, (s) => ({ ...s, textures: { ...s.textures, [p.id]: { ...s.textures[p.id], name } } }));
       return { id: p.id, name };
+    },
+  }),
+
+  defineCommand({
+    id: 'texture.normal_from_height',
+    title: 'Normal-Map aus Höhe',
+    description:
+      'Create a tangent-space normal map from a height map: a new PNG texture of the same size, computed from the luminance of the source texture (white = high; invert makes black high) with a Sobel filter that wraps around at the borders, so tiling heights stay tiling. OpenGL convention (green = +v), as glTF and the viewport use. strength scales the slopes (default 2; higher = bumpier). With materialId the result is put into the normal slot of that material (normalScale of the material sets its strength there). The source (at most 8192 x 8192 pixels) is left unchanged. Returns the new texture { id, name }.',
+    params: z.object({
+      sourceId: z.string().describe('Id of the height texture'),
+      strength: z.number().min(0).max(100).default(2),
+      invert: z.boolean().default(false),
+      name: z.string().min(1).optional().describe('Default: "<source name> normal"'),
+      materialId: z.string().optional(),
+    }),
+    async run(ctx, p) {
+      if (!ctx.services.imaging) throw new Error('The imaging service is not ready yet');
+      const source = requirePaintable(docState(ctx), p.sourceId);
+      const requireMaterial = () => {
+        if (p.materialId !== undefined && !own(docState(ctx).materials, p.materialId)) throw new Error(`Material "${p.materialId}" does not exist`);
+      };
+      requireMaterial();
+      const data = await ctx.services.imaging.normalFromHeight(source, p.strength, p.invert);
+      requireMaterial();
+      const texture: Texture = {
+        id: newId(),
+        name: uniqueName(textureNames(docState(ctx)), p.name ?? `${source.name} normal`),
+        mimeType: 'image/png',
+        data,
+        width: source.width,
+        height: source.height,
+      };
+      updateDocState(ctx, (s) => {
+        const next = { ...s, textures: { ...s.textures, [texture.id]: texture } };
+        if (p.materialId === undefined) return next;
+        const material = s.materials[p.materialId];
+        return { ...next, materials: { ...s.materials, [material.id]: { ...material, maps: { ...material.maps, normal: texture.id } } } };
+      });
+      return { id: texture.id, name: texture.name };
     },
   }),
 

@@ -44,6 +44,16 @@ const slotBinding: Record<TextureSlot, { property: MapProperty; color: boolean }
   occlusion: { property: 'aoMap', color: false },
 };
 
+/** Textures that are being painted show their live pixels instead of their decoded image; see paintView.ts. */
+export interface PaintedTextures {
+  /** The live GPU texture for a document texture, or null to show its own image. */
+  liveTexture(texture: Texture, color: boolean): GpuTexture | null;
+  /** A GPU texture with exactly this document texture's pixels, to show while its image is being decoded. */
+  standIn(texture: Texture, color: boolean): GpuTexture | null;
+  /** A texture to show as this material's base colour while its height texture is painted. */
+  heightPreview(materialId: string): GpuTexture | null;
+}
+
 interface Decoded {
   /** Null while decoding (or if the image could not be decoded). */
   bitmap: ImageBitmap | null;
@@ -125,6 +135,8 @@ export class SurfaceMaterials {
   private sweptDocs: AppState['docs'] | null = null;
   /** Intensity of the hemisphere light without the environment. */
   private ambientIntensity: number | null = null;
+  /** Set by the engine: the paint workspace's live textures. */
+  paint: PaintedTextures | null = null;
 
   /** `onLoad` is called when a texture has been decoded and the scene should be drawn again. */
   constructor(private readonly onLoad: () => void) {
@@ -193,7 +205,16 @@ export class SurfaceMaterials {
         const { property, color } = slotBinding[slot];
         const id = source.maps[slot];
         const texture = id === undefined ? undefined : textures[id];
-        const next = texture ? this.gpuTexture(texture, color) : null;
+        let next = texture ? this.gpuTexture(texture, color) : null;
+        if (slot === 'baseColor') {
+          const height = this.paint?.heightPreview(source.id);
+          if (height) {
+            // Shown untinted; the material's own values come back with the next sync after the preview.
+            next = height;
+            material.color.set('#ffffff');
+            variant.source = null;
+          }
+        }
         const current = material[property];
         if (current === next) continue;
         // A map appearing or going away changes the shader; swapping one image for another does not.
@@ -206,6 +227,8 @@ export class SurfaceMaterials {
 
   /** The GPU texture for a document texture, or null while its image is still being decoded. */
   private gpuTexture(texture: Texture, color: boolean): GpuTexture | null {
+    const live = this.paint?.liveTexture(texture, color);
+    if (live) return live;
     let decoded = this.textures.get(texture);
     if (!decoded) {
       const entry: Decoded = { bitmap: null, srgb: null, linear: null, disposed: false };
@@ -219,7 +242,7 @@ export class SurfaceMaterials {
         (error) => console.error(`Viewport: texture "${texture.name}" could not be decoded`, error),
       );
     }
-    if (!decoded.bitmap) return null;
+    if (!decoded.bitmap) return this.paint?.standIn(texture, color) ?? null;
     const key = color ? 'srgb' : 'linear';
     if (!decoded[key]) {
       const gpu = configure(new GpuTexture(decoded.bitmap), color);

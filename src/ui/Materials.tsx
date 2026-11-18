@@ -5,7 +5,7 @@ import { useMemo, useRef, useState, type DragEvent, type ReactNode } from 'react
 import { execute, selectDocState, useApp } from '../app/store';
 import { textureSlots, type Material, type Texture, type TextureSlot } from '../core/types';
 import { useT } from '../i18n';
-import { dispatch } from './actions';
+import { dispatch, runAction } from './actions';
 import { ColorField, UnitSlider, useLive } from './materialControls';
 import { itemClass, MenuSeparator, popupClass } from './menu';
 import { ScrubField } from './ScrubField';
@@ -348,6 +348,7 @@ function Editor({ objectId, material }: { objectId: string; material: Material }
   const update = (change: Record<string, unknown>) => void dispatch('material.update', { id, ...change });
   const scrub = (change: Record<string, unknown>) => live.scrub('material.update', { id, ...change });
   const hasMaps = Object.keys(material.maps).length > 0;
+  const bakeTitle = useT().bake.open;
 
   return (
     <div className="mt-1.5 flex flex-col gap-1.5 rounded-md bg-raised/45 p-2 ring-1 ring-line ring-inset">
@@ -374,7 +375,12 @@ function Editor({ objectId, material }: { objectId: string; material: Material }
         onScrubEnd={live.end}
       />
 
-      <h4 className="mt-1 border-t border-line pt-2 text-[calc(12px*var(--font-scale))] text-dim">{t.maps}</h4>
+      <div className="mt-1 flex items-center border-t border-line pt-2">
+        <h4 className="text-[calc(12px*var(--font-scale))] text-dim">{t.maps}</h4>
+        <button className="-my-1 ml-auto h-6 rounded-md px-1.5 text-[calc(12px*var(--font-scale))] text-dim hover:bg-raised hover:text-text" onClick={() => void runAction('bake.open')}>
+          {bakeTitle}
+        </button>
+      </div>
       <ul aria-label={t.maps} className="-mx-1 flex flex-col">
         {textureSlots.map((slot) => (
           <SlotRow key={slot} material={material} slot={slot} />

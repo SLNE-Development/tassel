@@ -39,6 +39,14 @@ const JPEG =
   '/9j/2wBDAAMCAgICAgMCAgIDAwMDBAYEBAQEBAgGBgUGCQgKCgkICQkKDA8MCgsOCwkJDRENDg8QEBEQCgwSExIQEw8QEBD/yQALCAABAAEBAREA/8wABgAQEAX/2gAIAQEAAD8A0s8g/9k='; // 1x1, 107 bytes
 const WEBP = 'UklGRhoAAABXRUJQVlA4TA0AAAAvAAAAEAcQERGIiP4HAA=='; // 1x1, 34 bytes
 
+/** The start of a PNG file (signature and header) that says it has the given size. */
+function pngHeader(width: number, height: number): string {
+  const bytes = Buffer.from(PNG, 'base64').subarray(0, 33);
+  bytes.writeUInt32BE(width, 16);
+  bytes.writeUInt32BE(height, 20);
+  return bytes.toString('base64');
+}
+
 const png = (overrides: Record<string, unknown> = {}) => ({ name: 'Holz', mimeType: 'image/png', data: PNG, width: 1, height: 1, ...overrides });
 
 async function add(params: Record<string, unknown> = {}): Promise<string> {
@@ -109,6 +117,7 @@ describe('registration', () => {
       'texture.add',
       'texture.get',
       'texture.list',
+      'texture.normal_from_height',
       'texture.remove',
       'texture.rename',
     ]);
@@ -456,10 +465,29 @@ describe('texture.add', () => {
   });
 
   it('accepts JPEG and WebP and sizes up to the limit', async () => {
-    const j = (await run('texture.add', { name: 'J', mimeType: 'image/jpeg', data: JPEG, width: 16384, height: 16384 })).id;
-    const w = (await run('texture.add', { name: 'W', mimeType: 'image/webp', data: WEBP, width: 1, height: 2 })).id;
-    expect(state().textures[j]).toMatchObject({ mimeType: 'image/jpeg', width: 16384, height: 16384 });
-    expect(state().textures[w]).toMatchObject({ mimeType: 'image/webp', width: 1, height: 2 });
+    const j = (await run('texture.add', { name: 'J', mimeType: 'image/jpeg', data: JPEG, width: 1, height: 1 })).id;
+    const w = (await run('texture.add', { name: 'W', mimeType: 'image/webp', data: WEBP, width: 1, height: 1 })).id;
+    const b = (await run('texture.add', png({ data: pngHeader(16384, 16384), width: 16384, height: 16384 }))).id;
+    expect(state().textures[j]).toMatchObject({ mimeType: 'image/jpeg', width: 1, height: 1 });
+    expect(state().textures[w]).toMatchObject({ mimeType: 'image/webp', width: 1, height: 1 });
+    expect(state().textures[b]).toMatchObject({ mimeType: 'image/png', width: 16384, height: 16384 });
+  });
+
+  it('rejects a declared size that the image file header does not confirm', async () => {
+    const before = app;
+    // A file that claims to be small but would decode huge, and the other way round.
+    await expect(run('texture.add', png({ data: pngHeader(16384, 16384) }))).rejects.toThrow(
+      'Texture size does not match the image: the file header says 16384 x 16384 pixels, not 1 x 1',
+    );
+    await expect(run('texture.add', png({ width: 2 }))).rejects.toThrow(/file header says 1 x 1 pixels, not 2 x 1/);
+    await expect(run('texture.add', { name: 'J', mimeType: 'image/jpeg', data: JPEG, width: 16, height: 16 })).rejects.toThrow(/1 x 1 pixels, not 16 x 16/);
+    await expect(run('texture.add', { name: 'W', mimeType: 'image/webp', data: WEBP, width: 1, height: 2 })).rejects.toThrow(/1 x 1 pixels, not 1 x 2/);
+    // Only the signature, no header to read the size from.
+    await expect(run('texture.add', png({ data: PNG.slice(0, 12) + 'AAAA' }))).rejects.toThrow(/no readable image size/);
+    expect(app).toBe(before);
+    // Photos are stored sideways and rotated by their EXIF orientation when decoded: swapped sides are accepted.
+    await run('texture.add', png({ data: PNG_2X1, width: 1, height: 2 }));
+    await run('texture.add', png({ data: PNG_2X1, width: 2, height: 1 }));
   });
 
   it('makes names unique among textures only', async () => {
@@ -520,7 +548,7 @@ describe('texture.add', () => {
 
   it('rejects data above 64 MB of base64 with a clear error', async () => {
     const before = app;
-    const head = PNG.slice(0, 16);
+    const head = PNG.slice(0, 32); // signature and the header with the size
     const tooLarge = head + 'A'.repeat(MAX_TEXTURE_BASE64 - head.length + 4);
     await expect(run('texture.add', png({ data: tooLarge }))).rejects.toThrow(/too large: 64\.0 MB of base64, the limit is 64\.0 MB/);
     expect(app).toBe(before);

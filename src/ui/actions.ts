@@ -1,10 +1,12 @@
 import { execute, selectDocState, useApp } from '../app/store';
 import { exportFile, importFile, openProject, saveProject } from '../bridge/files';
+import { openBakeDialog } from './bake/bakeStore';
 import { primitiveTypes } from '../core/mesh/primitives';
 import { elementModes, shadings, tools, viewPresets, workspaces, type ExportFormat, type ViewPreset } from '../core/types';
 import { getT, type Dictionary } from '../i18n';
 import { groupSelection, newEmptyGroup, ungroupSelection } from './groupActions';
 import { runOp } from './live';
+import { paintActions } from './paint/paintActions';
 import { notifyError, notifyInfo, notifySuccess } from './toast';
 import { useUi } from './uiStore';
 import { uvActions } from './uv/uvActions';
@@ -31,6 +33,8 @@ export interface Action {
   command?: string;
   /** Not listed in the command palette. */
   hidden?: boolean;
+  /** Further condition for offering the action (palette, shortcuts), e.g. the workspace it belongs to. */
+  available?(): boolean;
   run(): unknown;
 }
 
@@ -50,7 +54,7 @@ const action = ({ title, group, ...rest }: Omit<Action, 'title' | 'group'> & { t
 export const inEditMode = () => selectDocState(useApp.getState()).edit !== null;
 
 /** Whether the action is offered in the current mode. */
-export const isAvailable = (action: Action) => !action.when || action.when === (inEditMode() ? 'edit' : 'object');
+export const isAvailable = (action: Action) => (!action.when || action.when === (inEditMode() ? 'edit' : 'object')) && (action.available?.() ?? true);
 
 function toggleEditMode() {
   const state = selectDocState(useApp.getState());
@@ -155,6 +159,7 @@ export const actions: readonly Action[] = [
   action({ id: 'edit.deselect', when: 'object', title: (t) => t.actions.deselect, group: 'edit', keys: ['Alt+A'], run: () => execute('scene.select', { ids: [] }) }),
   action({ id: 'edit.group', when: 'object', title: (t) => t.grouping.group, group: 'edit', keys: ['Ctrl+G'], command: 'group.create', run: groupSelection }),
   action({ id: 'edit.ungroup', when: 'object', title: (t) => t.grouping.ungroup, group: 'edit', keys: ['Ctrl+Shift+G'], command: 'group.ungroup', run: ungroupSelection }),
+  action({ id: 'bake.open', when: 'object', title: (t) => t.bake.open, group: 'edit', run: openBakeDialog }),
   action({ id: 'edit.new_group', when: 'object', title: (t) => t.grouping.newEmpty, group: 'edit', run: () => newEmptyGroup() }),
 
   // Modus
@@ -196,6 +201,9 @@ export const actions: readonly Action[] = [
 
   // UV
   ...uvActions(action),
+
+  // Malen
+  ...paintActions(action),
 
   // Hinzufügen
   action({ id: 'add.menu', title: (t) => t.actions.addMenu, group: 'add', keys: ['Shift+A'], hidden: true, run: () => useUi.setState({ addMenuOpen: true }) }),
@@ -341,8 +349,9 @@ export function matchShortcut(event: KeyboardEvent): Action | undefined {
   const mode: Mode = inEditMode() ? 'edit' : 'object';
   const numpad = code.startsWith('numpad');
   return bindings.find(
-    ({ combo, mode: when }) =>
+    ({ combo, mode: when, action }) =>
       (!when || when === mode) &&
+      (action.available?.() ?? true) &&
       combo.ctrl === ctrl &&
       combo.shift === event.shiftKey &&
       combo.alt === event.altKey &&

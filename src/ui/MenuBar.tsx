@@ -53,6 +53,8 @@ function EditItems() {
           <ActionItem id="edit.group" disabled={!hasSelection} />
           <ActionItem id="edit.ungroup" disabled={!canUngroup} />
           <MenuSeparator />
+          <ActionItem id="bake.open" disabled={!hasSelection} />
+          <MenuSeparator />
           <ActionItem id="edit.select_all" disabled={!hasObjects} />
           <ActionItem id="edit.deselect" disabled={!hasSelection} />
         </>

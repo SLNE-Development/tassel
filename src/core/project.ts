@@ -2,9 +2,10 @@ import { z } from 'zod';
 import { polyMeshSchema } from './mesh/polymesh';
 import { modifierSchema } from './modifiers/schema';
 import { repairGroups } from './groups';
-import { MAX_TEXTURE_SIZE, materialFields, repairMaterials, textureDataProblem } from './materials';
+import { base64ImageSize } from './imageInfo';
+import { MAX_TEXTURE_SIZE, materialFields, repairMaterials, textureDataProblem, textureSizeProblem } from './materials';
 import { newId } from './state';
-import { textureMimeTypes, textureSlots } from './types';
+import { blendModes, textureMimeTypes, textureSlots } from './types';
 import type { Doc, DocState, Group, Material, SceneObject, Texture } from './types';
 
 // Project file format (.tessel): JSON, validated on load because files are untrusted input.
@@ -19,6 +20,19 @@ const textureSchema = z
     data: z.string(),
     width: z.number(),
     height: z.number(),
+    // Paint layers, bottom first. Files written before texture painting existed have none.
+    layers: z
+      .array(
+        z.object({
+          id: z.string().min(1),
+          name: z.string(),
+          visible: z.boolean(),
+          opacity: z.number().min(0).max(1),
+          blend: z.enum(blendModes),
+          data: z.string(),
+        }),
+      )
+      .optional(),
   })
   .superRefine((texture, ctx) => {
     const fail = (message: string) => ctx.addIssue({ code: 'custom', message: `texture "${texture.name}": ${message}` });
@@ -31,6 +45,26 @@ const textureSchema = z
     else if (problem === 'tooLarge') fail('image data is larger than 64 MB');
     else if (problem === 'notBase64') fail('image data is not valid base64');
     else if (problem === 'signature') fail(`image data is not an image of type ${texture.mimeType}`);
+    // A size that disagrees with the image file's own header would let a file claim to be small and decode huge.
+    // (A header this reader cannot make sense of is let through: the geometry of an old file matters more.)
+    else {
+      const header = textureSizeProblem(texture.data, texture.width, texture.height);
+      if (header && header !== 'unreadable') {
+        fail(`is ${header.width} x ${header.height} pixels according to its image data, not ${texture.width} x ${texture.height}`);
+      }
+    }
+    if (!texture.layers) return;
+    // Layers are PNGs of exactly the texture's size, and the texture's own image is then the flattened PNG.
+    if (texture.layers.length === 0) fail('has an empty list of paint layers');
+    if (texture.mimeType !== 'image/png') fail('has paint layers but its image is not a PNG');
+    if (new Set(texture.layers.map((layer) => layer.id)).size !== texture.layers.length) fail('has two paint layers with the same id');
+    for (const layer of texture.layers) {
+      const size = textureDataProblem('image/png', layer.data) ? null : base64ImageSize(layer.data);
+      if (!size) fail(`paint layer "${layer.name}" is not a valid PNG image`);
+      else if (size.width !== texture.width || size.height !== texture.height) {
+        fail(`paint layer "${layer.name}" is ${size.width} x ${size.height} pixels, but the texture is ${texture.width} x ${texture.height}`);
+      }
+    }
   });
 
 const materialSchema = z.object({

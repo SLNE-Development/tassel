@@ -9,6 +9,7 @@ import { Switch } from './controls';
 import { useLiveEdit } from './live';
 import { Materials } from './Materials';
 import { Modifiers } from './Modifiers';
+import { PaintPanel } from './paint/PaintPanel';
 import { ScrubField } from './ScrubField';
 import { elementCounts } from './StatusBar';
 
@@ -190,7 +191,10 @@ export function Properties() {
   const activeId = useApp((s) => selectDocState(s).activeId);
   const hasObjects = useApp((s) => selectDocState(s).order.length > 0);
   const selected = useApp((s) => selectDocState(s).selection.length);
+  const painting = useApp((s) => s.workspace === 'paint');
   const t = useT();
+  // The paint workspace shows what is painted on and its layers instead of the object's properties.
+  if (painting) return <PaintPanel />;
   return (
     <section aria-label={t.properties.title} className="flex min-h-0 min-w-0 flex-col border-t border-line">
       <header className="flex h-8 shrink-0 items-center justify-between px-3">

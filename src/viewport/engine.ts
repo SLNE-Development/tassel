@@ -48,6 +48,7 @@ import { ElementPicker } from './editPick';
 import { DEFAULT_SPHERE, fitClipPlanes, fitDistance, placeCamera, viewDirection } from './framing';
 import { GeometryStore, type MeshGeometry } from './geometry';
 import { GroundGrid } from './grid';
+import { PaintView } from './paintView';
 import { rotateAbout, scaleAbout } from './groupTransform';
 import { SurfaceMaterials } from './surfaces';
 import { VIEWPORT_PALETTES } from './theme';
@@ -154,6 +155,8 @@ export class ViewportEngine {
   private readonly pivot = new Object3D();
   /** The rotate / scale gizmo attaches to this when several objects are selected: the centre of their bounding box. */
   private readonly groupPivot = new Object3D();
+  /** Painting on the active object in the paint workspace; it handles the left mouse button there. */
+  private readonly paintView: PaintView;
   /** Rectangle of a box selection in progress. */
   private readonly boxElement = document.createElement('div');
 
@@ -233,6 +236,23 @@ export class ViewportEngine {
     this.canvas.addEventListener('pointercancel', this.onPointerCancel);
     this.canvas.addEventListener('mousedown', this.onMouseDown);
     this.canvas.addEventListener('dblclick', this.onDoubleClick);
+    this.paintView = new PaintView({
+      canvas: this.canvas,
+      container,
+      camera: this.camera,
+      raycaster: this.raycaster,
+      sync: () => this.syncIfNeeded(),
+      target: (id) => {
+        const entry = this.entries.get(id);
+        return entry && !entry.edit && entry.obj.visible ? { solid: entry.solid, mesh: entry.geometry.mesh } : null;
+      },
+      solids: () => [...this.entries.values()].filter((entry) => entry.obj.visible && !entry.edit).map((entry) => entry.solid),
+      refresh: () => {
+        this.needsSync = true;
+        this.invalidate();
+      },
+    });
+    this.surfaces.paint = this.paintView;
 
     this.resizeObserver = new ResizeObserver(() => this.resize());
     this.resizeObserver.observe(container);
@@ -284,6 +304,7 @@ export class ViewportEngine {
     this.canvas.removeEventListener('pointercancel', this.onPointerCancel);
     this.canvas.removeEventListener('mousedown', this.onMouseDown);
     this.canvas.removeEventListener('dblclick', this.onDoubleClick);
+    this.paintView.dispose();
     this.gizmo.detach();
     this.gizmo.dispose();
     this.orbit.dispose();
@@ -446,7 +467,8 @@ export class ViewportEngine {
       entry.edit = null;
       const mesh = evaluateObject(state, id).mesh;
       if (entry.geometry.mesh !== mesh || entry.geometry.smooth !== obj.smooth) this.swapGeometry(entry, mesh, obj.smooth);
-      const highlight: Highlight = id === state.activeId ? 2 : selected.has(id) ? 1 : 0;
+      // No selection overlays in the paint workspace: they would lie on top of what is painted.
+      const highlight: Highlight = app.workspace === 'paint' ? 0 : id === state.activeId ? 2 : selected.has(id) ? 1 : 0;
       const surface = this.surfaces.pick(app, state, obj, entry.geometry.hasUvs);
       this.applyLook(entry, app.shading, highlight, edit !== null, surface);
     }
@@ -455,7 +477,7 @@ export class ViewportEngine {
 
     // The gizmo: on the active object, or in edit mode on the selected elements.
     let target: Object3D | null = null;
-    if (app.tool === 'select') {
+    if (app.tool === 'select' || app.workspace === 'paint') {
       // No gizmo.
     } else if (edit) {
       const entry = this.entries.get(edit.objectId);
@@ -474,7 +496,7 @@ export class ViewportEngine {
       const active = state.activeId ? this.entries.get(state.activeId) : undefined;
       if (active && active.obj.visible) target = active.group;
     }
-    if (target && app.tool !== 'select') {
+    if (target && app.tool !== 'select' && app.workspace !== 'paint') {
       if (this.gizmo.object !== target) this.gizmo.attach(target);
       this.gizmo.setMode(gizmoModes[app.tool]);
       // Edit mode works along the object's local axes.
@@ -632,7 +654,8 @@ export class ViewportEngine {
   }
 
   private readonly onPointerDown = (event: PointerEvent): void => {
-    if (event.button !== 0) return;
+    // In the paint workspace the left button paints (paintView.ts) and never selects.
+    if (event.button !== 0 || useApp.getState().workspace === 'paint') return;
     const onGizmo = this.gizmo.object !== undefined && this.gizmo.axis !== null;
     this.pointerDown = { x: event.clientX, y: event.clientY, onGizmo, box: false };
   };
@@ -679,7 +702,7 @@ export class ViewportEngine {
   };
 
   private readonly onDoubleClick = (event: MouseEvent): void => {
-    if (event.button !== 0 || this.gizmo.axis !== null) return;
+    if (event.button !== 0 || this.gizmo.axis !== null || useApp.getState().workspace === 'paint') return;
     this.syncIfNeeded();
     if (this.docState()?.edit) return;
     const id = this.pick(event.clientX, event.clientY);
