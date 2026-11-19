@@ -224,7 +224,7 @@ describe('cuboid commands', () => {
   });
 
   it('removes faces that show nothing', async () => {
-    const t = await minecraftApp({}, { imaging: { regionTransparent: async (_t, rect) => rect.x >= 8 } as never });
+    const t = await minecraftApp({}, { imaging: { regionTransparent: async (_t: unknown, rect: { x: number }) => rect.x >= 8 } as never });
     const tex = await addTexture(t, 'stone');
     await t.run('cuboid.add', { from: [0, 0, 0], to: [4, 4, 4], texture: tex });
     await t.run('cuboid.set_face', { faces: ['east'], texture: null });
