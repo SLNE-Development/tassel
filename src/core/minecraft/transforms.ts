@@ -93,15 +93,26 @@ export function mapDirection(m: Mat3, dir: CuboidFaceName | null): CuboidFaceNam
  * Rect + mirroring + rotation can express all eight arrangements, so this always finds one.
  */
 export function faceFromCorners(face: CuboidFace, corners: readonly (readonly [number, number])[]): CuboidFace {
+  // Several (rect, rotation) pairs can show the same corners (a rect mirrored on both axes is the same as one
+  // turned by 180 degrees); the one that changes the mirroring of the rect least is kept.
+  const sign = (v: number) => Math.sign(v);
+  let best: CuboidFace | null = null;
+  let bestScore = Infinity;
   for (const rotation of [0, 90, 180, 270] as const) {
     const shift = rotation / 90;
     // Undo the rotation: unrotated corner j is shown on face corner j + shift.
     const c = [0, 1, 2, 3].map((j) => corners[(j + shift) % 4]);
     if (c[0][1] === c[1][1] && c[1][0] === c[2][0] && c[2][1] === c[3][1] && c[3][0] === c[0][0]) {
-      return { ...face, uv: [c[0][0], c[0][1], c[2][0], c[2][1]], rotation };
+      const uv = [c[0][0], c[0][1], c[2][0], c[2][1]] as const;
+      const score =
+        (sign(uv[2] - uv[0]) !== sign(face.uv[2] - face.uv[0]) ? 1 : 0) + (sign(uv[3] - uv[1]) !== sign(face.uv[3] - face.uv[1]) ? 1 : 0);
+      if (score < bestScore) {
+        best = { ...face, uv, rotation };
+        bestScore = score;
+      }
     }
   }
-  return face;
+  return best ?? face;
 }
 
 /** The cuboid's faces after the orthogonal map `m`: which face goes where and how its texture turns. */

@@ -131,25 +131,20 @@ function exportable(obj: SceneObject): obj is SceneObject & { cuboid: Cuboid } {
   return !!obj.cuboid && obj.cuboid.export && cuboidFaces.some((f: CuboidFaceName) => obj.cuboid!.faces[f].enabled);
 }
 
-/** Elements in outliner order (per level: groups with their contents first, then elements) and the group tree. */
+/**
+ * Elements in document order (so that a model read and written again keeps its element order) and the group
+ * tree, whose children are per level the nested groups and then the indices of the group's elements.
+ */
 function walkOutliner(state: DocState, ids: ReadonlySet<string> | null) {
-  const order: (SceneObject & { cuboid: Cuboid })[] = [];
+  const order = state.order.map((id) => state.objects[id]).filter((o) => exportable(o) && (!ids || ids.has(o.id))) as (SceneObject & {
+    cuboid: Cuboid;
+  })[];
   const childGroups = (parent: string | null) => state.groupOrder.map((id) => state.groups[id]).filter((g) => g.parentId === parent);
-  const childObjects = (parent: string | null) =>
-    state.order.map((id) => state.objects[id]).filter((o) => o.groupId === parent && exportable(o) && (!ids || ids.has(o.id))) as (SceneObject & {
-      cuboid: Cuboid;
-    })[];
-  const walk = (parent: string | null): unknown[] => {
-    const children: unknown[] = [];
-    for (const group of childGroups(parent)) children.push(groupJson(group, walk(group.id)));
-    for (const obj of childObjects(parent)) {
-      children.push(order.length);
-      order.push(obj);
-    }
-    return children;
-  };
-  const tree = walk(null);
-  return { order, tree };
+  const walk = (parent: string | null): unknown[] => [
+    ...childGroups(parent).map((group) => groupJson(group, walk(group.id))),
+    ...order.flatMap((obj, index) => (obj.groupId === parent ? [index] : [])),
+  ];
+  return { order, tree: walk(null) };
 }
 
 function groupJson(group: Group, children: unknown[]): Json {
