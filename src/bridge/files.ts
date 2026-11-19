@@ -42,6 +42,17 @@ export async function openProject(): Promise<void> {
   await execute('document.load', { json, filePath: path, name: fileStem(path) });
 }
 
+/** Shows an open dialog and opens the chosen Minecraft Java model (.json) as a new Minecraft document. */
+export async function openJavaModel(): Promise<{ warnings: string[] } | null> {
+  requireDesktop();
+  const path = await open({ multiple: false, directory: false, filters: [{ name: getT().files.formats.json, extensions: ['json'] }] });
+  if (!path) return null;
+  // The backend also reads the texture images it finds in the resource pack the model is in.
+  const read = await invoke<{ json: string; images: Record<string, { data: string; width: number; height: number }> }>('read_java_model_file', { path });
+  const stem = fileStem(path);
+  return (await execute('document.import_java', { json: read.json, images: read.images, name: stem, fileName: stem })) as { warnings: string[] };
+}
+
 /** Saves the active document; asks for a path if it has none or `saveAs` is set. Resolves false if cancelled. */
 export async function saveProject(opts?: { saveAs?: boolean }): Promise<boolean> {
   requireDesktop();
@@ -72,8 +83,10 @@ export async function exportFile(format: ExportFormat, opts?: { selectionOnly?: 
   // Export first, so problems (e.g. nothing selected) show up before the user picks a file.
   let exported = (await execute('export.file', params)) as ExportResult;
 
+  // A Minecraft model is named after its model file name, not the document.
+  const javaName = (exported as { fileName?: string }).fileName?.replace(/\.json$/, '');
   const chosen = await save({
-    defaultPath: suggestedFileName(documentName(selectActiveDoc(useApp.getState())), format),
+    defaultPath: suggestedFileName(javaName ?? documentName(selectActiveDoc(useApp.getState())), format),
     filters: [{ name: getT().files.formats[format], extensions: [format] }],
   });
   if (!chosen) return false;

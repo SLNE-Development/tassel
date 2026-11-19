@@ -190,7 +190,7 @@ describe('execute with documentId', () => {
 
   it('creates and loads documents in the background with activate: false', async () => {
     const tree = await run('document.new', { name: 'Tree', activate: false });
-    expect(tree).toEqual({ id: expect.any(String), name: 'Tree', active: false });
+    expect(tree).toEqual({ id: expect.any(String), name: 'Tree', active: false, format: 'free' });
     expect(app().activeDocId).toBe(visible);
     expect(app().docOrder).toEqual([background, visible, tree.id]);
     // The new id is the documentId for everything else.
@@ -347,7 +347,7 @@ describe('app.get_state with documentId', () => {
     const before = app();
 
     for (const state of [await run('app.get_state', {}, background), await run('app.get_state', { documentId: background })]) {
-      expect(state.document).toEqual({ id: background, name: 'Background', filePath: null, dirty: true, visible: false });
+      expect(state.document).toEqual({ id: background, name: 'Background', filePath: null, dirty: true, visible: false, format: 'free' });
       expect(state.visibleDocumentId).toBe(visible);
       expect(state.activeDocument.id).toBe(visible);
       expect(state).toMatchObject({
@@ -370,7 +370,7 @@ describe('app.get_state with documentId', () => {
 
   it('describes the visible document without documentId, as before', async () => {
     const state = await run('app.get_state');
-    expect(state.document).toEqual({ id: visible, name: 'Visible', filePath: null, dirty: true, visible: true });
+    expect(state.document).toEqual({ id: visible, name: 'Visible', filePath: null, dirty: true, visible: true, format: 'free' });
     expect(state).toMatchObject({ visibleDocumentId: visible, objectCount: 1, editMode: null, canUndo: true, canRedo: false });
     expect(state.activeDocument).toEqual({ id: visible, name: 'Visible', filePath: null, dirty: true });
     expect(state.camera).toEqual({ position: [0, 0, 5], target: [0, 0, 0] });
@@ -390,15 +390,15 @@ describe('app.get_state and document.list', () => {
     await run('scene.add_primitive', { type: 'cube' }, background);
     await run('group.create', { ids: [], name: 'Empty group' }, background);
     const expected = [
-      { id: background, name: 'Background', objectCount: 1, dirty: true, filePath: 'C:/x/back.tessel', active: false },
-      { id: visible, name: 'Visible', objectCount: 1, dirty: true, filePath: null, active: true },
+      { id: background, name: 'Background', format: 'free', objectCount: 1, dirty: true, filePath: 'C:/x/back.tessel', active: false },
+      { id: visible, name: 'Visible', format: 'free', objectCount: 1, dirty: true, filePath: null, active: true },
     ];
     const state = await run('app.get_state');
     expect(state.documents).toEqual(expected);
     expect(state.activeDocument).toEqual({ id: visible, name: 'Visible', filePath: null, dirty: true });
     expect(state.objectCount).toBe(1);
     const list = await run('document.list');
-    expect(list.documents.map((d: Record<string, unknown>) => ({ id: d.id, name: d.name, objectCount: d.objectCount, dirty: d.dirty, filePath: d.filePath, active: d.active }))).toEqual(expected);
+    expect(list.documents.map((d: Record<string, unknown>) => ({ id: d.id, name: d.name, format: d.format, objectCount: d.objectCount, dirty: d.dirty, filePath: d.filePath, active: d.active }))).toEqual(expected);
     for (const id of ['app.get_state', 'document.list']) {
       const description = commands.find((c) => c.id === id)!.description;
       expect(description).toContain('objectCount (the number of scene objects');

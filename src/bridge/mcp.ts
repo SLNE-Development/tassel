@@ -5,6 +5,7 @@ import { noteAgentActivity } from '../app/agentActivity';
 import { execute, useApp } from '../app/store';
 import { commands, commandsById } from '../core/commands';
 import { documentIdDescription, documentTargeting } from '../core/commands/targeting';
+import { formatNote } from '../core/formats';
 import { own } from '../core/state';
 import type { AppState } from '../core/types';
 
@@ -48,7 +49,8 @@ export function buildManifest(): CommandManifestEntry[] {
   return commands.map((def) => ({
     name: def.id.replaceAll('.', '_'),
     id: def.id,
-    description: def.description,
+    // Commands that only work in some document formats say so first.
+    description: formatNote(def.id, def.formats) + def.description,
     inputSchema: inputSchema(def),
   }));
 }
@@ -95,7 +97,7 @@ export function workedDocument(app: AppState, command: string, params: unknown, 
 }
 
 /** Commands that return the document they added as `id`. */
-const OPENING_COMMANDS = new Set(['document.new', 'document.load']);
+const OPENING_COMMANDS = new Set(['document.new', 'document.load', 'document.import_java']);
 
 function errorMessage(error: unknown): string {
   if (error instanceof z.ZodError) return `Invalid parameters:\n${z.prettifyError(error)}`;

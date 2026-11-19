@@ -1,0 +1,96 @@
+{
+	"credit": "Tessel test",
+	"parent": "block/block",
+	"ambientocclusion": false,
+	"texture_size": [32, 16],
+	"textures": {
+		"side": "mymod:block/gears/gear_side",
+		"top": "block/gear_top",
+		"particle": "mymod:block/gears/gear_side"
+	},
+	"elements": [
+		{
+			"name": "base",
+			"from": [0, 0, 0],
+			"to": [16, 4, 16],
+			"faces": {
+				"north": {
+					"uv": [0, 0, 8, 4],
+					"texture": "#side",
+					"cullface": "north",
+					"tintindex": 1
+				},
+				"east": {
+					"uv": [0, 0, 8, 4],
+					"texture": "#side",
+					"cullface": "east"
+				},
+				"south": {
+					"uv": [0, 0, 8, 4],
+					"texture": "#side",
+					"cullface": "south"
+				},
+				"west": {
+					"uv": [0, 0, 8, 4],
+					"texture": "#side",
+					"cullface": "west"
+				},
+				"up": {
+					"uv": [0, 0, 16, 16],
+					"rotation": 90,
+					"texture": "#top"
+				}
+			}
+		},
+		{
+			"from": [6.75, 3.75, 6.75],
+			"to": [9.25, 14.25, 9.25],
+			"shade": false,
+			"light_emission": 12,
+			"shade_direction_override": "up",
+			"rotation": {
+				"x": 30,
+				"y": 45,
+				"z": 0,
+				"origin": [8, 4, 8],
+				"rescale": true
+			},
+			"faces": {
+				"north": {
+					"uv": [0, 0, 1, 10],
+					"texture": "#side"
+				},
+				"east": {
+					"uv": [0, 0, 1, 10],
+					"texture": "#missing"
+				},
+				"south": {
+					"uv": [0, 0, 1, 10],
+					"texture": "#side"
+				},
+				"west": {
+					"uv": [0, 0, 1, 10],
+					"texture": "#side"
+				},
+				"up": {
+					"uv": [0, 0, 1, 2],
+					"texture": "#side"
+				},
+				"down": {
+					"uv": [0, 0, 1, 2],
+					"texture": "#side"
+				}
+			}
+		}
+	],
+	"gui_light": "side",
+	"groups": [
+		{
+			"name": "shaft",
+			"origin": [8, 4, 8],
+			"color": 0,
+			"children": [1]
+		},
+		0
+	]
+}

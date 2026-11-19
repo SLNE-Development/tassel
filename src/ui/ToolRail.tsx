@@ -3,7 +3,8 @@ import { Plus } from 'lucide-react';
 import { selectDocState, useApp } from '../app/store';
 import { shadings, tools } from '../core/types';
 import { useT } from '../i18n';
-import { getAction, runAction, shortcutLabel } from './actions';
+import { actionAllowedIn, getAction, runAction, shortcutLabel } from './actions';
+import { useDocFormat } from './format';
 import { meshToolIcons, shadingIcons, toolIcons } from './labels';
 import { MenuPopup } from './menu';
 import { AddItems, MergeItems } from './MenuBar';
@@ -18,10 +19,11 @@ const buttonClass = (active: boolean) =>
 
 function Tools() {
   const tool = useApp((s) => s.tool);
+  const format = useDocFormat();
   const t = useT();
   return (
     <div role="radiogroup" aria-label={t.toolRail.tool} className="rail-group flex flex-col">
-      {tools.map((id) => {
+      {tools.filter((id) => actionAllowedIn(getAction(`tool.${id}`), format)).map((id) => {
         const title = t.tools[id];
         const Icon = toolIcons[id];
         const active = id === tool;

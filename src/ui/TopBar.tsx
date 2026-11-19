@@ -2,6 +2,7 @@ import { useApp } from '../app/store';
 import { workspaces } from '../core/types';
 import { useT } from '../i18n';
 import { dispatch } from './actions';
+import { useIsMinecraft } from './format';
 import { DocTabs } from './DocTabs';
 import { MenuBar } from './MenuBar';
 import { dragWindow, WindowControls } from './WindowControls';
@@ -20,9 +21,12 @@ function Mark() {
 function WorkspaceSwitch() {
   const workspace = useApp((s) => s.workspace);
   const t = useT();
+  // Minecraft documents have no paint workspace (yet).
+  const minecraft = useIsMinecraft();
+  const shown = minecraft ? workspaces.filter((w) => w !== 'paint') : workspaces;
   return (
     <div role="radiogroup" aria-label={t.topBar.workspace} className="flex shrink-0 items-center rounded-lg bg-ink p-0.5">
-      {workspaces.map((w) => {
+      {shown.map((w) => {
         const active = w === workspace;
         return (
           <button

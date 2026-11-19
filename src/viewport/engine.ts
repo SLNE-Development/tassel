@@ -23,6 +23,7 @@ import { getAppearance, onAppearanceChange } from '../app/preferences';
 import { execute, useApp } from '../app/store';
 import { animatedState, cameraAt } from '../core/animation';
 import { describeCamera, fitDistance as fitShot, screenshotViews, sheetLayout, viewLabel, type Rect } from '../core/screenshotViews';
+import { isMinecraft } from '../core/formats';
 import type { Preferences } from '../core/preferences';
 import type {
   AppState,
@@ -41,6 +42,7 @@ import type {
   ViewPreset,
 } from '../core/types';
 import { applyTransform, boxCorners, DocScene, selectionBox, Stage, type Entry, type SceneLooks } from './docScene';
+import { snapSteps, type SnapSteps } from './snapping';
 import { EditMaterials, EditView, selectedVertices } from './editMesh';
 import { ElementPicker } from './editPick';
 import { DEFAULT_SPHERE, fitDistance, viewDirection } from './framing';
@@ -260,6 +262,8 @@ export class ViewportEngine {
     this.resizeObserver.observe(container);
     // A change of the interface zoom changes the device pixel ratio, not always the viewport's size.
     window.addEventListener('resize', this.onWindowResize);
+    window.addEventListener('keydown', this.onModifierKey);
+    window.addEventListener('keyup', this.onModifierKey);
     this.applyAppearance();
     this.unsubscribeAppearance = onAppearanceChange(this.applyAppearance);
     this.applyPreferences(useApp.getState().preferences);
@@ -306,6 +310,8 @@ export class ViewportEngine {
     this.unsubscribeAppearance();
     this.unsubscribePlayback();
     window.removeEventListener('resize', this.onWindowResize);
+    window.removeEventListener('keydown', this.onModifierKey);
+    window.removeEventListener('keyup', this.onModifierKey);
     this.resizeObserver.disconnect();
     this.canvas.removeEventListener('pointerdown', this.onPointerDown);
     this.canvas.removeEventListener('pointermove', this.onPointerMove);
@@ -512,7 +518,34 @@ export class ViewportEngine {
     } else if (this.gizmo.object) {
       this.gizmo.detach();
     }
+    this.minecraft = isMinecraft(state);
+    this.applySnapping();
   }
+
+  /** Whether the displayed document is a Minecraft one: its gizmo snaps to the pixel grid. */
+  private minecraft = false;
+  private snapping: SnapSteps | null = null;
+  private fine = { shift: false, ctrl: false };
+
+  /**
+   * Minecraft documents snap the gizmo: moving to whole model pixels (1/16 m; a quarter with Shift, a tenth
+   * with Ctrl), rotating in 22.5 degree steps (finer with the same keys). Free documents never snap.
+   */
+  private applySnapping(): void {
+    const next = this.minecraft ? snapSteps(this.fine.shift, this.fine.ctrl) : null;
+    if (next?.translation === this.snapping?.translation && next?.rotation === this.snapping?.rotation) return;
+    this.snapping = next;
+    this.gizmo.setTranslationSnap(next ? next.translation : null);
+    this.gizmo.setRotationSnap(next ? MathUtils.degToRad(next.rotation) : null);
+  }
+
+  private readonly onModifierKey = (event: KeyboardEvent): void => {
+    const shift = event.shiftKey;
+    const ctrl = event.ctrlKey || event.metaKey;
+    if (shift === this.fine.shift && ctrl === this.fine.ctrl) return;
+    this.fine = { shift, ctrl };
+    this.applySnapping();
+  };
 
   /**
    * Puts the group pivot, unrotated and unscaled, at the centre of the world-space bounding box of the
