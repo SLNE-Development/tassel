@@ -4,6 +4,7 @@ import { polyMeshSchema } from './mesh/polymesh';
 import { modifierSchema } from './modifiers/schema';
 import { syncCuboidObject, uvSize, withKnownFaceTextures } from './minecraft/cuboid';
 import { cuboidSchema, javaSettingsSchema, javaTextureRefSchema } from './minecraft/schema';
+import { itemSettingsFromJson, itemSettingsSchema, itemSettingsToJson } from './minecraft/items/document';
 import { repairGroups } from './groups';
 import { base64ImageSize } from './imageInfo';
 import { MAX_TEXTURE_SIZE, materialFields, repairMaterials, textureDataProblem, textureSizeProblem } from './materials';
@@ -88,6 +89,8 @@ const projectSchema = z.object({
   documentFormat: z.enum(docFormats).default('free'),
   // Minecraft Java model settings, present in minecraft_java documents.
   java: javaSettingsSchema.optional(),
+  // The item definition of a minecraft_item document.
+  item: itemSettingsSchema.optional(),
   objects: z.array(
     z.object({
       id: z.string().min(1),
@@ -134,6 +137,7 @@ export function serializeProject(doc: Doc): string {
     // Free documents leave the key out, so their files stay exactly as before formats existed.
     ...(doc.state.format && doc.state.format !== 'free' ? { documentFormat: doc.state.format } : {}),
     ...(doc.state.java ? { java: doc.state.java } : {}),
+    ...(doc.state.item ? { item: itemSettingsToJson(doc.state.item) } : {}),
     objects: doc.state.order.map((id) => doc.state.objects[id]),
     groups: doc.state.groupOrder.map((id) => doc.state.groups[id]),
     materials: Object.values(doc.state.materials),
@@ -158,6 +162,14 @@ export function parseProject(json: string): { name: string; state: DocState } {
   const format = parsed.data.documentFormat;
   const minecraft = format === 'minecraft_java';
   const java = minecraft ? (parsed.data.java ?? javaSettingsSchema.parse({})) : undefined;
+  let item;
+  if (format === 'minecraft_item') {
+    try {
+      item = itemSettingsFromJson(parsed.data.item ?? itemSettingsSchema.parse({ definition: { model: { type: 'minecraft:empty' } } }));
+    } catch (error) {
+      throw new Error(`Not a valid Tessel file: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
   const size = uvSize({ java });
   const objects: Record<string, SceneObject> = {};
   const order: string[] = [];
@@ -214,6 +226,7 @@ export function parseProject(json: string): { name: string; state: DocState } {
       edit: null,
       ...(animation ? { animation } : {}),
       ...(minecraft ? { format, java: repairJavaSettings(java!, textures) } : {}),
+      ...(item ? { format, item } : {}),
       ...(parsed.data.render !== undefined && parsed.data.render !== null ? { render: parseRenderSettings(parsed.data.render) } : {}),
     },
   };

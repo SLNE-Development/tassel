@@ -11,14 +11,28 @@ export function docFormat(state: Pick<DocState, 'format'>): DocFormat {
 
 export const isMinecraft = (state: Pick<DocState, 'format'>): boolean => docFormat(state) === 'minecraft_java';
 
+/** A Minecraft item model definition document (no scene objects; see core/minecraft/items). */
+export const isItemDefinition = (state: Pick<DocState, 'format'>): boolean => docFormat(state) === 'minecraft_item';
+
 /** English name of a format, for error messages and MCP descriptions. */
 export const formatNames: Record<DocFormat, string> = {
   free: 'Free model',
   minecraft_java: 'Minecraft Java Block/Item',
+  minecraft_item: 'Minecraft Item Definition',
 };
 
 export const FREE_ONLY: readonly DocFormat[] = ['free'];
 export const MINECRAFT_ONLY: readonly DocFormat[] = ['minecraft_java'];
+export const ITEM_DEFINITION_ONLY: readonly DocFormat[] = ['minecraft_item'];
+/** The formats that hold a 3D scene (objects, groups, textures): everything but item definitions. */
+export const MODEL_FORMATS: readonly DocFormat[] = ['free', 'minecraft_java'];
+
+/**
+ * Command prefixes that work in item definition documents too, although those have no scene: documents,
+ * history, preferences, the Minecraft assets source and the view (the preview of the chosen model).
+ * Every other command that declares no formats only works in documents with a scene.
+ */
+const SCENELESS_PREFIXES = ['app.', 'assets.', 'document.', 'history.', 'preferences.', 'font.', 'view.'];
 
 /**
  * Formats of the commands that do not declare `formats` themselves, by id prefix or full id. Commands of
@@ -50,6 +64,8 @@ const formatsByCommand: Readonly<Record<string, readonly DocFormat[]>> = {
   // Minecraft cuboid elements and model settings.
   'cuboid.': MINECRAFT_ONLY,
   'minecraft.': MINECRAFT_ONLY,
+  // Minecraft item model definitions.
+  'item.': ITEM_DEFINITION_ONLY,
 };
 
 /** The formats a command works in; undefined = every format. `declared` is the command's own `formats`. */
@@ -57,7 +73,8 @@ export function commandFormats(id: string, declared?: readonly DocFormat[]): rea
   if (declared) return declared;
   if (Object.hasOwn(formatsByCommand, id)) return formatsByCommand[id];
   const prefix = id.slice(0, id.indexOf('.') + 1);
-  return prefix && Object.hasOwn(formatsByCommand, prefix) ? formatsByCommand[prefix] : undefined;
+  if (prefix && Object.hasOwn(formatsByCommand, prefix)) return formatsByCommand[prefix];
+  return SCENELESS_PREFIXES.includes(prefix) ? undefined : MODEL_FORMATS;
 }
 
 export function commandAllowedIn(id: string, declared: readonly DocFormat[] | undefined, format: DocFormat): boolean {
@@ -68,7 +85,8 @@ export function commandAllowedIn(id: string, declared: readonly DocFormat[] | un
 /** The sentence MCP descriptions start with for commands that only work in some formats, or ''. */
 export function formatNote(id: string, declared?: readonly DocFormat[]): string {
   const formats = commandFormats(id, declared);
-  if (!formats) return '';
+  // Scene commands do not say that they skip item definitions: those documents name their own item_* tools.
+  if (!formats || formats === MODEL_FORMATS) return '';
   return `Only in ${formats.map((f) => formatNames[f]).join(' or ')} documents (see document_list "format"). `;
 }
 
