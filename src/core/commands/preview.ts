@@ -86,7 +86,7 @@ export const previewCommands = [
     description:
       'Change the viewport preview options; pass only what changes. scene: none, studio (neutral lit backdrop), sky, space, or a Minecraft scene (plains, snowy_tundra, cherry_grove, desert, ocean, underwater, lush_cave, deep_dark, nether, sunset, night) that builds a small block landscape from the vanilla textures (flat colours if no Minecraft assets are configured). ' +
       'A scene sets the lighting, fog and background around the model. background (solid = theme colour, checkerboard, custom = backgroundColor) shows when scene is none. ' +
-      'ground: a ground plane (in Minecraft scenes the terrain floor). pixelGrid: a 1/16 block grid at the origin. player / craftingTable: reference models next to the model for scale (a player is 1.8 blocks tall, one block is 1 unit). skin: path of a 64x64 skin PNG for the player ("" = default skin from the assets). Returns the new options.' +
+      'ground: a ground plane (scenes with block terrain have their own). pixelGrid: a 1/16 block grid at the origin. player / craftingTable: reference models next to the model for scale (a player is 1.8 blocks tall, one block is 1 unit). skin: path of a 64x64 skin PNG for the player ("" = default skin from the assets). Returns the new options.' +
       NOT_DOCUMENT,
     params: z.object({
       scene: z.enum(previewScenes).optional(),

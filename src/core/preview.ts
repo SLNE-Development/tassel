@@ -60,7 +60,7 @@ export const previewPreferenceFields = {
     .enum(previewScenes)
     .default('none')
     .describe('Preview scene around the model: lighting, fog, background and (Minecraft scenes) a small block landscape. Never part of the document or exports.'),
-  previewGround: z.boolean().default(false).describe('Show a ground plane under the model (in Minecraft scenes: the terrain floor).'),
+  previewGround: z.boolean().default(false).describe('Show a ground plane under the model (scenes with block terrain bring their own ground).'),
   previewPixelGrid: z.boolean().default(false).describe('Show a 1/16 block pixel grid on the ground around the origin.'),
   previewPlayer: z.boolean().default(false).describe('Show a Minecraft player next to the model for scale.'),
   previewCraftingTable: z.boolean().default(false).describe('Show a crafting table (one block) next to the model for scale.'),
