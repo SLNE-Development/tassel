@@ -316,7 +316,10 @@ export interface JavaModelSettings {
   readonly credit: string;
   /** Texture id used as "particle", or null. */
   readonly particle: string | null;
-  /** The "display" object as read from a file (kept verbatim for the Display editor of a later project). */
+  /**
+   * Display transforms per slot ({ rotation, translation, scale }), as read from a file or set in the Display
+   * workspace (core/minecraft/display.ts). Unknown slots and fields are kept verbatim.
+   */
   readonly display?: Readonly<Record<string, unknown>>;
   /** Root keys of an imported model that Tessel does not understand, written back unchanged on export. */
   readonly extra?: Readonly<Record<string, unknown>>;
@@ -342,7 +345,7 @@ export interface Doc {
   readonly future: readonly DocState[];
 }
 
-export const workspaces = ['modeling', 'uv', 'paint'] as const;
+export const workspaces = ['modeling', 'uv', 'paint', 'display'] as const;
 export type Workspace = (typeof workspaces)[number];
 
 export const shadings = ['solid', 'wireframe', 'material'] as const;

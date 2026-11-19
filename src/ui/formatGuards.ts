@@ -6,7 +6,8 @@ import { notifyError } from './toast';
 
 /** What the app-wide tool and workspace have to become for the active document, or null if they fit. */
 export function fallbackFor(app: Pick<AppState, 'tool' | 'workspace'>, minecraft: boolean): { tool?: Tool; workspace?: Workspace } | null {
-  if (!minecraft) return null;
+  // Only Minecraft documents have the display workspace.
+  if (!minecraft) return app.workspace === 'display' ? { workspace: 'modeling' } : null;
   const fix: { tool?: Tool; workspace?: Workspace } = {};
   // Elements are resized in the element panel; there is no scale tool, and no painting of meshes.
   if (app.tool === 'scale') fix.tool = 'move';

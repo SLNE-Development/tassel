@@ -6,6 +6,7 @@
 import { cuboidFaces } from '../types';
 import type { Cuboid, CuboidFace, CuboidFaceName, DocState, Group, JavaModelSettings, SceneObject, Texture } from '../types';
 import { modelBox, uvSize } from './cuboid';
+import { exportDisplay } from './display';
 import { tidy } from './space';
 import { inRange, type Ranged } from './versions';
 
@@ -116,7 +117,8 @@ const rootRules: readonly Rule<RootInput>[] = [
   },
   { key: 'elements', since: '26.3', write: ({ elements }) => (elements.length > 0 ? elements : undefined) },
   { key: 'gui_light', since: '26.3', write: ({ java }) => java.guiLight ?? undefined },
-  { key: 'display', since: '26.3', write: ({ java }) => (java.display && Object.keys(java.display).length > 0 ? java.display : undefined) },
+  // Only slots and parts that differ from the default; unknown slots and fields as they were imported.
+  { key: 'display', since: '26.3', write: ({ java }) => exportDisplay(java) },
   { key: 'groups', since: '26.3', write: ({ groups }) => groups ?? undefined },
 ];
 

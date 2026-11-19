@@ -2,6 +2,7 @@ import { animCommands } from './anim';
 import { animPoseCommands } from './animPose';
 import { bakeCommands } from './bake';
 import { cuboidCommands } from './cuboid';
+import { displayCommands } from './display';
 import { documentCommands } from './document';
 import { fileCommands } from './files';
 import { fontCommands } from './font';
@@ -34,6 +35,7 @@ export const commands: readonly AnyCommand[] = [
   ...shapeCommands,
   ...cuboidCommands,
   ...minecraftCommands,
+  ...displayCommands,
   ...fontCommands,
   ...groupCommands,
   ...materialCommands,
