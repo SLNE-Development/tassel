@@ -94,7 +94,8 @@ function TokenSignIn({ open }: { open?: boolean }) {
 }
 
 function SignIn() {
-  const t = useT().projects;
+  const dict = useT();
+  const t = dict.projects;
   const [code, setCode] = useState<DeviceCode | null>(null);
   const [waiting, setWaiting] = useState(false);
 
@@ -154,7 +155,7 @@ function SignIn() {
         {t.waitingForGitHub}
       </p>
       <button className={quietButton} onClick={cancel}>
-        {useT().dialogs.cancel}
+        {dict.dialogs.cancel}
       </button>
     </div>
   );
