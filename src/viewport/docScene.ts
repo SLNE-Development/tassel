@@ -360,6 +360,10 @@ export class Stage {
     const distance = viewDistance ?? camera.position.distanceTo(target);
     if (camera instanceof PerspectiveCamera) fitClipPlanes(camera, distance);
     this.grid.update(target, distance);
+    // Fog is measured from the camera, which an orthographic one stands further back than `distance`.
+    const pulledBack = camera.position.distanceTo(target) - distance;
+    this.grid.fog.near += pulledBack;
+    this.grid.fog.far += pulledBack;
     this.lightRig.quaternion.copy(camera.quaternion);
     renderer.render(this.scene, camera);
   }

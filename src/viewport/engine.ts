@@ -367,7 +367,8 @@ export class ViewportEngine {
     const target = this.previewing ? this.animTarget : this.orbit.target;
     const camera = this.viewCamera;
     const distance = (this.previewing ? this.animCamera : this.camera).position.distanceTo(target);
-    this.preview.beforeDraw(distance);
+    // An orthographic camera stands further back than the view distance; fog has to start that much later.
+    this.preview.beforeDraw(distance, camera.position.distanceTo(target) - distance);
     this.stage.draw(this.renderer, camera, target, distance);
   }
 
