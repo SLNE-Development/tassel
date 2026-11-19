@@ -10,6 +10,7 @@ import { meshCommands } from './mesh';
 import { modifierCommands } from './modifier';
 import { paintCommands } from './paint';
 import { preferencesCommands } from './preferences';
+import { previewCommands } from './preview';
 import type { AnyCommand } from './registry';
 import { renderCommands } from './render';
 import { sceneCommands } from './scene';
@@ -23,6 +24,7 @@ import { viewCommands } from './view';
 
 export const commands: readonly AnyCommand[] = [
   ...viewCommands,
+  ...previewCommands,
   ...documentCommands,
   ...fileCommands,
   ...sceneCommands,

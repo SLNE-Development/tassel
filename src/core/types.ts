@@ -2,6 +2,7 @@
 // All state is immutable: commands produce new objects, which makes undo a stack of DocStates.
 // Conventions: Y is up, units are meters, rotations are Euler XYZ in degrees.
 
+import type { MinecraftAssetsService } from './minecraftAssets';
 import type { Preferences } from './preferences';
 import type { RenderService, RenderSettings } from './render';
 import type { VideoService } from './video';
@@ -570,4 +571,6 @@ export interface Services {
   fonts?: FontService | null;
   renderer?: RenderService | null;
   video?: VideoService | null;
+  /** Vanilla Minecraft assets from the user's install (src/mcassets). */
+  minecraftAssets?: MinecraftAssetsService | null;
 }
