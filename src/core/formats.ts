@@ -33,6 +33,8 @@ export const MODEL_FORMATS: readonly DocFormat[] = ['free', 'minecraft_java'];
  * Every other command that declares no formats only works in documents with a scene.
  */
 const SCENELESS_PREFIXES = ['app.', 'assets.', 'document.', 'history.', 'preferences.', 'font.', 'view.'];
+/** Single commands that also work there: export.file writes an item definition as .json. */
+const SCENELESS_IDS = ['export.file'];
 
 /**
  * Formats of the commands that do not declare `formats` themselves, by id prefix or full id. Commands of
@@ -74,7 +76,7 @@ export function commandFormats(id: string, declared?: readonly DocFormat[]): rea
   if (Object.hasOwn(formatsByCommand, id)) return formatsByCommand[id];
   const prefix = id.slice(0, id.indexOf('.') + 1);
   if (prefix && Object.hasOwn(formatsByCommand, prefix)) return formatsByCommand[prefix];
-  return SCENELESS_PREFIXES.includes(prefix) ? undefined : MODEL_FORMATS;
+  return SCENELESS_PREFIXES.includes(prefix) || SCENELESS_IDS.includes(id) ? undefined : MODEL_FORMATS;
 }
 
 export function commandAllowedIn(id: string, declared: readonly DocFormat[] | undefined, format: DocFormat): boolean {

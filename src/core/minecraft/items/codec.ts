@@ -133,6 +133,12 @@ export function parseNode(raw: Json | undefined): ItemModelNode | null {
   }
 }
 
+/** Whether parsed JSON is an item definition rather than a block/item model: a "model" object with a "type" and no model keys. */
+export function looksLikeItemDefinition(raw: unknown): boolean {
+  if (!isJsonObject(raw) || !isJsonObject(raw.model) || typeof raw.model.type !== 'string') return false;
+  return !['elements', 'parent', 'textures', 'display', 'texture_size'].some((key) => Object.hasOwn(raw, key));
+}
+
 /** Parses a whole item definition object. Throws when it has no "model" object. */
 export function parseItemDefinition(raw: unknown): ItemDefinition {
   if (!isJsonObject(raw)) throw new Error('The item definition is not a JSON object');

@@ -117,6 +117,23 @@ function openItemDoc(ctx: CommandContext, item: ItemDocSettings, name: string, a
   return { id: doc.id, name: doc.name, active: activate, format: 'minecraft_item' as const, file: itemFilePath(item) };
 }
 
+/** Opens item definition text as a new document; namespace and id come from the path when it is in a pack. */
+export function importItemDefinition(
+  ctx: CommandContext,
+  p: { json: string; namespace?: string; itemId?: string; filePath?: string; name?: string; version?: string; activate: boolean },
+) {
+  const version = checkVersion(p.version);
+  const definition = parseItemDefinitionText(p.json);
+  const fromPath = p.filePath ? itemLocationFromPath(p.filePath) : null;
+  const fileStem = p.filePath?.split(/[\/]/).pop()?.replace(/\.json$/i, '');
+  const namespace = p.namespace ?? fromPath?.namespace ?? 'minecraft';
+  const id = p.itemId ?? fromPath?.id ?? fileStem ?? 'item';
+  checkLocation(namespace, id);
+  const item = newItemSettings(definition, { namespace, id, version });
+  const issues = validateItemDefinition(definition, version);
+  return { ...openItemDoc(ctx, item, p.name ?? id.split('/').pop()!, p.activate, p.filePath ?? null), issues: issues.length, warnings: [] as string[] };
+}
+
 const variantsParam = z.object({
   base: z.string().min(1).describe('Model shown when no variant applies, e.g. "minecraft:item/diamond_sword".'),
   mode: z
@@ -171,16 +188,7 @@ export const itemCommands = [
       activate: z.boolean().default(true),
     }),
     run(ctx, p) {
-      const version = checkVersion(p.version);
-      const definition = parseItemDefinitionText(p.json);
-      const fromPath = p.filePath ? itemLocationFromPath(p.filePath) : null;
-      const fileStem = p.filePath?.split(/[\\/]/).pop()?.replace(/\.json$/i, '');
-      const namespace = p.namespace ?? fromPath?.namespace ?? 'minecraft';
-      const id = p.itemId ?? fromPath?.id ?? fileStem ?? 'item';
-      checkLocation(namespace, id);
-      const item = newItemSettings(definition, { namespace, id, version });
-      const issues = validateItemDefinition(definition, version);
-      return { ...openItemDoc(ctx, item, p.name ?? id.split('/').pop()!, p.activate, p.filePath ?? null), issues: issues.length };
+      return importItemDefinition(ctx, p);
     },
   }),
 
