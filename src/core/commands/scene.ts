@@ -11,6 +11,7 @@ import { newId, uniqueName } from '../state';
 import type { DocState, SceneObject, Vec3 } from '../types';
 import { defineCommand, docState, updateDocState, vec3, type CommandContext } from './registry';
 import { boundsResult, objectResults } from './results';
+import { elementInfo } from './cuboid';
 
 const primitiveNames: Record<(typeof primitiveTypes)[number], string> = {
   cube: 'Würfel',
@@ -48,6 +49,8 @@ function summary(obj: SceneObject) {
     materialId: obj.materialId,
     transform: obj.transform,
     ...meshStats(obj.mesh),
+    // Minecraft cuboid elements: their box, pivot and faces in model-space pixels (see cuboid_list).
+    ...(obj.cuboid ? { element: elementInfo({ ...obj, cuboid: obj.cuboid }) } : {}),
   };
 }
 

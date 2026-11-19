@@ -3,6 +3,7 @@ import { workspaces } from '../core/types';
 import { useT } from '../i18n';
 import { dispatch } from './actions';
 import { DocTabs } from './DocTabs';
+import { useIsMinecraft } from './format';
 import { MenuBar } from './MenuBar';
 import { dragWindow, WindowControls } from './WindowControls';
 
@@ -20,9 +21,12 @@ function Mark() {
 function WorkspaceSwitch() {
   const workspace = useApp((s) => s.workspace);
   const t = useT();
+  // Minecraft documents paint pixel art in the paint workspace; only they have the display workspace.
+  const minecraft = useIsMinecraft();
+  const shown = workspaces.filter((w) => minecraft || w !== 'display');
   return (
     <div role="radiogroup" aria-label={t.topBar.workspace} className="flex shrink-0 items-center rounded-lg bg-ink p-0.5">
-      {workspaces.map((w) => {
+      {shown.map((w) => {
         const active = w === workspace;
         return (
           <button

@@ -31,11 +31,10 @@ function readBase64(file: File): Promise<string> {
 }
 
 /**
- * Embeds an image file as a texture and puts it into a map slot of the material. Two commands,
- * so two undo steps: the first undo empties the slot again, the second removes the texture.
+ * Embeds an image file in the active document as a texture and returns its id.
  * Rejects with a message for the user if the file is not a usable image.
  */
-export async function loadImageIntoSlot(file: File, materialId: string, slot: TextureSlot): Promise<void> {
+export async function addTextureFromFile(file: File): Promise<string> {
   const t = getT().materials;
   const type = mimeType(file);
   if (!type) throw new Error(t.unsupported(file.name));
@@ -55,7 +54,16 @@ export async function loadImageIntoSlot(file: File, materialId: string, slot: Te
   const data = await readBase64(file);
   const name = file.name.replace(/\.[^.]+$/, '') || file.name;
   const { id } = (await execute('texture.add', { name, mimeType: type, data, width, height })) as { id: string };
-  await setSlot(materialId, slot, id);
+  return id;
+}
+
+/**
+ * Embeds an image file as a texture and puts it into a map slot of the material. Two commands,
+ * so two undo steps: the first undo empties the slot again, the second removes the texture.
+ * Rejects with a message for the user if the file is not a usable image.
+ */
+export async function loadImageIntoSlot(file: File, materialId: string, slot: TextureSlot): Promise<void> {
+  await setSlot(materialId, slot, await addTextureFromFile(file));
 }
 
 /**

@@ -29,3 +29,11 @@ base64 = "0.23"
 getrandom = "0.4"
 fontdb = "0.24"
 ttf-parser = "0.25"
+tauri-plugin-opener = "2"
+git2 = { version = "0.20", default-features = false, features = ["https", "vendored-libgit2"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "native-tls"] }
+keyring = { version = "3", features = ["apple-native", "windows-native", "sync-secret-service", "crypto-rust"] }
+trash = "5"
+
+zip = { version = "4.6.1", default-features = false, features = ["deflate-flate2"] }
+flate2 = { version = "1", default-features = false, features = ["rust_backend"] }

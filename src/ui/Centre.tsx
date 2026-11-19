@@ -1,13 +1,23 @@
+import { isMinecraftFormat } from '../core/formats';
 import { memo } from 'react';
 import { selectDocState, useApp } from '../app/store';
 import { useT } from '../i18n';
 import { Viewport } from '../viewport/Viewport';
 import { shortcutLabel } from './actions';
+import { useDocFormat } from './format';
+import { useItemPreviewController, useItemUi } from './items/itemStore';
+import { ItemPreviewOverlay } from './items/ItemPreviewOverlay';
+import { ItemTreePane } from './items/ItemTree';
 import { LastOpPanel } from './LastOpPanel';
 import { ModeSwitch } from './ModeSwitch';
 import { PaintHint, PaintOptions } from './paint/PaintOptions';
+import { PixelEditor } from './pixel/PixelEditor';
+import { PixelOptions } from './pixel/PixelOptions';
+import { PreviewOptions } from './preview/PreviewOptions';
+import { DisplayViewport } from './display/DisplayViewport';
 import { CameraViewBadge, TimelineDock } from './timeline/Timeline';
 import { SplitDivider } from './uv/SplitDivider';
+import { CuboidUvEditor } from './uv/CuboidUvEditor';
 import { UvEditor } from './uv/UvEditor';
 import { UvOverlays } from './uv/UvMenu';
 import { useUvUi } from './uv/uvStore';
@@ -43,24 +53,45 @@ function EmptyHint() {
 }
 
 export function Centre() {
-  const workspace = useApp((s) => s.workspace);
-  const split = useUvUi((s) => s.split);
-  const uv = workspace === 'uv';
+  const format = useDocFormat();
+  const minecraft = isMinecraftFormat(format);
+  // Item definitions have no scene of their own: their tree sits left of the preview, in every workspace.
+  const item = format === 'minecraft_item';
+  const workspace = useApp((s) => (item ? 'modeling' : s.workspace));
+  const uvSplit = useUvUi((s) => s.split);
+  const itemSplit = useItemUi((s) => s.split);
+  // Minecraft documents paint pixel art: the 2D texture editor sits beside the 3D view, like the UV editor.
+  const pixelPaint = minecraft && workspace === 'paint';
+  const uv = workspace === 'uv' || pixelPaint;
+  const split = item ? itemSplit : uvSplit;
+  const left = uv || item;
+  useItemPreviewController();
   return (
-    <main className="flex min-h-0 min-w-0 flex-col overflow-hidden bg-ink">
+    <main data-dock-centre className="flex min-h-0 min-w-0 flex-col overflow-hidden bg-ink">
       <div className="relative min-h-0 min-w-0 flex-1 overflow-hidden">
       {uv && (
         <div className="absolute inset-y-0 left-0" style={{ width: `${split * 100}%` }}>
-          <UvEditor />
+          {pixelPaint ? <PixelEditor /> : minecraft ? <CuboidUvEditor /> : <UvEditor />}
+        </div>
+      )}
+      {item && (
+        <div className="absolute inset-y-0 left-0" style={{ width: `${split * 100}%` }}>
+          <ItemTreePane />
         </div>
       )}
       {/* The 3D view: everything in modelling, the right part next to the UV editor. Its overlays stay inside it. */}
-      <div className="absolute inset-y-0 right-0 overflow-hidden" style={{ left: uv ? `${split * 100}%` : 0 }}>
+      <div className="absolute inset-y-0 right-0 overflow-hidden" style={{ left: left ? `${split * 100}%` : 0 }}>
         {/* The viewport stays mounted in every workspace so its camera and the screenshot service survive. */}
         <ViewportHost />
         <CameraViewBadge />
-        {workspace === 'modeling' && <EmptyHint />}
-        {workspace === 'paint' ? (
+        {workspace === 'modeling' && !item && <EmptyHint />}
+        {item && <ItemPreviewOverlay />}
+        {workspace === 'display' && minecraft ? (
+          // The display workspace draws its own reference scenes over the (still mounted) modelling view.
+          <DisplayViewport />
+        ) : pixelPaint ? (
+          <PixelOptions />
+        ) : workspace === 'paint' ? (
           // The 3D view is the canvas; the brush options float over it.
           <>
             <PaintOptions />
@@ -68,8 +99,9 @@ export function Centre() {
           </>
         ) : (
           <>
-            <ModeSwitch />
-            <LastOpPanel />
+            {!minecraft && !item && <ModeSwitch />}
+            <PreviewOptions />
+            {!minecraft && !item && <LastOpPanel />}
           </>
         )}
       </div>
@@ -77,7 +109,7 @@ export function Centre() {
       <UvOverlays />
       </div>
       {/* The timeline docks under the views and takes its height from them. */}
-      <TimelineDock />
+      {!minecraft && !item && <TimelineDock />}
     </main>
   );
 }

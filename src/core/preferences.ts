@@ -1,4 +1,6 @@
 import { z } from 'zod';
+import { displayPreferenceFields } from './minecraft/display';
+import { previewPreferenceFields } from './preview';
 
 // App-wide preferences: not part of any document, not undoable, persisted between launches.
 // Changed only through the `preferences.*` commands, so the UI and MCP clients share them.
@@ -25,6 +27,10 @@ export const preferencesSchema = z.object({
   zoomSpeed: z.number().min(0.25).max(3).default(1).describe('Zoom sensitivity of the viewport camera.'),
   invertZoom: z.boolean().default(false).describe('Reverse the mouse-wheel zoom direction.'),
   undoSteps: z.number().int().min(10).max(1000).default(200).describe('Undo steps kept per document.'),
+  // Viewport preview options and the Minecraft assets source (src/core/preview.ts).
+  ...previewPreferenceFields,
+  // Display workspace view options and display presets (src/core/minecraft/display.ts).
+  ...displayPreferenceFields,
 });
 
 export type Preferences = z.infer<typeof preferencesSchema>;

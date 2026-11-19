@@ -1,16 +1,21 @@
 import { Menu } from '@base-ui/react/menu';
 import { Menubar } from '@base-ui/react/menubar';
-import { Type } from 'lucide-react';
+import { Box, Type } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { selectActiveDoc, useApp } from '../app/store';
 import { primitiveTypes } from '../core/mesh/primitives';
+import { anglePresets } from '../core/preview';
 import { elementModes, shadings, viewPresets } from '../core/types';
 import { useT } from '../i18n';
 import { shortcutLabel } from './actions';
+import { useIsMinecraft } from './format';
 import { groupToUngroup } from './groupActions';
 import { meshToolIcons, primitiveIcons } from './labels';
+import { uvOps } from './minecraft/minecraftActions';
 import { TimelineItems } from './timeline/TimelineMenu';
 import { UvMenuItems } from './uv/UvMenu';
+import { useProjects } from './projects/projectsStore';
+import { LayoutMenuItems } from './layout/LayoutMenu';
 import { ActionItem, MenuLabel, MenuPopup, MenuSeparator, RadioActionItem, Submenu } from './menu';
 
 function TopMenu({ title, disabled, children }: { title: string; disabled?: boolean; children: ReactNode }) {
@@ -33,6 +38,7 @@ function EditItems() {
   const hasObjects = useApp((s) => selectActiveDoc(s).state.order.length > 0);
   const editing = useApp((s) => selectActiveDoc(s).state.edit !== null);
   const canUngroup = useApp(() => groupToUngroup() !== null);
+  const minecraft = useIsMinecraft();
   const t = useT();
   return (
     <>
@@ -54,15 +60,23 @@ function EditItems() {
           <MenuSeparator />
           <ActionItem id="edit.group" disabled={!hasSelection} />
           <ActionItem id="edit.ungroup" disabled={!canUngroup} />
-          <MenuSeparator />
-          <ActionItem id="bake.open" disabled={!hasSelection} />
+          {!minecraft && (
+            <>
+              <MenuSeparator />
+              <ActionItem id="bake.open" disabled={!hasSelection} />
+            </>
+          )}
           <MenuSeparator />
           <ActionItem id="edit.select_all" disabled={!hasObjects} />
           <ActionItem id="edit.deselect" disabled={!hasSelection} />
         </>
       )}
-      <MenuSeparator />
-      <ActionItem id="mode.toggle" title={editing ? t.menu.objectMode : t.menu.editMode} disabled={!editing && !hasSelection} />
+      {!minecraft && (
+        <>
+          <MenuSeparator />
+          <ActionItem id="mode.toggle" title={editing ? t.menu.objectMode : t.menu.editMode} disabled={!editing && !hasSelection} />
+        </>
+      )}
     </>
   );
 }
@@ -120,7 +134,9 @@ function MeshItems() {
 
 function MeshMenu() {
   const editing = useApp((s) => selectActiveDoc(s).state.edit !== null);
+  const minecraft = useIsMinecraft();
   const t = useT();
+  if (minecraft) return null;
   return (
     <TopMenu title={t.menu.mesh} disabled={!editing}>
       <MeshItems />
@@ -130,6 +146,7 @@ function MeshMenu() {
 
 function ViewItems() {
   const shading = useApp((s) => s.shading);
+  const minecraft = useIsMinecraft();
   const t = useT();
   return (
     <>
@@ -149,18 +166,32 @@ function ViewItems() {
           <ActionItem key={preset} id={`view.${preset}`} title={t.views[preset]} />
         ))}
       </Menu.Group>
+      <Submenu title={t.preview.anglesMenu}>
+        {anglePresets.map((preset) => (
+          <ActionItem key={preset} id={`preview.angle_${preset}`} title={t.preview.angles[preset]} />
+        ))}
+      </Submenu>
+      <ActionItem id="preview.toggle_projection" />
       <MenuSeparator />
       <ActionItem id="view.frame" />
       <MenuSeparator />
-      <TimelineItems />
+      <LayoutMenuItems />
       <MenuSeparator />
+      {!minecraft && (
+        <>
+          <TimelineItems />
+          <MenuSeparator />
+        </>
+      )}
       <ActionItem id="palette.open" title={t.menu.palette} />
     </>
   );
 }
 
 export function AddItems() {
+  const minecraft = useIsMinecraft();
   const t = useT();
+  if (minecraft) return <ActionItem id="add.cuboid" title={t.mc.cube} icon={Box} />;
   return (
     <>
       {primitiveTypes.map((type) => (
@@ -172,24 +203,77 @@ export function AddItems() {
   );
 }
 
+/** The "Element" menu of Minecraft documents: what the "Netz" menu is to meshes. */
+function ElementMenu() {
+  const hasSelection = useApp((s) => selectActiveDoc(s).state.selection.length > 0);
+  const minecraft = useIsMinecraft();
+  const t = useT();
+  if (!minecraft) return null;
+  const axes = ['x', 'y', 'z'] as const;
+  return (
+    <TopMenu title={t.mc.menu} disabled={!hasSelection}>
+      <Submenu title={t.mc.flipMenu}>
+        {axes.map((axis) => (
+          <ActionItem key={axis} id={`mc.flip_${axis}`} />
+        ))}
+      </Submenu>
+      <Submenu title={t.mc.rotateMenu}>
+        {axes.flatMap((axis) => [
+          <ActionItem key={`${axis}+`} id={`mc.rotate_${axis}_plus`} />,
+          <ActionItem key={`${axis}-`} id={`mc.rotate_${axis}_minus`} />,
+        ])}
+      </Submenu>
+      <MenuSeparator />
+      <ActionItem id="mc.center_pivot" />
+      <ActionItem id="mc.center_block" />
+      <MenuSeparator />
+      <ActionItem id="mc.auto_cullface" />
+      <ActionItem id="mc.remove_blank_faces" />
+      <MenuSeparator />
+      <ActionItem id="mc.validate" />
+    </TopMenu>
+  );
+}
+
+/** The UV menu: unwrap tools for meshes, face UV operations for elements. */
+function UvMenuSwitch() {
+  const minecraft = useIsMinecraft();
+  if (!minecraft) return <UvMenuItems />;
+  return (
+    <>
+      {uvOps.map((op) => (
+        <ActionItem key={op} id={`mc.uv_${op}`} />
+      ))}
+    </>
+  );
+}
+
 export function MenuBar() {
   const t = useT();
+  const hasProject = useProjects((s) => s.activeId !== null && s.projects.some((p) => p.id === s.activeId));
   return (
     <Menubar className="flex items-center gap-0.5">
       <TopMenu title={t.menu.file}>
         <ActionItem id="file.new" />
+        <ActionItem id="file.new_item" />
+        <ActionItem id="mc.create_item" />
         <ActionItem id="file.open" />
+        <ActionItem id="file.open_java" />
+        <ActionItem id="file.import_folder" />
         <ActionItem id="file.import" />
         <MenuSeparator />
         <ActionItem id="file.save" />
         <ActionItem id="file.save_as" />
+        <ActionItem id="projects.save_into" disabled={!hasProject} />
         <Submenu title={t.menu.export}>
           <ActionItem id="file.export_glb" title={t.menu.exportGlb} />
           <ActionItem id="file.export_gltf" title={t.menu.exportGltf} />
           {(['obj', 'stl', 'ply', 'usdz'] as const).map((format) => (
             <ActionItem key={format} id={`file.export_${format}`} title={t.files.menu[format]} />
           ))}
+          <ActionItem id="file.export_json" title={t.files.menu.json} />
         </Submenu>
+        <ActionItem id="item.check" />
         <ActionItem id="render.open" />
         <ActionItem id="video.export" />
         <MenuSeparator />
@@ -204,8 +288,9 @@ export function MenuBar() {
         <AddItems />
       </TopMenu>
       <MeshMenu />
+      <ElementMenu />
       <TopMenu title={t.uv.menu}>
-        <UvMenuItems />
+        <UvMenuSwitch />
       </TopMenu>
       <TopMenu title={t.menu.view}>
         <ViewItems />

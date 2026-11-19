@@ -14,7 +14,8 @@ import {
   type Line2NodeMaterial,
   type LineBasicMaterial,
   type MeshStandardMaterial,
-  type PerspectiveCamera,
+  type OrthographicCamera,
+  PerspectiveCamera,
   type WebGPURenderer,
 } from 'three/webgpu';
 import { LineSegments2 } from 'three/addons/lines/webgpu/LineSegments2.js';
@@ -91,6 +92,17 @@ export function releaseObjects(root: Object3D): void {
   root.traverse((object) => object.dispatchEvent({ type: 'dispose' } as never));
 }
 
+/**
+ * A cuboid's mesh is six quads in `cuboidFaces` order, which `triangulate` turns into six triangle pairs:
+ * one group per face lets each face have its own material. Groups live on the geometry, which is shared
+ * by objects with the same mesh and never by anything but cuboids, so adding them once is enough.
+ */
+function addFaceGroups(geometry: MeshGeometry): void {
+  const solid = geometry.solid;
+  if (solid.groups.length > 0 || geometry.mesh.faces.length !== 6) return;
+  for (let face = 0; face < 6; face++) solid.addGroup(face * 6, 6, face);
+}
+
 /** Local-space bounding box of the selected elements, or null if nothing is selected. */
 export function selectionBox(view: EditView, edit: NonNullable<DocState['edit']>): Box3 | null {
   const box = new Box3();
@@ -155,7 +167,10 @@ export class DocScene {
       if (entry.geometry.mesh !== mesh || entry.geometry.smooth !== obj.smooth) this.swapGeometry(entry, mesh, obj.smooth);
       // No selection overlays in the paint workspace: they would lie on top of what is painted.
       const highlight: Highlight = app.workspace === 'paint' ? 0 : id === state.activeId ? 2 : selected.has(id) ? 1 : 0;
-      const surface = looks.surfaces.pick(app, state, obj, entry.geometry.hasUvs);
+      // Cuboid elements show their faces' own textures: one material per face (see `addFaceGroups`).
+      const faces = obj.cuboid ? looks.surfaces.cuboidMaterials(app, state, obj) : null;
+      if (faces) addFaceGroups(entry.geometry);
+      const surface = faces ?? looks.surfaces.pick(app, state, obj, entry.geometry.hasUvs);
       this.applyLook(entry, app.shading, highlight, edit !== null, surface);
     }
   }
@@ -211,7 +226,7 @@ export class DocScene {
   }
 
   /** `dim`: another object is being edited; this one steps back and shows no selection. */
-  private applyLook(entry: Entry, shading: Shading, highlight: Highlight, dim: boolean, surface: MeshStandardMaterial | null): void {
+  private applyLook(entry: Entry, shading: Shading, highlight: Highlight, dim: boolean, surface: MeshStandardMaterial | MeshStandardMaterial[] | null): void {
     const { looks } = this;
     const wireframe = shading === 'wireframe';
     if (dim) highlight = 0;
@@ -301,7 +316,8 @@ export class DocScene {
     const materials = new Set<MeshStandardMaterial>();
     for (const entry of shown) {
       if (entry.edit || !entry.solid.visible) continue;
-      materials.add(entry.solid.material as MeshStandardMaterial);
+      const solid = entry.solid.material;
+      for (const material of Array.isArray(solid) ? solid : [solid]) materials.add(material as MeshStandardMaterial);
       const creases = entry.geometry.creases;
       if (!creases) continue;
       // Kept with the object (hidden) rather than made for each picture: three holds GPU buffers per drawn object.
@@ -351,11 +367,18 @@ export class Stage {
     this.grid.setPalette(palette);
   }
 
-  /** Renders the scene from `camera`, which looks at `target`. */
-  draw(renderer: WebGPURenderer, camera: PerspectiveCamera, target: Vector3): void {
-    const distance = camera.position.distanceTo(target);
-    fitClipPlanes(camera, distance);
+  /**
+   * Renders the scene from `camera`, which looks at `target`. An orthographic camera sets its own clip
+   * planes and passes the viewing `distance` it stands for (it is pulled back further than that).
+   */
+  draw(renderer: WebGPURenderer, camera: PerspectiveCamera | OrthographicCamera, target: Vector3, viewDistance?: number): void {
+    const distance = viewDistance ?? camera.position.distanceTo(target);
+    if (camera instanceof PerspectiveCamera) fitClipPlanes(camera, distance);
     this.grid.update(target, distance);
+    // Fog is measured from the camera, which an orthographic one stands further back than `distance`.
+    const pulledBack = camera.position.distanceTo(target) - distance;
+    this.grid.fog.near += pulledBack;
+    this.grid.fog.far += pulledBack;
     this.lightRig.quaternion.copy(camera.quaternion);
     renderer.render(this.scene, camera);
   }

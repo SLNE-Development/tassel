@@ -2,8 +2,13 @@
 // All state is immutable: commands produce new objects, which makes undo a stack of DocStates.
 // Conventions: Y is up, units are meters, rotations are Euler XYZ in degrees.
 
+import type { ItemDocSettings } from './minecraft/items/types';
+import type { MinecraftAssetsService } from './minecraftAssets';
+import type { ModelFileService } from './modelFiles';
+import type { PixelOp, TextureTransform } from './pixelOps';
 import type { Preferences } from './preferences';
 import type { RenderService, RenderSettings } from './render';
+import type { TextureLibraryService, TextureLink } from './textureLibrary';
 import type { VideoService } from './video';
 
 export type Vec3 = [number, number, number];
@@ -35,6 +40,27 @@ export interface Texture {
    * always the flattened PNG of the visible layers, so renderers and exporters only ever need `data`.
    */
   readonly layers?: readonly PaintLayer[];
+  /** Minecraft documents: where the texture lives in a resource pack. `name` is its file name without .png. */
+  readonly java?: JavaTextureRef;
+  /**
+   * Linked to a texture library file (core/textureLibrary.ts) instead of being only embedded: the image is
+   * loaded from the library on open and when the file changes, written back on save, and exported by
+   * this location. `data` stays a cached copy, so the document also opens without the library.
+   */
+  readonly link?: TextureLink;
+  /**
+   * An animated (flipbook) texture: the image is a vertical strip of square frames (frame height = width),
+   * played in order. Written as the texture's `.png.mcmeta` on export.
+   */
+  readonly animation?: TextureAnimation;
+}
+
+/** Playback of a flipbook texture, as Minecraft's `.mcmeta` "animation" section. */
+export interface TextureAnimation {
+  /** Game ticks (1/20 s) each frame is shown, >= 1. */
+  readonly frametime: number;
+  /** Blend between frames while one is shown. */
+  readonly interpolate: boolean;
 }
 
 export const blendModes = ['normal', 'multiply', 'screen', 'overlay', 'add'] as const;
@@ -137,6 +163,56 @@ export interface SceneObject {
   readonly groupId: string | null;
   /** The object's material (a key of `DocState.materials`), or null for the default clay look. */
   readonly materialId: string | null;
+  /**
+   * Present on Minecraft cuboid elements (Minecraft documents only). `mesh` is then always derived from it
+   * (core/minecraft/cuboid.ts) and never edited directly; the object's origin (`transform.position`) is the
+   * element's rotation origin (pivot) and `transform.rotation` its rotation. Scale is always [1, 1, 1].
+   */
+  readonly cuboid?: Cuboid;
+}
+
+/** The six faces of a cuboid, also the directions of cullface and shade_direction_override. */
+export const cuboidFaces = ['north', 'east', 'south', 'west', 'up', 'down'] as const;
+export type CuboidFaceName = (typeof cuboidFaces)[number];
+
+export const uvRotations = [0, 90, 180, 270] as const;
+export type UvRotation = (typeof uvRotations)[number];
+
+/** One face of a cuboid element. */
+export interface CuboidFace {
+  /** Disabled faces are not exported (and drawn as holes). */
+  readonly enabled: boolean;
+  /** Texture id (a key of `DocState.textures`), or null for none (exported as "#missing"). */
+  readonly texture: string | null;
+  /** [x1, y1, x2, y2] in UV pixels (the document's texture size; y down). x1 > x2 mirrors. */
+  readonly uv: readonly [number, number, number, number];
+  /** Clockwise texture rotation on the face. */
+  readonly rotation: UvRotation;
+  /** null = no tint. */
+  readonly tintIndex: number | null;
+  readonly cullface: CuboidFaceName | null;
+}
+
+/**
+ * A Minecraft Java cuboid element. Positions are in pixels (1 px = 1/16 m) RELATIVE TO THE OBJECT'S ORIGIN
+ * (the pivot); model-space from/to are origin + from / origin + to (core/minecraft/space.ts converts).
+ */
+export interface Cuboid {
+  readonly from: Vec3;
+  readonly to: Vec3;
+  /** Pixels added on every side (exported into from/to). */
+  readonly inflate: number;
+  readonly rescale: boolean;
+  readonly shade: boolean;
+  /** 0..15 */
+  readonly lightEmission: number;
+  readonly shadeDirectionOverride: CuboidFaceName | null;
+  readonly locked: boolean;
+  /** false = left out of the exported model. */
+  readonly export: boolean;
+  /** Marker colour index 0..7 (outliner / marker view). */
+  readonly color: number;
+  readonly faces: Readonly<Record<CuboidFaceName, CuboidFace>>;
 }
 
 /**
@@ -148,6 +224,8 @@ export interface Group {
   readonly name: string;
   /** The group this group is nested in, or null at top level. Never forms a cycle. */
   readonly parentId: string | null;
+  /** Minecraft documents: the group's pivot in model-space pixels (exported in "groups"). Absent = [8, 8, 8]. */
+  readonly pivot?: Vec3;
 }
 
 export const elementModes = ['vertex', 'edge', 'face'] as const;
@@ -233,6 +311,161 @@ export interface DocState {
   readonly animation?: Animation;
   /** How the document is rendered to pictures (render.* commands; see core/render.ts). Absent = the defaults. */
   readonly render?: RenderSettings;
+  /** What kind of document this is (core/formats.ts). Absent = 'free'. Never changes after creation. */
+  readonly format?: DocFormat;
+  /** Model settings of a Minecraft document; present exactly when `format` is 'minecraft_java' or 'minecraft_factory'. */
+  readonly java?: JavaModelSettings;
+  /** Machine definition of a factory model (core/minecraft/factory); present exactly when `format` is 'minecraft_factory'. */
+  readonly factory?: FactoryMachine;
+  /** The item definition of a Minecraft item definition document; present exactly when `format` is 'minecraft_item'. */
+  readonly item?: ItemDocSettings;
+}
+
+export const docFormats = ['free', 'minecraft_java', 'minecraft_item', 'minecraft_factory'] as const;
+/**
+ * 'free': a general 3D model (polygon meshes). 'minecraft_java': a Minecraft Java block/item model (cuboids).
+ * 'minecraft_item': a Minecraft Java item model definition (assets/<ns>/items/<id>.json; no scene objects).
+ * 'minecraft_factory': a Minecraft Java model plus a machine definition (ports, footprint, facings) for a server plugin.
+ */
+export type DocFormat = (typeof docFormats)[number];
+
+/** Which way resources flow through a factory port, seen from the machine. */
+export const portKinds = ['input', 'output', 'bidirectional'] as const;
+export type PortKind = (typeof portKinds)[number];
+
+/** A JSON value of a free-form factory property. */
+export type FactoryValue = string | number | boolean;
+
+/**
+ * A connection point of a factory machine: where a conveyor, pipe, cable... attaches and what flows there.
+ * Coordinates are model-space pixels of the model's own block (the anchor block spans 0..16).
+ */
+export interface FactoryPort {
+  /** Internal identity, stable while the port is edited (the user-facing `id` can change). */
+  readonly uid: string;
+  /** The id the plugin sees, e.g. 'input' or 'fuel_in'; unique per machine. */
+  readonly id: string;
+  /** Display label; '' = none. */
+  readonly name: string;
+  readonly kind: PortKind;
+  /** What flows: a built-in resource ('item', 'fluid', 'energy', ...) or a custom id such as 'mymod:steam'. */
+  readonly resource: string;
+  /** What attaches: a built-in connector ('conveyor', 'pipe', 'cable', ...) or a custom id. */
+  readonly connector: string;
+  /** The block face the port opens to (= its outward direction); null = not set yet (a validation error). */
+  readonly face: CuboidFaceName | null;
+  /** Centre of the port opening in model pixels, on the pixel grid. */
+  readonly position: Vec3;
+  /** Width and height of the opening in pixels, on the face plane. */
+  readonly size: readonly [number, number];
+  /** How much the port buffers (plugin-defined unit), or null. */
+  readonly capacity: number | null;
+  /** Throughput per tick (plugin-defined unit), or null. */
+  readonly rate: number | null;
+  readonly tags: readonly string[];
+  readonly properties: Readonly<Record<string, FactoryValue>>;
+}
+
+/** Machine-level settings of a factory model. */
+export interface FactoryMachine {
+  /** Namespaced machine id, e.g. 'factory:crusher'. */
+  readonly id: string;
+  readonly displayName: string;
+  /** Size in blocks [x, y, z] (multi-block machines are larger than 1). */
+  readonly footprint: Vec3;
+  /** The footprint cell the model's own block (model px 0..16) sits in. */
+  readonly anchor: Vec3;
+  /** Facings the machine may be placed with. The model is always authored facing north (core/minecraft/factory/rotation.ts). */
+  readonly facings: readonly CuboidFaceName[];
+  /** The facing the plugin uses when none is given; one of `facings`. */
+  readonly defaultFacing: CuboidFaceName;
+  readonly properties: Readonly<Record<string, FactoryValue>>;
+  /** In outliner order. */
+  readonly ports: readonly FactoryPort[];
+}
+
+export const guiLights = ['side', 'front'] as const;
+
+/** Settings of a Minecraft Java block/item model (the model JSON's root keys). */
+export interface JavaModelSettings {
+  /** Target version id (core/minecraft/versions.ts), e.g. '26.3'. */
+  readonly version: string;
+  /** File name of the model without .json, e.g. 'my_block'. */
+  readonly fileName: string;
+  /** e.g. 'block/cube_all' or 'minecraft:item/generated'; '' = none. */
+  readonly parent: string;
+  readonly ambientOcclusion: boolean;
+  /** null = not written (Minecraft's default, side). */
+  readonly guiLight: (typeof guiLights)[number] | null;
+  /** UV size [width, height] in pixels; face UVs are in these units. Default [16, 16]. */
+  readonly textureSize: readonly [number, number];
+  readonly credit: string;
+  /** Texture id used as "particle", or null. */
+  readonly particle: string | null;
+  /**
+   * Display transforms per slot ({ rotation, translation, scale }), as read from a file or set in the Display
+   * workspace (core/minecraft/display.ts). Unknown slots and fields are kept verbatim.
+   */
+  readonly display?: Readonly<Record<string, unknown>>;
+  /** Root keys of an imported model that Tessel does not understand, written back unchanged on export. */
+  readonly extra?: Readonly<Record<string, unknown>>;
+  /**
+   * Texture variables whose value is another variable (`"particle": "#all"`) that this model does not define
+   * itself but inherits from its parent. Written back into "textures" on export.
+   */
+  readonly textureRefs?: Readonly<Record<string, string>>;
+  /** The file the model was opened from, for finding its parent models in the same resource pack. */
+  readonly sourcePath?: string;
+  /** What the parent chain provides, when it is shown (read-only) in the viewport; absent = parent reference only. */
+  readonly inherited?: JavaInherited;
+}
+
+/** A texture image of a parent model, PNG base64. */
+export interface JavaImage {
+  readonly data: string;
+  readonly width: number;
+  readonly height: number;
+}
+
+/** A snapshot of a Minecraft model's parent chain (core/minecraft/parents.ts). Never exported; shown read-only. */
+export interface JavaInherited {
+  /** Normalised ids, nearest parent first; a built-in root (`minecraft:builtin/generated`) is included. */
+  readonly chain: readonly string[];
+  /** 'generated': items drawn from their layer0..4 textures; 'entity': drawn by code. */
+  readonly builtin: 'generated' | 'entity' | null;
+  /** Texture variables of the chain merged (nearer parents win), as written (`#var` references kept). */
+  readonly textures: Readonly<Record<string, string>>;
+  /** The "elements" of the nearest parent that has any, as JSON; null if none has. */
+  readonly elements: readonly unknown[] | null;
+  readonly textureSize: readonly [number, number] | null;
+  /** Display transforms of the chain merged per context. */
+  readonly display: Readonly<Record<string, unknown>>;
+  /** Images of the inherited textures by normalised id (`minecraft:block/stone`). */
+  readonly images: Readonly<Record<string, JavaImage>>;
+  /** Parent models and textures that could not be found. */
+  readonly missing: readonly string[];
+}
+
+/** Minecraft Java texture location; the JSON reference is `namespace:folder/name` (namespace left out when 'minecraft'). */
+export interface JavaTextureRef {
+  /** e.g. 'minecraft' or 'mymod'. */
+  readonly namespace: string;
+  /** e.g. 'block' or 'item/tools'; '' = directly under textures/. */
+  readonly folder: string;
+  /** The texture variable in the model's "textures", e.g. '0', 'side', 'all'. Unique per document. */
+  readonly key: string;
+}
+
+/** What produced one undo snapshot of a document: the History panel's label for it (core/history.ts). */
+export interface HistoryStep {
+  /** Id of the command that made the change (its localised title is the label). */
+  readonly command: string;
+  /** A short detail, e.g. the name of the object it changed. */
+  readonly detail?: string;
+  /** When the change was made, in ms since the epoch. */
+  readonly time: number;
+  /** The document as it was created or opened, by `command`. */
+  readonly origin?: true;
 }
 
 export interface Doc {
@@ -243,9 +476,15 @@ export interface Doc {
   readonly state: DocState;
   readonly past: readonly DocState[];
   readonly future: readonly DocState[];
+  /** What produced `state`. */
+  readonly step: HistoryStep;
+  /** What produced each entry of `past` (same length and order). */
+  readonly pastSteps: readonly HistoryStep[];
+  /** What produced each entry of `future` (same length and order). */
+  readonly futureSteps: readonly HistoryStep[];
 }
 
-export const workspaces = ['modeling', 'uv', 'paint'] as const;
+export const workspaces = ['modeling', 'uv', 'paint', 'display'] as const;
 export type Workspace = (typeof workspaces)[number];
 
 export const shadings = ['solid', 'wireframe', 'material'] as const;
@@ -376,7 +615,8 @@ export interface ViewportService {
   frame(ids: readonly string[], doc?: ViewDocument): void;
 }
 
-export const exportFormats = ['glb', 'gltf', 'obj', 'stl', 'ply', 'usdz'] as const;
+/** `json` is a Minecraft Java block/item model (Minecraft documents only; see core/minecraft/javaExport.ts). */
+export const exportFormats = ['glb', 'gltf', 'obj', 'stl', 'ply', 'usdz', 'json'] as const;
 export type ExportFormat = (typeof exportFormats)[number];
 
 /** `tessel` is a project file whose content is merged into the document; `import.file` reads it itself, without the import service. */
@@ -483,8 +723,18 @@ export interface ImagingService {
   flatten(width: number, height: number, layers: readonly PaintLayer[]): Promise<string>;
   /** `upper` (with its opacity and blend mode) composited onto the pixels of `lower`. */
   mergeDown(width: number, height: number, lower: PaintLayer, upper: PaintLayer): Promise<string>;
+  /** True if every pixel of the texture inside the rectangle (texture pixels, y down) is fully transparent. */
+  regionTransparent?(texture: Texture, rect: { x: number; y: number; width: number; height: number }): Promise<boolean>;
   /** Tangent-space normal map (OpenGL convention) from the image's luminance as height. */
   normalFromHeight(texture: Texture, strength: number, invert: boolean): Promise<string>;
+  /**
+   * A pixel-art edit (core/pixelOps.ts) of one layer, or with `layerId` null of the image of a texture without
+   * layers (then `layer` and `flattened` are the same new PNG). `changed` is false when no pixel changed (the
+   * strings are then the old ones).
+   */
+  pixelEdit(texture: Texture, layerId: string | null, op: PixelOp): Promise<{ layer: string; flattened: string; changed: boolean }>;
+  /** The same transform applied to the image and every layer; the size may change. `layers` follows texture.layers. */
+  transformTexture(texture: Texture, transform: TextureTransform): Promise<{ data: string; width: number; height: number; layers?: string[] }>;
 }
 
 /** What a bake computes; see the bake.* commands for the meaning of the fields. */
@@ -570,4 +820,10 @@ export interface Services {
   fonts?: FontService | null;
   renderer?: RenderService | null;
   video?: VideoService | null;
+  /** Vanilla Minecraft assets from the user's install (src/mcassets). */
+  minecraftAssets?: MinecraftAssetsService | null;
+  /** Model files on disk and parent model lookup (src/bridge/javaModels.ts). */
+  modelFiles?: ModelFileService | null;
+  /** Texture library files of projects, library folders and vanilla (src/texlib). */
+  textureLibrary?: TextureLibraryService | null;
 }

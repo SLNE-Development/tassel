@@ -45,7 +45,8 @@ pub fn extension(path: &str) -> String {
 /// 3D formats `import.file` reads, by extension.
 pub const IMPORT_EXTENSIONS: [&str; 6] = ["glb", "gltf", "obj", "stl", "ply", "fbx"];
 /// 3D formats `export.file` writes, by extension.
-pub const EXPORT_EXTENSIONS: [&str; 6] = ["glb", "gltf", "obj", "stl", "ply", "usdz"];
+/// `json` is a Minecraft Java block/item model (Minecraft documents only).
+pub const EXPORT_EXTENSIONS: [&str; 7] = ["glb", "gltf", "obj", "stl", "ply", "usdz", "json"];
 /// Images that can become textures.
 pub const IMAGE_EXTENSIONS: [&str; 4] = ["png", "jpg", "jpeg", "webp"];
 /// Containers `render.video` writes.
@@ -209,12 +210,136 @@ pub fn image_info(b: &[u8]) -> Option<(&'static str, u32, u32)> {
 
 /// The webview may only touch the file types the editor works with, whatever path it is handed
 /// (a document's file path can be set through MCP).
+/// Text files the save dialogs write: projects, glTF, Minecraft models and texture `.mcmeta` files.
+pub const TEXT_EXPORT_EXTENSIONS: [&str; 4] = ["tessel", "gltf", "json", "mcmeta"];
+
 fn require_extension(path: &str, allowed: &[&str]) -> Result<(), String> {
   if allowed.contains(&extension(path).as_str()) {
     Ok(())
   } else {
     Err(format!("\"{path}\" must end in .{}", allowed.join(" or .")))
   }
+}
+
+/// Largest Minecraft model file that is read (models are small text files).
+pub const MAX_JAVA_MODEL_BYTES: u64 = 16 * 1024 * 1024;
+/// Largest texture image of a Minecraft model that is read.
+pub const MAX_JAVA_TEXTURE_BYTES: u64 = 16 * 1024 * 1024;
+
+/// Where the image of a texture location (`namespace:folder/name`) of a model at `model_path` may be:
+/// in the resource pack the model is part of (`.../assets/<namespace>/textures/<folder>/<name>.png`),
+/// else next to the model (`<name>.png`, then `<folder>/<name>.png`). Locations that try to leave
+/// those folders (`..`, absolute paths, drive letters) have no candidates.
+pub fn java_texture_candidates(model_path: &Path, location: &str) -> Vec<std::path::PathBuf> {
+  let (namespace, texture_path) = match location.split_once(':') {
+    Some((ns, rest)) => (if ns.is_empty() { "minecraft" } else { ns }, rest),
+    None => ("minecraft", location),
+  };
+  let safe = |part: &str| !part.is_empty() && part != "." && part != ".." && !part.contains(['\\', ':']);
+  if !safe(namespace) || !texture_path.split('/').all(safe) {
+    return Vec::new();
+  }
+  let file = format!("{texture_path}.png");
+  let mut candidates = Vec::new();
+  if let Some(assets) = model_path.ancestors().find(|dir| dir.file_name().is_some_and(|n| n.eq_ignore_ascii_case("assets"))) {
+    candidates.push(assets.join(namespace).join("textures").join(&file));
+  }
+  if let Some(dir) = model_path.parent() {
+    let name = texture_path.rsplit('/').next().unwrap_or(texture_path);
+    candidates.push(dir.join(format!("{name}.png")));
+    if texture_path.contains('/') {
+      candidates.push(dir.join(&file));
+    }
+  }
+  candidates
+}
+
+/// Reads a Minecraft Java model and the PNG images of its textures that can be found (see
+/// `java_texture_candidates`). Returns `{ json, images: { location: { data, width, height } }, missing }`.
+pub async fn read_java_model(path: &str) -> Result<serde_json::Value, String> {
+  let bytes = read_bytes_capped(path, MAX_JAVA_MODEL_BYTES, "open").await?;
+  let json = decode_text(&bytes).map_err(|e| format!("\"{path}\" cannot be read: {e}"))?;
+  let model: serde_json::Value =
+    serde_json::from_str(json.trim_start_matches('\u{feff}')).map_err(|e| format!("\"{path}\" is not valid JSON: {e}"))?;
+  let mut images = serde_json::Map::new();
+  let mut missing: Vec<String> = Vec::new();
+  if let Some(textures) = model.get("textures").and_then(serde_json::Value::as_object) {
+    for location in textures.values().filter_map(serde_json::Value::as_str) {
+      if location.starts_with('#') || images.contains_key(location) || missing.iter().any(|m| m == location) {
+        continue;
+      }
+      let mut found = None;
+      for candidate in java_texture_candidates(Path::new(path), location) {
+        let Ok(bytes) = read_bytes_capped(&candidate.to_string_lossy(), MAX_JAVA_TEXTURE_BYTES, "open").await else {
+          continue;
+        };
+        if let Some(("image/png", width, height)) = image_info(&bytes) {
+          found = Some(serde_json::json!({ "data": encode_base64(&bytes), "width": width, "height": height }));
+          break;
+        }
+      }
+      match found {
+        Some(image) => {
+          images.insert(location.to_string(), image);
+        }
+        None => missing.push(location.to_string()),
+      }
+    }
+  }
+  Ok(serde_json::json!({ "json": json, "images": images, "missing": missing }))
+}
+
+/// File name ending of a factory model's sidecar for the server plugin: `<model>.factory.json` next to
+/// `<model>.json` (docs/factory-model.md).
+pub const FACTORY_SUFFIX: &str = ".factory.json";
+
+/// Whether the path is a factory sidecar (`.factory.json`, any case).
+pub fn is_factory_sidecar(path: &str) -> bool {
+  path.to_ascii_lowercase().ends_with(FACTORY_SUFFIX)
+}
+
+/// The model and sidecar paths of a factory model, given either one: `gear.json` <-> `gear.factory.json`.
+/// `path` must end in `.json`.
+pub fn factory_pair(path: &str) -> (std::path::PathBuf, std::path::PathBuf) {
+  if is_factory_sidecar(path) {
+    let stem = &path[..path.len() - FACTORY_SUFFIX.len()];
+    (format!("{stem}.json").into(), path.into())
+  } else {
+    let stem = &path[..path.len() - ".json".len()];
+    (path.into(), format!("{stem}{FACTORY_SUFFIX}").into())
+  }
+}
+
+/// Reads a Minecraft Java model like `read_java_model`, plus its factory sidecar when there is one next to it.
+/// `path` may be the model or the sidecar (whose model must then exist). Adds `sidecar` (the sidecar text or
+/// null), `modelPath` and `name` (the model's file name without .json).
+pub async fn read_model_bundle(path: &str) -> Result<serde_json::Value, String> {
+  let (model, sidecar) = factory_pair(path);
+  let model_path = model.to_string_lossy().into_owned();
+  if is_factory_sidecar(path) && !model.is_file() {
+    return Err(format!("\"{path}\" is a factory sidecar; its model \"{model_path}\" must be next to it, but it does not exist"));
+  }
+  let mut read = read_java_model(&model_path).await?;
+  let sidecar_text = if sidecar.is_file() {
+    let sidecar_path = sidecar.to_string_lossy().into_owned();
+    let bytes = read_bytes_capped(&sidecar_path, MAX_JAVA_MODEL_BYTES, "open").await?;
+    Some(decode_text(&bytes).map_err(|e| format!("\"{sidecar_path}\" cannot be read: {e}"))?)
+  } else {
+    None
+  };
+  let name = model.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+  read["sidecar"] = serde_json::json!(sidecar_text);
+  read["modelPath"] = serde_json::json!(model_path);
+  read["name"] = serde_json::json!(name);
+  Ok(read)
+}
+
+/// Reads a Minecraft Java model (.json) with the texture images found in its resource pack, and its factory
+/// sidecar if there is one (the path may also be the `.factory.json` itself).
+#[tauri::command]
+pub async fn read_java_model_file(path: String) -> Result<serde_json::Value, String> {
+  require_extension(&path, &["json"])?;
+  read_model_bundle(&path).await
 }
 
 #[tauri::command]
@@ -232,7 +357,8 @@ pub async fn read_binary_file(path: String) -> Result<String, String> {
 
 #[tauri::command]
 pub async fn write_text_file(path: String, contents: String) -> Result<(), String> {
-  require_extension(&path, &["tessel", "gltf"])?;
+  // .mcmeta: the animation file Minecraft reads next to an exported texture (`name.png.mcmeta`).
+  require_extension(&path, &TEXT_EXPORT_EXTENSIONS)?;
   write_bytes(&path, contents.as_bytes()).await
 }
 
@@ -280,7 +406,52 @@ mod tests {
     assert!(require_extension("C:\\a\\b.GLB", &IMPORT_EXTENSIONS).is_ok());
     assert!(require_extension("C:\\a\\b.exe", &IMPORT_EXTENSIONS).is_err());
     assert!(require_extension("C:\\a\\glb", &IMPORT_EXTENSIONS).is_err());
+    assert!(require_extension("C:\\pack\\fire.png.mcmeta", &TEXT_EXPORT_EXTENSIONS).is_ok());
+    assert!(require_extension("C:\\pack\\fire.png", &TEXT_EXPORT_EXTENSIONS).is_err());
     assert!(require_extension("C:\\a\\b.usdz", &EXPORT_EXTENSIONS).is_ok());
+  }
+
+  #[test]
+  fn java_textures_are_looked_up_in_the_resource_pack() {
+    let model = Path::new("/packs/p/assets/mymod/models/block/gear.json");
+    assert_eq!(
+      java_texture_candidates(model, "mymod:block/gear"),
+      [
+        Path::new("/packs/p/assets/mymod/textures/block/gear.png").to_path_buf(),
+        Path::new("/packs/p/assets/mymod/models/block/gear.png").to_path_buf(),
+        Path::new("/packs/p/assets/mymod/models/block/block/gear.png").to_path_buf(),
+      ]
+    );
+    assert_eq!(java_texture_candidates(model, "block/stone")[0], Path::new("/packs/p/assets/minecraft/textures/block/stone.png"));
+    let loose = Path::new("/models/gear.json");
+    assert_eq!(java_texture_candidates(loose, "item/gear"), [Path::new("/models/gear.png"), Path::new("/models/item/gear.png")]);
+    assert!(java_texture_candidates(model, "../../secret").is_empty());
+    assert!(java_texture_candidates(model, "mymod:block/../../x").is_empty());
+    assert!(java_texture_candidates(model, "..:block/x").is_empty());
+    assert!(java_texture_candidates(model, "block/C:\\x").is_empty());
+  }
+
+  #[test]
+  fn java_models_are_read_with_their_textures() {
+    let runtime = tokio::runtime::Builder::new_current_thread().build().unwrap();
+    runtime.block_on(async {
+      let dir = std::env::temp_dir().join(format!("tessel-java-{}", std::process::id()));
+      let models = dir.join("assets").join("minecraft").join("models").join("block");
+      let textures = dir.join("assets").join("minecraft").join("textures").join("block");
+      std::fs::create_dir_all(&models).unwrap();
+      std::fs::create_dir_all(&textures).unwrap();
+      let mut png = vec![0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, b'I', b'H', b'D', b'R'];
+      png.extend([0, 0, 0, 16, 0, 0, 0, 32, 8, 6, 0, 0, 0]);
+      std::fs::write(textures.join("stone.png"), &png).unwrap();
+      let model = models.join("thing.json");
+      std::fs::write(&model, r##"{"textures": {"0": "block/stone", "1": "block/nope", "particle": "#0"}}"##).unwrap();
+      let read = read_java_model(&model.to_string_lossy()).await.unwrap();
+      assert_eq!(read["images"]["block/stone"]["width"], 16);
+      assert_eq!(read["images"]["block/stone"]["height"], 32);
+      assert_eq!(read["missing"], serde_json::json!(["block/nope"]));
+      assert!(read["json"].as_str().unwrap().contains("block/nope"));
+      std::fs::remove_dir_all(&dir).unwrap();
+    });
   }
 
   #[test]

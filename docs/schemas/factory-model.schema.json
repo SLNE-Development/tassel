@@ -1,0 +1,134 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "factory-model.schema.json",
+  "title": "Tessel factory model sidecar",
+  "description": "The <model>.factory.json file Tessel writes next to a Minecraft Java model for a factory server plugin. Specification: docs/factory-model.md. All coordinates are model pixels of the model's own block (16 per block, the block spans 0..16; +X east, +Y up, +Z south).",
+  "type": "object",
+  "required": ["schema_version", "machine", "footprint", "rotation", "ports", "facings"],
+  "properties": {
+    "schema_version": { "const": 1, "description": "Version of this schema. Readers must refuse versions they do not know." },
+    "generator": { "type": "string", "description": "The program that wrote the file, e.g. \"Tessel\"." },
+    "machine": {
+      "type": "object",
+      "required": ["id", "display_name", "model", "properties"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z0-9_.-]+:[a-z0-9_./-]+$", "description": "Namespaced machine id, e.g. factory:crusher." },
+        "display_name": { "type": "string" },
+        "model": { "type": "string", "description": "File name of the model JSON next to this file, without .json." },
+        "properties": { "$ref": "#/$defs/properties" }
+      },
+      "additionalProperties": true
+    },
+    "footprint": {
+      "type": "object",
+      "required": ["size", "anchor", "min", "max"],
+      "properties": {
+        "size": { "$ref": "#/$defs/ivec3", "description": "Size in blocks [x, y, z], 1..16 each." },
+        "anchor": { "$ref": "#/$defs/ivec3", "description": "The footprint cell the placed block (the model's own block) occupies, counted from the footprint's min corner." },
+        "min": { "$ref": "#/$defs/ivec3", "description": "Inclusive lowest cell relative to the placed block (= -anchor)." },
+        "max": { "$ref": "#/$defs/ivec3", "description": "Inclusive highest cell relative to the placed block (= size - anchor - 1)." }
+      },
+      "additionalProperties": true
+    },
+    "rotation": {
+      "type": "object",
+      "required": ["authored_facing", "default_facing", "allowed_facings", "pivot"],
+      "properties": {
+        "authored_facing": { "const": "north", "description": "The facing the model and the ports list are authored in. Always north." },
+        "default_facing": { "$ref": "#/$defs/face" },
+        "allowed_facings": { "type": "array", "items": { "$ref": "#/$defs/face" }, "uniqueItems": true },
+        "pivot": { "$ref": "#/$defs/vec3", "description": "The point every facing rotates about, in pixels: [8, 8, 8]." }
+      },
+      "additionalProperties": true
+    },
+    "ports": {
+      "type": "array",
+      "description": "The ports as authored (facing north), in the editor's order.",
+      "items": { "$ref": "#/$defs/port" }
+    },
+    "facings": {
+      "type": "object",
+      "description": "One entry per allowed facing (keys are faces): the ports and the footprint of the placed machine, already turned.",
+      "propertyNames": { "$ref": "#/$defs/face" },
+      "additionalProperties": { "$ref": "#/$defs/placement" }
+    }
+  },
+  "additionalProperties": true,
+  "$defs": {
+    "face": { "enum": ["north", "east", "south", "west", "up", "down"] },
+    "vec3": { "type": "array", "items": { "type": "number" }, "minItems": 3, "maxItems": 3 },
+    "ivec3": { "type": "array", "items": { "type": "integer" }, "minItems": 3, "maxItems": 3 },
+    "id": { "type": "string", "pattern": "^[a-z0-9_.-]+(:[a-z0-9_./-]+)?$" },
+    "properties": {
+      "type": "object",
+      "description": "Free-form key-value pairs (string, number or boolean values).",
+      "propertyNames": { "pattern": "^[A-Za-z0-9_.:-]{1,64}$" },
+      "additionalProperties": { "type": ["string", "number", "boolean"] }
+    },
+    "direction": {
+      "description": "Unit vector of the face, or null when the port has no face (only in files that failed validation).",
+      "oneOf": [{ "$ref": "#/$defs/ivec3" }, { "type": "null" }]
+    },
+    "port": {
+      "type": "object",
+      "required": ["id", "name", "kind", "resource", "connector", "face", "direction", "position", "block", "size", "capacity", "rate", "tags", "properties"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z0-9_][a-z0-9_.-]{0,63}$", "description": "Unique within the machine." },
+        "name": { "type": "string", "description": "Display label; may be empty." },
+        "kind": { "enum": ["input", "output", "bidirectional"] },
+        "resource": { "$ref": "#/$defs/id", "description": "item, fluid, energy, gas, heat, redstone, data, any, or a custom id." },
+        "connector": { "$ref": "#/$defs/id", "description": "conveyor, pipe, cable, shaft, chute, direct, any, or a custom id." },
+        "face": { "oneOf": [{ "$ref": "#/$defs/face" }, { "type": "null" }] },
+        "direction": { "$ref": "#/$defs/direction" },
+        "position": { "$ref": "#/$defs/vec3", "description": "Centre of the opening in pixels (whole pixels)." },
+        "block": { "$ref": "#/$defs/ivec3", "description": "The block of the footprint the port belongs to, relative to the placed block." },
+        "size": { "type": "array", "items": { "type": "number", "minimum": 0 }, "minItems": 2, "maxItems": 2, "description": "Width and height of the opening in pixels." },
+        "capacity": { "type": ["number", "null"] },
+        "rate": { "type": ["number", "null"] },
+        "tags": { "type": "array", "items": { "$ref": "#/$defs/id" } },
+        "properties": { "$ref": "#/$defs/properties" }
+      },
+      "additionalProperties": true
+    },
+    "placement": {
+      "type": "object",
+      "required": ["blockstate", "matrix", "footprint", "ports"],
+      "properties": {
+        "blockstate": {
+          "type": "object",
+          "required": ["x", "y"],
+          "properties": { "x": { "enum": [0, 90, 180, 270] }, "y": { "enum": [0, 90, 180, 270] } },
+          "description": "The blockstate variant rotation that shows the model with this facing."
+        },
+        "matrix": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/ivec3" },
+          "minItems": 3,
+          "maxItems": 3,
+          "description": "Rows of the integer rotation matrix M: p' = M (p - pivot) + pivot."
+        },
+        "footprint": {
+          "type": "object",
+          "required": ["min", "max"],
+          "properties": { "min": { "$ref": "#/$defs/ivec3" }, "max": { "$ref": "#/$defs/ivec3" } }
+        },
+        "ports": {
+          "type": "array",
+          "description": "Index-aligned with the top-level ports.",
+          "items": {
+            "type": "object",
+            "required": ["id", "face", "direction", "position", "block"],
+            "properties": {
+              "id": { "type": "string" },
+              "face": { "oneOf": [{ "$ref": "#/$defs/face" }, { "type": "null" }] },
+              "direction": { "$ref": "#/$defs/direction" },
+              "position": { "$ref": "#/$defs/vec3" },
+              "block": { "$ref": "#/$defs/ivec3" }
+            }
+          }
+        }
+      },
+      "additionalProperties": true
+    }
+  }
+}

@@ -8,6 +8,7 @@ use serde_json::{Map, Value, json};
 use crate::batch;
 use crate::bridge::{CALL_TIMEOUT, Frontend};
 use crate::files;
+use crate::workspace_tools;
 
 pub struct NativeTool {
   pub name: &'static str,
@@ -33,7 +34,8 @@ impl ToolOutput {
 }
 
 const EXPORT_FORMATS: &str = ".glb (binary glTF, one self-contained file), .gltf (glTF JSON, everything embedded), \
-  .obj (Wavefront OBJ with .mtl and texture images next to it), .stl, .ply and .usdz";
+  .obj (Wavefront OBJ with .mtl and texture images next to it), .stl, .ply, .usdz and .json (a Minecraft Java \
+  block/item model, from Minecraft Java documents only)";
 const IMPORT_FORMATS: &str =
   ".glb, .gltf, .obj, .stl, .ply and .fbx (3D models), or .png, .jpg and .webp (an image as a texture)";
 const PLACE_FORMATS: &str = ".tessel (a Tessel project), .glb, .gltf, .obj, .stl, .ply and .fbx";
@@ -44,7 +46,7 @@ const NATIVE_NAMES: [&str; 9] =
   ["file_save", "file_open", "file_export", "file_import", "scene_place_model", "material_import", "render_image", "render_video", "batch"];
 
 pub fn is_native(tool: &str) -> bool {
-  NATIVE_NAMES.contains(&tool)
+  NATIVE_NAMES.contains(&tool) || workspace_tools::is_workspace_tool(tool)
 }
 
 fn document_id_schema() -> Value {
@@ -58,7 +60,7 @@ pub fn native_tools() -> Vec<NativeTool> {
   let vec3 = |description: &str| {
     json!({ "type": "array", "items": { "type": "number" }, "minItems": 3, "maxItems": 3, "description": description })
   };
-  vec![
+  let mut tools = vec![
     NativeTool {
       name: "file_save",
       description: "Save a document as a Tessel project file (.tessel, JSON) on disk and mark it as saved. \
@@ -81,7 +83,16 @@ pub fn native_tools() -> Vec<NativeTool> {
     },
     NativeTool {
       name: "file_open",
-      description: "Open a Tessel project file (.tessel) from disk in a new document tab. Returns \
+      description: "Open a Tessel project file (.tessel), a Minecraft Java block/item model (.json) or a Blockbench \
+        project (.bbmodel) from disk in a new document tab. A .json model becomes a Minecraft Java document; its \
+        textures are read from the resource pack it is in (assets/<namespace>/textures/...), from next to the file, \
+        the active project or the vanilla assets, and textures that are not found get a placeholder (listed in \
+        warnings). Its parent model chain is found the same way and shown read-only (see minecraft_get_parent, \
+        minecraft_merge_parent, minecraft_hide_parent). A .bbmodel becomes a Minecraft Java document (Java \
+        Block/Item projects) or a free document; what could not be imported (animations, locators, ...) is listed \
+        in dropped. An item model definition (assets/<namespace>/items/<id>.json) opens as a Minecraft item \
+        definition document (item_* tools) instead. A model with a factory sidecar (<name>.factory.json) next \
+        to it - or the sidecar itself - opens as a factory document (model plus machine and ports). Returns \
         { opened, path, id, name, active }: id is the new document's id, to be passed as documentId to other \
         tools. By default the visible tab switches to it; with activate: false it opens in the background and \
         the user keeps looking at their current tab, while you can still work in it and take screenshots of it \
@@ -90,7 +101,7 @@ pub fn native_tools() -> Vec<NativeTool> {
       input_schema: json!({
         "type": "object",
         "properties": {
-          "path": { "type": "string", "description": "Absolute path of the project file, ending in .tessel." },
+          "path": { "type": "string", "description": "Absolute path of the project file (.tessel), Minecraft Java model (.json), factory sidecar (.factory.json) or Blockbench project (.bbmodel)." },
           "activate": {
             "type": "boolean",
             "description": "true (default): switch the visible tab to the opened document. false: open it as a tab in the background and leave the user where they are."
@@ -108,8 +119,11 @@ pub fn native_tools() -> Vec<NativeTool> {
         textures, UVs and the group hierarchy - usually what you want), .gltf (the same as JSON text with everything \
         embedded as base64), .obj (Wavefront OBJ: polygons stay polygons; the material library <name>.mtl and the \
         texture images <name>_<texture>.png are written into the same folder), .stl (binary, triangles only, for 3D \
-        printing), .ply (binary, triangles with normals and UVs) or .usdz (USD archive for AR viewers). Exported are \
-        the visible objects as they look after their modifiers; .obj, .stl and .ply have no transforms, so they are \
+        printing), .ply (binary, triangles with normals and UVs), .usdz (USD archive for AR viewers) or .json (a \
+        Minecraft Java block/item model; only from Minecraft Java and factory documents, written for their target version with \
+        every element whose export flag is on; texture images are not written; a factory document also writes \
+        its sidecar <name>.factory.json for the server plugin next to it; from a Minecraft item definition document \
+        .json writes its items/<id>.json file, the only format there). Exported are the visible objects as they look after their modifiers; .obj, .stl and .ply have no transforms, so they are \
         written in world space. Set selectionOnly to export just the selected objects. Missing parent folders are \
         created; existing files are overwritten. Returns { exported, path, format, bytes, files, selectionOnly }; \
         files lists the absolute path of every file written (the main file first). This does not save the project \
@@ -119,7 +133,7 @@ pub fn native_tools() -> Vec<NativeTool> {
         "properties": {
           "path": {
             "type": "string",
-            "description": "Absolute path of the exported file, ending in .glb, .gltf, .obj, .stl, .ply or .usdz."
+            "description": "Absolute path of the exported file, ending in .glb, .gltf, .obj, .stl, .ply, .usdz or .json (Minecraft Java model)."
           },
           "selectionOnly": {
             "type": "boolean",
@@ -415,7 +429,9 @@ pub fn native_tools() -> Vec<NativeTool> {
         "additionalProperties": false
       }),
     },
-  ]
+  ];
+  tools.extend(workspace_tools::tools());
+  tools
 }
 
 /// Runs any tool by its MCP name.
@@ -443,6 +459,7 @@ pub async fn call_single<F: Frontend>(frontend: &F, tool: &str, args: Value) -> 
     "render_image" => render_image(frontend, &args).await,
     "render_video" => render_video(frontend, &args).await,
     "batch" => Err(NESTED_BATCH.into()),
+    _ if workspace_tools::is_workspace_tool(tool) => workspace_tools::call(frontend, tool, args).await,
     _ => match frontend.command_id(tool) {
       Some(command) => frontend.call(&command, args, CALL_TIMEOUT).await,
       None => Err(unknown_tool(frontend, tool)),
@@ -476,6 +493,7 @@ pub fn check_native(tool: &str, args: &Value) -> Result<(), String> {
     "material_import" => MaterialImportArgs::parse(args).map(drop),
     "render_image" => RenderArgs::parse(args).map(drop),
     "render_video" => VideoArgs::parse(args).map(drop),
+    _ if workspace_tools::is_workspace_tool(tool) => workspace_tools::check(tool, args),
     _ => Ok(()),
   }
 }
@@ -644,7 +662,11 @@ impl<'a> OpenArgs<'a> {
   fn parse(args: &'a Value) -> Result<Self, String> {
     let map = object(args, "file_open", &["path", "activate", "documentId"])?;
     let path = req_str(map, "path")?;
-    require_tessel(path)?;
+    if matches!(files::extension(path).as_str(), "json" | "bbmodel") {
+      require_absolute(path)?;
+    } else {
+      require_tessel(path)?;
+    }
     Ok(Self { path, activate: opt_bool(map, "activate")?, document_id: opt_str(map, "documentId")? })
   }
 }
@@ -803,7 +825,7 @@ impl<'a> MaterialImportArgs<'a> {
 
 // ---- the tools -------------------------------------------------------------------------------
 
-async fn file_save<F: Frontend>(frontend: &F, args: &Value) -> Result<Value, String> {
+pub(crate) async fn file_save<F: Frontend>(frontend: &F, args: &Value) -> Result<Value, String> {
   let args = SaveArgs::parse(args)?;
   let target = match args.document_id {
     Some(id) => json!({ "id": id }),
@@ -847,9 +869,38 @@ async fn file_save<F: Frontend>(frontend: &F, args: &Value) -> Result<Value, Str
   Ok(result)
 }
 
-async fn file_open<F: Frontend>(frontend: &F, args: &Value) -> Result<Value, String> {
+pub(crate) async fn file_open<F: Frontend>(frontend: &F, args: &Value) -> Result<Value, String> {
   let args = OpenArgs::parse(args)?;
   let path = args.path;
+  if files::extension(path) == "json" {
+    // A Minecraft Java model: a new Minecraft document, with the texture images that can be found. With a
+    // factory sidecar next to it (or when the sidecar itself is opened) it becomes a factory document.
+    let read = files::read_model_bundle(path).await?;
+    let stem = read["name"].clone();
+    // sourcePath finds parent models; filePath lets item definitions (items/<id>.json) know their id and be saved back.
+    let mut params = json!({ "json": read["json"], "images": read["images"], "name": stem, "fileName": stem, "sourcePath": path, "filePath": path });
+    let command = if read["sidecar"].is_string() {
+      params["sidecar"] = read["sidecar"].clone();
+      "document.import_factory"
+    } else {
+      "document.import_java"
+    };
+    if let Some(activate) = args.activate {
+      params["activate"] = json!(activate);
+    }
+    let opened = frontend.call(command, with_document(params, args.document_id), FILE_TIMEOUT).await?;
+    return Ok(merged(json!({ "opened": true, "path": path }), &opened));
+  }
+  if files::extension(path) == "bbmodel" {
+    // A Blockbench project: a Minecraft Java document (Java Block/Item projects) or a free document.
+    let read = crate::model_files::read_bbmodel(path).await?;
+    let mut params = json!({ "text": read["text"], "images": read["images"], "name": file_stem(path) });
+    if let Some(activate) = args.activate {
+      params["activate"] = json!(activate);
+    }
+    let opened = frontend.call("document.import_bbmodel", with_document(params, args.document_id), FILE_TIMEOUT).await?;
+    return Ok(merged(json!({ "opened": true, "path": path }), &opened));
+  }
   let json = files::read_text(path).await?;
   let mut params = json!({ "json": json, "filePath": path, "name": file_stem(path) });
   if let Some(activate) = args.activate {
@@ -887,6 +938,14 @@ async fn file_export<F: Frontend>(frontend: &F, args: &Value) -> Result<Value, S
     text.len()
   } else if let Some(text) = exported.get("text").and_then(Value::as_str) {
     files::write_bytes(path, text.as_bytes()).await?;
+    // A factory model also writes its sidecar for the server plugin, named after the chosen model file.
+    if let Some(sidecar) = exported.get("sidecar").filter(|s| !s.is_null()) {
+      let contents = field(sidecar, "text", "export.file")?;
+      let target = Path::new(path).with_file_name(format!("{}{}", file_stem(path), files::FACTORY_SUFFIX));
+      let target = target.to_string_lossy().into_owned();
+      files::write_bytes(&target, contents.as_bytes()).await?;
+      written.push(target);
+    }
     text.len()
   } else {
     let bytes = files::decode_base64(field(&exported, "base64", "export.file")?)?;

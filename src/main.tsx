@@ -4,15 +4,22 @@ import { initPreferences } from './app/preferences';
 import { execute, services, useApp } from './app/store';
 import { createBaker } from './bake';
 import { createFontService } from './bridge/fonts';
+import { createModelFileService } from './bridge/javaModels';
 import { startMcpBridge } from './bridge/mcp';
 import { initModifiers } from './core/modifiers/evaluate';
 import { syncDocumentLanguage } from './i18n';
 import { imaging } from './imaging';
 import { createExporter, createImporter } from './io';
+import { initMinecraftAssets } from './mcassets';
 import { createRenderer } from './render';
+import { installTextureLibrary, startLibraryWatch } from './texlib';
 import { createVideoService } from './video';
 import { App } from './ui/App';
+import { registerModelFileOpeners } from './ui/modelImport/modelImportActions';
+import { installModelDrop } from './ui/modelImport/modelImportFlows';
 import { installCloseGuard } from './ui/closeGuard';
+import { initLayout } from './ui/layout/layoutStore';
+import { registerBuiltInPanels } from './ui/layout/panels';
 import { notifyError } from './ui/toast';
 import './index.css';
 
@@ -25,8 +32,17 @@ services.baker = createBaker();
 services.renderer = createRenderer();
 services.video = createVideoService();
 services.fonts = createFontService();
+services.modelFiles = createModelFileService();
+registerModelFileOpeners();
+installModelDrop();
+initMinecraftAssets();
+installTextureLibrary(services);
+if (services.textureLibrary) startLibraryWatch();
 startMcpBridge().catch(notifyError);
 installCloseGuard();
+// Panels are registered before the stored layout is loaded, so that it is fitted to them.
+registerBuiltInPanels();
+initLayout();
 // Boolean modifiers need their WASM kernel; everything else works without waiting for it.
 // Once it is loaded, notify the store's subscribers so the viewport re-evaluates objects with booleans.
 initModifiers().then(() => useApp.setState((app) => ({ ...app })), notifyError);

@@ -1,4 +1,8 @@
 import { z } from 'zod';
+import { isFactory, isItemDefinition, isMinecraft } from '../formats';
+import { exportFactorySidecar, sidecarFileName } from '../minecraft/factory/sidecar';
+import { serializeItemDefinition } from '../minecraft/items/codec';
+import { exportJavaModel } from '../minecraft/javaExport';
 import { parseProject } from '../project';
 import { resolveGroupId } from '../refs';
 import { activeDoc } from '../state';
@@ -13,8 +17,23 @@ export { addImported } from './importScene';
 export const MAX_IMPORT_BASE64 = 256 * 1024 * 1024;
 
 async function exportFile(ctx: CommandContext, format: ExportFormat, selectionOnly: boolean, name?: string) {
-  if (!ctx.services.exporter) throw new Error('The exporter is not ready yet');
   const state = docState(ctx);
+  if (format === 'json' && isItemDefinition(state)) {
+    // A Minecraft item definition is written as it is: its file is the document.
+    const item = state.item!;
+    return { format, text: serializeItemDefinition(item.definition), fileName: `${item.id.split('/').pop()}.json` };
+  }
+  if (isItemDefinition(state)) throw new Error('An item definition document can only be exported as json (its items/<id>.json file)');
+  if (format === 'json') {
+    // Minecraft Java model: written by core itself; the export flag of elements decides, not visibility.
+    if (!isMinecraft(state)) throw new Error('json (Minecraft Java model) can only be exported from a Minecraft Java document; this document is a Free model');
+    if (selectionOnly && state.selection.length === 0) throw new Error('Nothing is selected');
+    const fileName = state.java!.fileName;
+    // A factory model also writes its sidecar for the server plugin, next to the model as <fileName>.factory.json.
+    const sidecar = isFactory(state) ? { sidecar: { fileName: sidecarFileName(fileName), text: exportFactorySidecar(state) } } : {};
+    return { format, text: exportJavaModel(state, selectionOnly ? { ids: state.selection } : {}), fileName: `${fileName}.json`, ...sidecar };
+  }
+  if (!ctx.services.exporter) throw new Error('The exporter is not ready yet');
   if (selectionOnly && state.selection.length === 0) throw new Error('Nothing is selected');
   const ids = selectionOnly ? state.selection : state.order;
   if (!ids.some((id) => state.objects[id]?.visible)) {
@@ -51,7 +70,7 @@ function stem(name: string): string {
 }
 
 const formatNotes =
-  'glb = binary glTF 2.0 in one file (usually what you want); gltf = glTF JSON text with everything embedded as base64 (about a third larger); obj = Wavefront OBJ with polygons kept as polygons, in world space, plus mtl (material library text), mtlName and files (the texture images as { name, base64 }) that belong next to the .obj; stl = binary STL, triangles in world space, no materials or UVs; ply = binary PLY, triangles in world space with normals and UVs, no materials; usdz = USD archive for AR viewers, textures re-encoded and limited to 4096 px';
+  'glb = binary glTF 2.0 in one file (usually what you want); gltf = glTF JSON text with everything embedded as base64 (about a third larger); obj = Wavefront OBJ with polygons kept as polygons, in world space, plus mtl (material library text), mtlName and files (the texture images as { name, base64 }) that belong next to the .obj; stl = binary STL, triangles in world space, no materials or UVs; ply = binary PLY, triangles in world space with normals and UVs, no materials; usdz = USD archive for AR viewers, textures re-encoded and limited to 4096 px; json = Minecraft Java block/item model (Minecraft Java and factory documents only): the model JSON as text, written for the target version of the document, with every cuboid element whose export flag is on (visibility does not matter), textures as resource locations, and fileName (the model file name); a factory document also returns sidecar { fileName, text }, the <fileName>.factory.json for the server plugin; in a Minecraft item definition document, json (the only format there) is the items/<id>.json file';
 
 export const fileCommands = [
   defineCommand({

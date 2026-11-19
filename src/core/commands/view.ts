@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { docFormat, isMinecraftFormat } from '../formats';
 import { DEFAULT_FPS, MAX_KEY_FRAME, animatedState } from '../animation';
 import { FRAME_HINT, pictureCamera } from '../playhead';
 import { REFS_HINT, resolveObjectIds } from '../refs';
@@ -33,7 +34,7 @@ export const viewCommands = [
     id: 'app.get_state',
     title: 'Editor-Zustand abfragen',
     description:
-      `Get the current editor state: open documents, active document, workspace, tool, shading, selection and camera. Call this first to find out where you are. "documents" lists every open document (tab) in tab order with id, name, objectCount (the number of scene objects in it; groups, materials and textures are not counted), dirty (has unsaved changes), filePath (null if never saved) and active; activeDocument and visibleDocumentId are the tab the user is looking at right now (it can change at any time). "document" is the document this answer is about - the one given as documentId, else the visible one - and objectCount, selection, activeObjectId, editMode ({ objectId, elementMode } or null in object mode), canUndo, canRedo and camera (for a document in the background: its remembered camera) describe that document. So if you work in a document of your own, call this with its documentId to see where you are in it. ${DOCUMENT_ID_HINT}`,
+      `Get the current editor state: open documents, active document, workspace, tool, shading, selection and camera. Call this first to find out where you are. "documents" lists every open document (tab) in tab order with id, name, format ("free" for a general 3D model, "minecraft_java" for a Minecraft Java block/item model made of cuboid elements, "minecraft_factory" for such a model plus ports and machine data for a server plugin: the tools that only work in one of them say so first in their description), objectCount (the number of scene objects in it; groups, materials and textures are not counted), dirty (has unsaved changes), filePath (null if never saved) and active; activeDocument and visibleDocumentId are the tab the user is looking at right now (it can change at any time). "document" is the document this answer is about - the one given as documentId, else the visible one - and objectCount, selection, activeObjectId, editMode ({ objectId, elementMode } or null in object mode), canUndo, canRedo and camera (for a document in the background: its remembered camera) describe that document. So if you work in a document of your own, call this with its documentId to see where you are in it. ${DOCUMENT_ID_HINT}`,
     params: z.object({
       documentId: z.string().optional().describe('Optional: id of an open document (see "documents") to report on as "document" instead of the visible one.'),
     }),
@@ -45,10 +46,10 @@ export const viewCommands = [
       return {
         activeDocument: { id: visible.id, name: visible.name, filePath: visible.filePath, dirty: visible.dirty },
         visibleDocumentId: visible.id,
-        document: { id: doc.id, name: doc.name, filePath: doc.filePath, dirty: doc.dirty, visible: doc.id === visible.id },
+        document: { id: doc.id, name: doc.name, filePath: doc.filePath, dirty: doc.dirty, visible: doc.id === visible.id, format: docFormat(doc.state) },
         documents: app.docOrder.map((id) => {
           const d = app.docs[id];
-          return { id, name: d.name, objectCount: d.state.order.length, dirty: d.dirty, filePath: d.filePath, active: id === app.activeDocId };
+          return { id, name: d.name, format: docFormat(d.state), objectCount: d.state.order.length, dirty: d.dirty, filePath: d.filePath, active: id === app.activeDocId };
         }),
         workspace: app.workspace,
         tool: app.tool,
@@ -67,9 +68,14 @@ export const viewCommands = [
   defineCommand({
     id: 'app.set_workspace',
     title: 'Arbeitsbereich wechseln',
-    description: 'Switch the workspace tab: modeling, uv or paint.',
+    description:
+      'Switch the workspace tab: modeling, uv, paint or display. "display" (Minecraft Java models only) shows the model where the game shows it (hands, head, ground, GUI, item frame, shelf) to edit its display transforms (see display_get).',
     params: z.object({ workspace: z.enum(workspaces) }),
     run(ctx, p) {
+      const doc = activeDoc(ctx.get());
+      if (p.workspace === 'display' && doc && !isMinecraftFormat(docFormat(doc.state))) {
+        throw new Error('The display workspace is only available in Minecraft Java documents');
+      }
       ctx.set((app) => ({ ...app, workspace: p.workspace }));
     },
   }),

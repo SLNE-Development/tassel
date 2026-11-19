@@ -1,0 +1,184 @@
+{
+  "schema_version": 1,
+  "generator": "Tessel",
+  "machine": {
+    "id": "factory:conveyor",
+    "display_name": "conveyor",
+    "model": "conveyor",
+    "properties": {
+      "speed": 1
+    }
+  },
+  "footprint": {
+    "size": [1, 1, 1],
+    "anchor": [0, 0, 0],
+    "min": [0, 0, 0],
+    "max": [0, 0, 0]
+  },
+  "rotation": {
+    "authored_facing": "north",
+    "default_facing": "north",
+    "allowed_facings": ["north", "east", "south", "west"],
+    "pivot": [8, 8, 8]
+  },
+  "ports": [
+    {
+      "id": "in",
+      "name": "Belt in",
+      "kind": "input",
+      "resource": "item",
+      "connector": "conveyor",
+      "face": "south",
+      "direction": [0, 0, 1],
+      "position": [8, 4, 16],
+      "block": [0, 0, 0],
+      "size": [14, 2],
+      "capacity": null,
+      "rate": null,
+      "tags": [],
+      "properties": {}
+    },
+    {
+      "id": "out",
+      "name": "Belt out",
+      "kind": "output",
+      "resource": "item",
+      "connector": "conveyor",
+      "face": "north",
+      "direction": [0, 0, -1],
+      "position": [8, 4, 0],
+      "block": [0, 0, 0],
+      "size": [14, 2],
+      "capacity": null,
+      "rate": null,
+      "tags": [],
+      "properties": {}
+    }
+  ],
+  "facings": {
+    "north": {
+      "blockstate": {
+        "x": 0,
+        "y": 0
+      },
+      "matrix": [
+        [1, 0, 0],
+        [0, 1, 0],
+        [0, 0, 1]
+      ],
+      "footprint": {
+        "min": [0, 0, 0],
+        "max": [0, 0, 0]
+      },
+      "ports": [
+        {
+          "id": "in",
+          "face": "south",
+          "direction": [0, 0, 1],
+          "position": [8, 4, 16],
+          "block": [0, 0, 0]
+        },
+        {
+          "id": "out",
+          "face": "north",
+          "direction": [0, 0, -1],
+          "position": [8, 4, 0],
+          "block": [0, 0, 0]
+        }
+      ]
+    },
+    "east": {
+      "blockstate": {
+        "x": 0,
+        "y": 90
+      },
+      "matrix": [
+        [0, 0, -1],
+        [0, 1, 0],
+        [1, 0, 0]
+      ],
+      "footprint": {
+        "min": [0, 0, 0],
+        "max": [0, 0, 0]
+      },
+      "ports": [
+        {
+          "id": "in",
+          "face": "west",
+          "direction": [-1, 0, 0],
+          "position": [0, 4, 8],
+          "block": [0, 0, 0]
+        },
+        {
+          "id": "out",
+          "face": "east",
+          "direction": [1, 0, 0],
+          "position": [16, 4, 8],
+          "block": [0, 0, 0]
+        }
+      ]
+    },
+    "south": {
+      "blockstate": {
+        "x": 0,
+        "y": 180
+      },
+      "matrix": [
+        [-1, 0, 0],
+        [0, 1, 0],
+        [0, 0, -1]
+      ],
+      "footprint": {
+        "min": [0, 0, 0],
+        "max": [0, 0, 0]
+      },
+      "ports": [
+        {
+          "id": "in",
+          "face": "north",
+          "direction": [0, 0, -1],
+          "position": [8, 4, 0],
+          "block": [0, 0, 0]
+        },
+        {
+          "id": "out",
+          "face": "south",
+          "direction": [0, 0, 1],
+          "position": [8, 4, 16],
+          "block": [0, 0, 0]
+        }
+      ]
+    },
+    "west": {
+      "blockstate": {
+        "x": 0,
+        "y": 270
+      },
+      "matrix": [
+        [0, 0, 1],
+        [0, 1, 0],
+        [-1, 0, 0]
+      ],
+      "footprint": {
+        "min": [0, 0, 0],
+        "max": [0, 0, 0]
+      },
+      "ports": [
+        {
+          "id": "in",
+          "face": "east",
+          "direction": [1, 0, 0],
+          "position": [16, 4, 8],
+          "block": [0, 0, 0]
+        },
+        {
+          "id": "out",
+          "face": "west",
+          "direction": [-1, 0, 0],
+          "position": [0, 4, 8],
+          "block": [0, 0, 0]
+        }
+      ]
+    }
+  }
+}

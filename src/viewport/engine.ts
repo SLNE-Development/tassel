@@ -1,3 +1,4 @@
+import { InheritedView } from './inheritedView';
 import {
   Box3,
   DoubleSide,
@@ -9,6 +10,7 @@ import {
   MeshStandardMaterial,
   MOUSE,
   Object3D,
+  OrthographicCamera,
   PerspectiveCamera,
   Raycaster,
   Sphere,
@@ -19,10 +21,12 @@ import {
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { TransformControls } from 'three/addons/controls/TransformControls.js';
 import { frameOf, pause, usePlayback } from '../app/playback';
+import { selectPort, useFactorySelection } from '../app/factorySelection';
 import { getAppearance, onAppearanceChange } from '../app/preferences';
 import { execute, useApp } from '../app/store';
 import { animatedState, cameraAt } from '../core/animation';
 import { describeCamera, fitDistance as fitShot, screenshotViews, sheetLayout, viewLabel, type Rect } from '../core/screenshotViews';
+import { isMinecraft } from '../core/formats';
 import type { Preferences } from '../core/preferences';
 import type {
   AppState,
@@ -40,12 +44,17 @@ import type {
   ViewportService,
   ViewPreset,
 } from '../core/types';
+import { itemPreviewScene, onItemPreviewChange } from './itemPreview';
 import { applyTransform, boxCorners, DocScene, selectionBox, Stage, type Entry, type SceneLooks } from './docScene';
+import { snapSteps, type SnapSteps } from './snapping';
+import { FactoryOverlay } from './factoryOverlay';
 import { EditMaterials, EditView, selectedVertices } from './editMesh';
 import { ElementPicker } from './editPick';
 import { DEFAULT_SPHERE, fitDistance, viewDirection } from './framing';
 import { GeometryStore } from './geometry';
 import { PaintView } from './paintView';
+import { PixelPaintView } from './pixelPaintView';
+import { PreviewController } from './preview/controller';
 import { rotateAbout, scaleAbout } from './groupTransform';
 import { SurfaceMaterials } from './surfaces';
 import { VIEWPORT_PALETTES, type ViewportPalette } from './theme';
@@ -105,12 +114,18 @@ export class ViewportEngine {
   private readonly looks: SceneLooks;
   /** The objects of the visible document. */
   private readonly docScene: DocScene;
+  /** What a Minecraft model inherits from its parent, drawn read-only. */
+  private readonly inherited: InheritedView;
   private readonly entries: Map<string, Entry>;
   private readonly raycaster = new Raycaster();
   private readonly resizeObserver: ResizeObserver;
   private readonly unsubscribe: () => void;
   private readonly unsubscribeAppearance: () => void;
   private readonly unsubscribePlayback: () => void;
+  /** Port markers of a factory model (factoryOverlay.ts) and the subscription to the port selection. */
+  private readonly factoryOverlay = new FactoryOverlay();
+  private readonly unsubscribeFactory: () => void;
+  private readonly unsubscribeItemPreview: () => void;
   /**
    * "Kamera-Ansicht": while `previewing`, the viewport is drawn through this camera, posed from the
    * animated camera at the playhead. The user's own camera (`camera` with `orbit`) is not touched and
@@ -119,6 +134,15 @@ export class ViewportEngine {
   private readonly animCamera = new PerspectiveCamera(40, 1, 0.1, 1000);
   private readonly animTarget = new Vector3();
   private previewing = false;
+  /**
+   * The orthographic projection (preference `viewportProjection`): drawn through this camera, which is
+   * posed from the user's perspective camera every frame - same direction, and as much of the scene in
+   * view as the perspective camera shows at the orbit target. Orbit and zoom keep working on `camera`.
+   */
+  private readonly orthoCamera = new OrthographicCamera();
+  private orthographic = false;
+  /** Preview scene, background, ground, pixel grid and reference models (src/viewport/preview). */
+  private readonly preview: PreviewController;
   private readonly ready: Promise<void>;
   /**
    * The cameras of the documents in the background: where the user left them, or where a view command
@@ -151,6 +175,7 @@ export class ViewportEngine {
   private readonly groupPivot = new Object3D();
   /** Painting on the active object in the paint workspace; it handles the left mouse button there. */
   private readonly paintView: PaintView;
+  private readonly pixelPaintView: PixelPaintView;
   /** Rectangle of a box selection in progress. */
   private readonly boxElement = document.createElement('div');
 
@@ -215,6 +240,13 @@ export class ViewportEngine {
     });
     this.entries = this.docScene.entries;
     this.scene.add(this.docScene.content);
+    this.inherited = new InheritedView(this.looks, () => {
+      this.needsSync = true;
+      this.invalidate();
+    });
+    this.scene.add(this.inherited.content);
+    this.scene.add(this.factoryOverlay.object);
+    this.preview = new PreviewController(this.stage, this.invalidate);
 
     this.camera.position.set(6.5, 4.5, 8);
     this.orbit = new OrbitControls(this.camera, this.canvas);
@@ -255,11 +287,31 @@ export class ViewportEngine {
       },
     });
     this.surfaces.paint = this.paintView;
+    this.pixelPaintView = new PixelPaintView({
+      canvas: this.canvas,
+      container,
+      camera: this.camera,
+      raycaster: this.raycaster,
+      sync: () => this.syncIfNeeded(),
+      target: () => null,
+      solids: () => [...this.entries.values()].filter((entry) => entry.obj.visible && !entry.edit).map((entry) => entry.solid),
+      objectIdOf: (solid) => {
+        for (const [id, entry] of this.entries) if (entry.solid === solid) return id;
+        return null;
+      },
+      refresh: () => {
+        this.needsSync = true;
+        this.invalidate();
+      },
+    });
+    this.surfaces.pixels = this.pixelPaintView;
 
     this.resizeObserver = new ResizeObserver(() => this.resize());
     this.resizeObserver.observe(container);
     // A change of the interface zoom changes the device pixel ratio, not always the viewport's size.
     window.addEventListener('resize', this.onWindowResize);
+    window.addEventListener('keydown', this.onModifierKey);
+    window.addEventListener('keyup', this.onModifierKey);
     this.applyAppearance();
     this.unsubscribeAppearance = onAppearanceChange(this.applyAppearance);
     this.applyPreferences(useApp.getState().preferences);
@@ -270,6 +322,15 @@ export class ViewportEngine {
     });
     // The playhead moved, or the camera preview was switched: show the document at that frame.
     this.unsubscribePlayback = usePlayback.subscribe(() => {
+      this.needsSync = true;
+      this.invalidate();
+    });
+    // A port was selected in the panels: highlight its marker.
+    this.unsubscribeFactory = useFactorySelection.subscribe(() => {
+      this.needsSync = true;
+      this.invalidate();
+    });
+    this.unsubscribeItemPreview = onItemPreviewChange(() => {
       this.needsSync = true;
       this.invalidate();
     });
@@ -305,7 +366,12 @@ export class ViewportEngine {
     this.unsubscribe();
     this.unsubscribeAppearance();
     this.unsubscribePlayback();
+    this.unsubscribeFactory();
+    this.factoryOverlay.dispose();
+    this.unsubscribeItemPreview();
     window.removeEventListener('resize', this.onWindowResize);
+    window.removeEventListener('keydown', this.onModifierKey);
+    window.removeEventListener('keyup', this.onModifierKey);
     this.resizeObserver.disconnect();
     this.canvas.removeEventListener('pointerdown', this.onPointerDown);
     this.canvas.removeEventListener('pointermove', this.onPointerMove);
@@ -314,6 +380,8 @@ export class ViewportEngine {
     this.canvas.removeEventListener('mousedown', this.onMouseDown);
     this.canvas.removeEventListener('dblclick', this.onDoubleClick);
     this.paintView.dispose();
+    this.pixelPaintView.dispose();
+    this.preview.dispose();
     this.gizmo.detach();
     this.gizmo.dispose();
     this.orbit.dispose();
@@ -351,12 +419,42 @@ export class ViewportEngine {
   private renderNow(): void {
     if (!this.initialised || this.disposed) return;
     this.syncIfNeeded();
-    this.stage.draw(this.renderer, this.viewCamera, this.previewing ? this.animTarget : this.orbit.target);
+    const target = this.previewing ? this.animTarget : this.orbit.target;
+    const camera = this.viewCamera;
+    const distance = (this.previewing ? this.animCamera : this.camera).position.distanceTo(target);
+    // An orthographic camera stands further back than the view distance; fog has to start that much later.
+    this.preview.beforeDraw(distance, camera.position.distanceTo(target) - distance);
+    this.stage.draw(this.renderer, camera, target, distance);
   }
 
-  /** The camera the viewport is drawn through: the user's, or the animated one in the camera preview. */
-  private get viewCamera(): PerspectiveCamera {
-    return this.previewing ? this.animCamera : this.camera;
+  /** The camera the viewport is drawn through: the user's (perspective or orthographic), or the animated one in the camera preview. */
+  private get viewCamera(): PerspectiveCamera | OrthographicCamera {
+    if (this.previewing) return this.animCamera;
+    // Painting projects the brush through the perspective camera, so the paint workspace keeps it.
+    if (this.orthographic && useApp.getState().workspace !== 'paint') return this.poseOrtho();
+    return this.camera;
+  }
+
+  /** Poses `orthoCamera` from the user's camera and returns it. */
+  private poseOrtho(): OrthographicCamera {
+    const camera = this.camera;
+    const target = this.orbit.target;
+    const distance = Math.max(camera.position.distanceTo(target), 1e-6);
+    const halfHeight = distance * Math.tan(MathUtils.degToRad(camera.fov) / 2);
+    const ortho = this.orthoCamera;
+    ortho.top = halfHeight;
+    ortho.bottom = -halfHeight;
+    ortho.left = -halfHeight * camera.aspect;
+    ortho.right = halfHeight * camera.aspect;
+    // Pulled far back along the viewing direction, so nothing near the target falls behind it.
+    const pull = Math.max(distance, 1) * 50;
+    ortho.position.copy(camera.position).sub(target).normalize().multiplyScalar(pull).add(target);
+    ortho.quaternion.copy(camera.quaternion);
+    ortho.near = pull * 0.01;
+    ortho.far = pull * 2;
+    ortho.updateProjectionMatrix();
+    ortho.updateMatrixWorld();
+    return ortho;
   }
 
   /**
@@ -364,6 +462,8 @@ export class ViewportEngine {
    * static pose (the mesh is edited where the object rests). Objects that do not move keep their identity.
    */
   private displayed(doc: { id: string; state: DocState }): DocState {
+    // Item definitions have no scene: they show the models picked for the editor's test inputs.
+    if (doc.state.format === 'minecraft_item') return itemPreviewScene(doc.id) ?? doc.state;
     const state = doc.state;
     return state.animation && !state.edit ? animatedState(state, frameOf(doc.id)) : state;
   }
@@ -411,6 +511,7 @@ export class ViewportEngine {
     this.animCamera.updateProjectionMatrix();
     if (!this.initialised) return;
     this.renderer.setPixelRatio(Math.min((window.devicePixelRatio || 1) * cssZoom, 2));
+    this.preview.setPixelRatio(this.renderer.getPixelRatio());
     this.renderer.setSize(width, height, false);
     // Resizing clears the canvas, so draw right away instead of waiting for the next frame.
     this.renderNow();
@@ -424,6 +525,7 @@ export class ViewportEngine {
     const palette = VIEWPORT_PALETTES[theme];
     this.container.style.background = palette.background;
     this.stage.setPalette(palette);
+    this.preview.setPalette(palette);
     for (const material of this.clay) {
       material.color.set(palette.clay);
       material.emissive.set(accent);
@@ -445,6 +547,13 @@ export class ViewportEngine {
     if (preferences === this.preferences) return;
     this.preferences = preferences;
     this.grid.setVisible(preferences.showGrid, preferences.showAxes);
+    this.preview.setOptions(preferences);
+    const orthographic = preferences.viewportProjection === 'orthographic';
+    if (orthographic !== this.orthographic) {
+      this.orthographic = orthographic;
+      // The gizmo follows the camera that draws (see updatePreview).
+      this.needsSync = true;
+    }
     this.orbit.rotateSpeed = preferences.orbitSpeed;
     // A negative speed makes the orbit controls zoom the other way.
     this.orbit.zoomSpeed = BASE_ZOOM_SPEED * preferences.zoomSpeed * (preferences.invertZoom ? -1 : 1);
@@ -479,6 +588,8 @@ export class ViewportEngine {
     const state = this.displayed(doc);
     const edit = state.edit;
     this.docScene.sync(app, state);
+    this.inherited.sync(app, state);
+    this.factoryOverlay.sync(state, useFactorySelection.getState().portUid);
     this.updatePreview(app, doc);
     this.surfaces.sweep(app);
     this.surfaces.applyLighting(app, this.scene, this.ambient);
@@ -512,7 +623,34 @@ export class ViewportEngine {
     } else if (this.gizmo.object) {
       this.gizmo.detach();
     }
+    this.minecraft = isMinecraft(state);
+    this.applySnapping();
   }
+
+  /** Whether the displayed document is a Minecraft one: its gizmo snaps to the pixel grid. */
+  private minecraft = false;
+  private snapping: SnapSteps | null = null;
+  private fine = { shift: false, ctrl: false };
+
+  /**
+   * Minecraft documents snap the gizmo: moving to whole model pixels (1/16 m; a quarter with Shift, a tenth
+   * with Ctrl), rotating in 22.5 degree steps (finer with the same keys). Free documents never snap.
+   */
+  private applySnapping(): void {
+    const next = this.minecraft ? snapSteps(this.fine.shift, this.fine.ctrl) : null;
+    if (next?.translation === this.snapping?.translation && next?.rotation === this.snapping?.rotation) return;
+    this.snapping = next;
+    this.gizmo.setTranslationSnap(next ? next.translation : null);
+    this.gizmo.setRotationSnap(next ? MathUtils.degToRad(next.rotation) : null);
+  }
+
+  private readonly onModifierKey = (event: KeyboardEvent): void => {
+    const shift = event.shiftKey;
+    const ctrl = event.ctrlKey || event.metaKey;
+    if (shift === this.fine.shift && ctrl === this.fine.ctrl) return;
+    this.fine = { shift, ctrl };
+    this.applySnapping();
+  };
 
   /**
    * Puts the group pivot, unrotated and unscaled, at the centre of the world-space bounding box of the
@@ -648,6 +786,14 @@ export class ViewportEngine {
   };
 
   private click(event: PointerEvent): void {
+    // Factory model: a port marker is picked before any object; a click elsewhere drops the port selection.
+    if (this.docState()?.factory) {
+      const rect = this.canvas.getBoundingClientRect();
+      this.viewCamera.updateMatrixWorld();
+      const portUid = this.factoryOverlay.pick(event.clientX - rect.left, event.clientY - rect.top, this.viewCamera, rect.width, rect.height);
+      selectPort(portUid);
+      if (portUid) return;
+    }
     const id = this.pick(event.clientX, event.clientY);
     const selection = this.docState()?.selection ?? [];
     let params: { ids: string[]; mode: 'replace' | 'toggle' } | null = null;
@@ -666,9 +812,10 @@ export class ViewportEngine {
     const rect = this.canvas.getBoundingClientRect();
     if (!edit || !entry || !view || view.shown !== edit || !entry.obj.visible || rect.width < 1 || rect.height < 1) return null;
     this.scene.updateMatrixWorld();
-    this.camera.updateMatrixWorld();
+    const camera = this.viewCamera;
+    camera.updateMatrixWorld();
     const matrix = new Matrix4()
-      .multiplyMatrices(this.camera.projectionMatrix, this.camera.matrixWorldInverse)
+      .multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse)
       .multiply(entry.group.matrixWorld);
     // In wireframe shading the elements behind faces are visible, so they can be picked.
     const occlusion = useApp.getState().shading !== 'wireframe';
@@ -708,7 +855,7 @@ export class ViewportEngine {
       if (edge) params = { edges: [edge] };
     } else {
       const ndc = new Vector2((x / rect.width) * 2 - 1, -(y / rect.height) * 2 + 1);
-      this.raycaster.setFromCamera(ndc, this.camera);
+      this.raycaster.setFromCamera(ndc, this.viewCamera);
       const hit = this.raycaster.intersectObject(view.solid, false)[0];
       if (hit && hit.faceIndex != null) params = { indices: [view.triToFace[hit.faceIndex]] };
     }
@@ -736,6 +883,28 @@ export class ViewportEngine {
     const count = (params.indices ?? params.edges ?? []).length;
     if (count > 0) this.select('mesh.select', { ...params, action: event.shiftKey ? 'add' : 'replace' });
     else if (!event.shiftKey) this.selectNone(edit);
+  }
+
+  /**
+   * The frontmost visible object under the given client coordinates and, for a cuboid element, the
+   * index of the face hit (in `cuboidFaces` order). For dropping library textures onto faces.
+   */
+  pickFace(clientX: number, clientY: number): { id: string; face: number | null } | null {
+    const rect = this.canvas.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) return null;
+    const ndc = new Vector2(((clientX - rect.left) / rect.width) * 2 - 1, -((clientY - rect.top) / rect.height) * 2 + 1);
+    const targets: Mesh[] = [];
+    for (const entry of this.entries.values()) if (entry.obj.visible) targets.push(entry.solid);
+    this.scene.updateMatrixWorld();
+    this.viewCamera.updateMatrixWorld();
+    this.raycaster.setFromCamera(ndc, this.viewCamera);
+    const hit = this.raycaster.intersectObjects(targets, false)[0];
+    if (!hit) return null;
+    const id = hit.object.userData.id as string;
+    const cuboid = this.entries.get(id)?.obj.cuboid;
+    // A cuboid's six quads are two triangles each, in face order (and one geometry group per face).
+    const face = cuboid ? (hit.face?.materialIndex ?? (hit.faceIndex != null ? Math.floor(hit.faceIndex / 2) : null)) : null;
+    return { id, face: face !== null && face >= 0 && face < 6 ? face : null };
   }
 
   /** Id of the frontmost visible object under the given client coordinates. */
@@ -1142,6 +1311,8 @@ export class ViewportEngine {
     const pixelRatio = this.renderer.getPixelRatio();
     const gizmoVisible = this.gizmoHelper.visible;
     this.gizmoHelper.visible = false;
+    // Pictures show the plain stage: the preview scene is a view setting of the user's, not part of the document.
+    const restorePreview = stage === this.stage ? this.preview.suspend() : () => {};
     try {
       show(app);
 
@@ -1191,6 +1362,7 @@ export class ViewportEngine {
       // twice), it was last set up for the other document, and the scene on screen sets it up again.
       if (background) this.needsSync = true;
       this.gizmoHelper.visible = gizmoVisible;
+      restorePreview();
       this.renderer.setPixelRatio(pixelRatio);
       // Draws what the user sees again, in this same task: the picture went through the visible canvas.
       this.resize();

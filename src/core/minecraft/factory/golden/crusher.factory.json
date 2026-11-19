@@ -1,0 +1,321 @@
+{
+  "schema_version": 1,
+  "generator": "Tessel",
+  "machine": {
+    "id": "factory:crusher",
+    "display_name": "Crusher",
+    "model": "crusher",
+    "properties": {
+      "tier": 2,
+      "powered": true,
+      "recipe_type": "factory:crushing"
+    }
+  },
+  "footprint": {
+    "size": [1, 2, 1],
+    "anchor": [0, 0, 0],
+    "min": [0, 0, 0],
+    "max": [0, 1, 0]
+  },
+  "rotation": {
+    "authored_facing": "north",
+    "default_facing": "south",
+    "allowed_facings": ["north", "east", "south", "west", "up"],
+    "pivot": [8, 8, 8]
+  },
+  "ports": [
+    {
+      "id": "input",
+      "name": "Input",
+      "kind": "input",
+      "resource": "item",
+      "connector": "conveyor",
+      "face": "west",
+      "direction": [-1, 0, 0],
+      "position": [0, 8, 8],
+      "block": [0, 0, 0],
+      "size": [6, 6],
+      "capacity": null,
+      "rate": null,
+      "tags": [],
+      "properties": {}
+    },
+    {
+      "id": "output",
+      "name": "Output",
+      "kind": "output",
+      "resource": "item",
+      "connector": "conveyor",
+      "face": "east",
+      "direction": [1, 0, 0],
+      "position": [16, 8, 8],
+      "block": [0, 0, 0],
+      "size": [6, 6],
+      "capacity": null,
+      "rate": null,
+      "tags": [],
+      "properties": {}
+    },
+    {
+      "id": "energy",
+      "name": "Power",
+      "kind": "input",
+      "resource": "energy",
+      "connector": "cable",
+      "face": "up",
+      "direction": [0, 1, 0],
+      "position": [8, 32, 8],
+      "block": [0, 1, 0],
+      "size": [2, 2],
+      "capacity": 10000,
+      "rate": 128.5,
+      "tags": ["fe"],
+      "properties": {
+        "voltage": "low"
+      }
+    },
+    {
+      "id": "steam",
+      "name": "",
+      "kind": "output",
+      "resource": "mymod:steam",
+      "connector": "pipe",
+      "face": "north",
+      "direction": [0, 0, -1],
+      "position": [8, 24, 0],
+      "block": [0, 1, 0],
+      "size": [4, 4],
+      "capacity": null,
+      "rate": null,
+      "tags": [],
+      "properties": {}
+    }
+  ],
+  "facings": {
+    "north": {
+      "blockstate": {
+        "x": 0,
+        "y": 0
+      },
+      "matrix": [
+        [1, 0, 0],
+        [0, 1, 0],
+        [0, 0, 1]
+      ],
+      "footprint": {
+        "min": [0, 0, 0],
+        "max": [0, 1, 0]
+      },
+      "ports": [
+        {
+          "id": "input",
+          "face": "west",
+          "direction": [-1, 0, 0],
+          "position": [0, 8, 8],
+          "block": [0, 0, 0]
+        },
+        {
+          "id": "output",
+          "face": "east",
+          "direction": [1, 0, 0],
+          "position": [16, 8, 8],
+          "block": [0, 0, 0]
+        },
+        {
+          "id": "energy",
+          "face": "up",
+          "direction": [0, 1, 0],
+          "position": [8, 32, 8],
+          "block": [0, 1, 0]
+        },
+        {
+          "id": "steam",
+          "face": "north",
+          "direction": [0, 0, -1],
+          "position": [8, 24, 0],
+          "block": [0, 1, 0]
+        }
+      ]
+    },
+    "east": {
+      "blockstate": {
+        "x": 0,
+        "y": 90
+      },
+      "matrix": [
+        [0, 0, -1],
+        [0, 1, 0],
+        [1, 0, 0]
+      ],
+      "footprint": {
+        "min": [0, 0, 0],
+        "max": [0, 1, 0]
+      },
+      "ports": [
+        {
+          "id": "input",
+          "face": "north",
+          "direction": [0, 0, -1],
+          "position": [8, 8, 0],
+          "block": [0, 0, 0]
+        },
+        {
+          "id": "output",
+          "face": "south",
+          "direction": [0, 0, 1],
+          "position": [8, 8, 16],
+          "block": [0, 0, 0]
+        },
+        {
+          "id": "energy",
+          "face": "up",
+          "direction": [0, 1, 0],
+          "position": [8, 32, 8],
+          "block": [0, 1, 0]
+        },
+        {
+          "id": "steam",
+          "face": "east",
+          "direction": [1, 0, 0],
+          "position": [16, 24, 8],
+          "block": [0, 1, 0]
+        }
+      ]
+    },
+    "south": {
+      "blockstate": {
+        "x": 0,
+        "y": 180
+      },
+      "matrix": [
+        [-1, 0, 0],
+        [0, 1, 0],
+        [0, 0, -1]
+      ],
+      "footprint": {
+        "min": [0, 0, 0],
+        "max": [0, 1, 0]
+      },
+      "ports": [
+        {
+          "id": "input",
+          "face": "east",
+          "direction": [1, 0, 0],
+          "position": [16, 8, 8],
+          "block": [0, 0, 0]
+        },
+        {
+          "id": "output",
+          "face": "west",
+          "direction": [-1, 0, 0],
+          "position": [0, 8, 8],
+          "block": [0, 0, 0]
+        },
+        {
+          "id": "energy",
+          "face": "up",
+          "direction": [0, 1, 0],
+          "position": [8, 32, 8],
+          "block": [0, 1, 0]
+        },
+        {
+          "id": "steam",
+          "face": "south",
+          "direction": [0, 0, 1],
+          "position": [8, 24, 16],
+          "block": [0, 1, 0]
+        }
+      ]
+    },
+    "west": {
+      "blockstate": {
+        "x": 0,
+        "y": 270
+      },
+      "matrix": [
+        [0, 0, 1],
+        [0, 1, 0],
+        [-1, 0, 0]
+      ],
+      "footprint": {
+        "min": [0, 0, 0],
+        "max": [0, 1, 0]
+      },
+      "ports": [
+        {
+          "id": "input",
+          "face": "south",
+          "direction": [0, 0, 1],
+          "position": [8, 8, 16],
+          "block": [0, 0, 0]
+        },
+        {
+          "id": "output",
+          "face": "north",
+          "direction": [0, 0, -1],
+          "position": [8, 8, 0],
+          "block": [0, 0, 0]
+        },
+        {
+          "id": "energy",
+          "face": "up",
+          "direction": [0, 1, 0],
+          "position": [8, 32, 8],
+          "block": [0, 1, 0]
+        },
+        {
+          "id": "steam",
+          "face": "west",
+          "direction": [-1, 0, 0],
+          "position": [0, 24, 8],
+          "block": [0, 1, 0]
+        }
+      ]
+    },
+    "up": {
+      "blockstate": {
+        "x": 270,
+        "y": 0
+      },
+      "matrix": [
+        [1, 0, 0],
+        [0, 0, -1],
+        [0, 1, 0]
+      ],
+      "footprint": {
+        "min": [0, 0, 0],
+        "max": [0, 0, 1]
+      },
+      "ports": [
+        {
+          "id": "input",
+          "face": "west",
+          "direction": [-1, 0, 0],
+          "position": [0, 8, 8],
+          "block": [0, 0, 0]
+        },
+        {
+          "id": "output",
+          "face": "east",
+          "direction": [1, 0, 0],
+          "position": [16, 8, 8],
+          "block": [0, 0, 0]
+        },
+        {
+          "id": "energy",
+          "face": "south",
+          "direction": [0, 0, 1],
+          "position": [8, 8, 32],
+          "block": [0, 0, 1]
+        },
+        {
+          "id": "steam",
+          "face": "up",
+          "direction": [0, 1, 0],
+          "position": [8, 16, 24],
+          "block": [0, 0, 1]
+        }
+      ]
+    }
+  }
+}

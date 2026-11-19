@@ -3,11 +3,13 @@ import { Plus } from 'lucide-react';
 import { selectDocState, useApp } from '../app/store';
 import { shadings, tools } from '../core/types';
 import { useT } from '../i18n';
-import { getAction, runAction, shortcutLabel } from './actions';
+import { actionAllowedIn, getAction, runAction, shortcutLabel } from './actions';
+import { useDocFormat, useIsMinecraft } from './format';
 import { meshToolIcons, shadingIcons, toolIcons } from './labels';
 import { MenuPopup } from './menu';
 import { AddItems, MergeItems } from './MenuBar';
 import { PaintRail } from './paint/PaintRail';
+import { PixelRail } from './pixel/PixelRail';
 import { Tip } from './Tip';
 import { useUi } from './uiStore';
 
@@ -18,10 +20,11 @@ const buttonClass = (active: boolean) =>
 
 function Tools() {
   const tool = useApp((s) => s.tool);
+  const format = useDocFormat();
   const t = useT();
   return (
     <div role="radiogroup" aria-label={t.toolRail.tool} className="rail-group flex flex-col">
-      {tools.map((id) => {
+      {tools.filter((id) => actionAllowedIn(getAction(`tool.${id}`), format)).map((id) => {
         const title = t.tools[id];
         const Icon = toolIcons[id];
         const active = id === tool;
@@ -119,13 +122,16 @@ function MeshTools() {
 export function ToolRail() {
   const editing = useApp((s) => selectDocState(s).edit !== null);
   const painting = useApp((s) => s.workspace === 'paint');
+  // The display workspace poses the model with its own gizmo; nothing here applies to it.
+  const displaying = useApp((s) => s.workspace === 'display');
+  const minecraft = useIsMinecraft();
   const t = useT();
   return (
     <nav aria-label={t.toolRail.tools} className="no-scrollbar flex flex-col items-center gap-2 overflow-y-auto border-r border-line bg-panel py-2">
       {painting ? (
         // The paint workspace has its own tools; transforming and adding belong to modelling.
-        <PaintRail />
-      ) : (
+        minecraft ? <PixelRail /> : <PaintRail />
+      ) : displaying ? null : (
         <>
           <Tools />
           <div aria-hidden className="h-px w-5 shrink-0 bg-line-strong" />

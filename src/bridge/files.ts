@@ -1,6 +1,6 @@
 import { invoke, isTauri } from '@tauri-apps/api/core';
 import { open, save } from '@tauri-apps/plugin-dialog';
-import { execute, selectActiveDoc, useApp } from '../app/store';
+import { execute, selectActiveDoc, services, useApp } from '../app/store';
 import { importFormats, type ExportFormat, type ExportResult, type ImportFormat } from '../core/types';
 import { documentName, getT } from '../i18n';
 
@@ -42,6 +42,31 @@ export async function openProject(): Promise<void> {
   await execute('document.load', { json, filePath: path, name: fileStem(path) });
 }
 
+/** Shows an open dialog and opens the chosen Minecraft Java model (.json) as a new Minecraft document. */
+export async function openJavaModel(): Promise<{ warnings: string[]; parent: unknown } | null> {
+  requireDesktop();
+  const path = await open({ multiple: false, directory: false, filters: [{ name: getT().files.formats.json, extensions: ['json'] }] });
+  if (!path) return null;
+  // The backend also reads the texture images it finds in the resource pack the model is in, and the factory
+  // sidecar (<name>.factory.json) next to it; the path may also be the sidecar itself.
+  const read = await invoke<{ json: string; images: Record<string, { data: string; width: number; height: number }>; sidecar?: string | null; name?: string }>(
+    'read_java_model_file',
+    { path },
+  );
+  const stem = read.name || fileStem(path);
+  const params = { json: read.json, images: read.images, name: stem, fileName: stem, sourcePath: path };
+  // A model with a factory sidecar opens as a factory document; item definitions (items/<id>.json) open as item
+  // definition documents and are saved back to the file.
+  const result = (
+    read.sidecar
+      ? await execute('document.import_factory', { ...params, sidecar: read.sidecar })
+      : await execute('document.import_java', { ...params, filePath: path })
+  ) as { warnings: string[]; parent: unknown };
+  // Textures that live in the texture library are linked to their files instead of staying copies.
+  if (services.textureLibrary) await execute('library.link_all', {}).catch(() => undefined);
+  return result;
+}
+
 /** Saves the active document; asks for a path if it has none or `saveAs` is set. Resolves false if cancelled. */
 export async function saveProject(opts?: { saveAs?: boolean }): Promise<boolean> {
   requireDesktop();
@@ -72,8 +97,10 @@ export async function exportFile(format: ExportFormat, opts?: { selectionOnly?: 
   // Export first, so problems (e.g. nothing selected) show up before the user picks a file.
   let exported = (await execute('export.file', params)) as ExportResult;
 
+  // A Minecraft model is named after its model file name, not the document.
+  const javaName = (exported as { fileName?: string }).fileName?.replace(/\.json$/, '');
   const chosen = await save({
-    defaultPath: suggestedFileName(documentName(selectActiveDoc(useApp.getState())), format),
+    defaultPath: suggestedFileName(javaName ?? documentName(selectActiveDoc(useApp.getState())), format),
     filters: [{ name: getT().files.formats[format], extensions: [format] }],
   });
   if (!chosen) return false;
@@ -91,6 +118,9 @@ export async function exportFile(format: ExportFormat, opts?: { selectionOnly?: 
     });
   } else if (exported.text !== undefined) {
     await invoke('write_text_file', { path, contents: exported.text });
+    // A factory model also writes its sidecar for the server plugin, named after the chosen model file.
+    const sidecar = (exported as { sidecar?: { text: string } }).sidecar;
+    if (sidecar) await invoke('write_text_file', { path: path.replace(/\.json$/i, '.factory.json'), contents: sidecar.text });
   } else {
     await invoke('write_binary_file', { path, base64: exported.base64 ?? '' });
   }

@@ -1,17 +1,30 @@
 import { execute, selectDocState, useApp } from '../app/store';
 import { exportFile, importFile, openProject, saveProject } from '../bridge/files';
+import { openModelDialog } from './modelImport/modelImportFlows';
 import { openBakeDialog } from './bake/bakeStore';
 import { openRenderDialog } from './render/renderStore';
+import { commandsById } from '../core/commands';
+import { commandAllowedIn, FREE_ONLY, MINECRAFT_ONLY } from '../core/formats';
 import { primitiveTypes } from '../core/mesh/primitives';
-import { elementModes, shadings, tools, viewPresets, workspaces, type ExportFormat, type ViewPreset } from '../core/types';
+import { elementModes, shadings, tools, viewPresets, workspaces, type DocFormat, type ExportFormat, type ViewPreset } from '../core/types';
 import { getT, type Dictionary } from '../i18n';
 import { groupSelection, newEmptyGroup, ungroupSelection } from './groupActions';
+import { activeFormat } from './format';
 import { runOp } from './live';
+import { minecraftActions } from './minecraft/minecraftActions';
+import { modelImportActions } from './modelImport/modelImportActions';
+import { itemActions, saveItemDefinition } from './items/itemActions';
 import { paintActions } from './paint/paintActions';
+import { previewActions } from './preview/previewActions';
 import { timelineActions } from './timeline/timelineActions';
 import { notifyError, notifyInfo, notifySuccess } from './toast';
 import { useUi } from './uiStore';
 import { uvActions } from './uv/uvActions';
+import { toggleLibraryPanel } from './library/libraryUi';
+import { toggleHistoryPanel } from './history/historyUi';
+import { resetLayout, useLayout } from './layout/layoutStore';
+import { pixelActionDefs } from './pixel/pixelActions';
+import { activeProject, pull, push, setPanelOpen, targetDir, togglePanel, useProjects } from './projects/projectsStore';
 
 /**
  * A UI action: something the user can trigger from a menu, a shortcut or the command palette.
@@ -35,6 +48,12 @@ export interface Action {
   command?: string;
   /** Not listed in the command palette. */
   hidden?: boolean;
+  /**
+   * Document formats the action is offered in; absent = what its registry `command` allows, else every
+   * format. Menus, the tool rail, the palette and shortcuts leave out actions that do not fit the active
+   * document (see `actionAllowedIn`).
+   */
+  formats?: readonly DocFormat[];
   /** Further condition for offering the action (palette, shortcuts), e.g. the workspace it belongs to. */
   available?(): boolean;
   run(): unknown;
@@ -55,8 +74,26 @@ const action = ({ title, group, ...rest }: Omit<Action, 'title' | 'group'> & { t
 
 export const inEditMode = () => selectDocState(useApp.getState()).edit !== null;
 
-/** Whether the action is offered in the current mode. */
-export const isAvailable = (action: Action) => (!action.when || action.when === (inEditMode() ? 'edit' : 'object')) && (action.available?.() ?? true);
+/**
+ * Actions that are only offered in free documents, by id prefix; for the action families that are built
+ * from other modules (UV, painting, the timeline) and do not all stand for a registry command.
+ */
+const freeOnlyPrefixes = ['uv.', 'paint.', 'timeline.', 'video.', 'bake.'];
+
+/** Whether the action works in a document of this format: its own `formats`, and what its registry command allows. */
+export function actionAllowedIn(action: Pick<Action, 'id' | 'formats' | 'command'>, format: DocFormat): boolean {
+  const declared = action.formats ?? (freeOnlyPrefixes.some((prefix) => action.id.startsWith(prefix)) ? FREE_ONLY : undefined);
+  if (declared && !declared.includes(format)) return false;
+  const def = action.command ? commandsById.get(action.command) : undefined;
+  return !def || commandAllowedIn(def.id, def.formats, format);
+}
+
+/** Whether the action fits the active document's format. */
+export const isAllowedHere = (action: Action) => actionAllowedIn(action, activeFormat());
+
+/** Whether the action is offered in the current mode and document. */
+export const isAvailable = (action: Action) =>
+  isAllowedHere(action) && (!action.when || action.when === (inEditMode() ? 'edit' : 'object')) && (action.available?.() ?? true);
 
 function toggleEditMode() {
   const state = selectDocState(useApp.getState());
@@ -121,7 +158,9 @@ export function requestCloseDoc(id: string): unknown {
 }
 
 export async function saveActiveDoc(saveAs = false): Promise<boolean> {
-  const saved = await saveProject({ saveAs });
+  // An item definition is saved as its items/<id>.json file, not as a project.
+  const item = selectDocState(useApp.getState()).item !== undefined;
+  const saved = item ? await saveItemDefinition(saveAs) : await saveProject({ saveAs });
   if (saved) notifySuccess(getT().toasts.saved, useApp.getState().docs[useApp.getState().activeDocId]?.name);
   return saved;
 }
@@ -139,17 +178,22 @@ async function importIntoActiveDoc() {
 }
 
 export const actions: readonly Action[] = [
+  // Pixel-Malen (Minecraft): first, so that its keys win in the paint workspace of Minecraft documents.
+  ...pixelActionDefs(),
+
   // Datei
-  action({ id: 'file.new', title: (t) => t.actions.new, group: 'file', keys: ['Ctrl+N'], inInputs: true, command: 'document.new', run: () => execute('document.new') }),
+  action({ id: 'file.new', title: (t) => t.actions.new, group: 'file', keys: ['Ctrl+N'], inInputs: true, command: 'document.new', run: () => useUi.setState({ newDocOpen: true }) }),
   action({ id: 'file.open', title: (t) => t.actions.open, group: 'file', keys: ['Ctrl+O'], inInputs: true, run: () => openProject() }),
   action({ id: 'file.save', title: (t) => t.actions.save, group: 'file', keys: ['Ctrl+S'], inInputs: true, run: () => saveActiveDoc() }),
   action({ id: 'file.save_as', title: (t) => t.actions.saveAs, group: 'file', keys: ['Ctrl+Shift+S'], inInputs: true, run: () => saveActiveDoc(true) }),
-  action({ id: 'file.import', title: (t) => t.files.import, group: 'file', command: 'import.file', run: importIntoActiveDoc }),
+  action({ id: 'file.open_java', title: (t) => t.modelImport.openModel, group: 'file', run: openModelDialog }),
+  action({ id: 'file.import', title: (t) => t.files.import, group: 'file', command: 'import.file', formats: FREE_ONLY, run: importIntoActiveDoc }),
   action({ id: 'file.export_glb', title: (t) => t.actions.exportGlb, group: 'file', command: 'export.gltf', run: () => exportActiveDoc('glb') }),
   action({ id: 'file.export_gltf', title: (t) => t.actions.exportGltf, group: 'file', command: 'export.file', run: () => exportActiveDoc('gltf') }),
   ...(['obj', 'stl', 'ply', 'usdz'] as const).map((format) =>
-    action({ id: `file.export_${format}`, title: (t) => t.files.exportAs(t.files.formats[format]), group: 'file', run: () => exportActiveDoc(format) }),
+    action({ id: `file.export_${format}`, title: (t) => t.files.exportAs(t.files.formats[format]), group: 'file', formats: FREE_ONLY, run: () => exportActiveDoc(format) }),
   ),
+  action({ id: 'file.export_json', title: (t) => t.files.exportAs(t.files.formats.json), group: 'file', command: 'export.file', formats: MINECRAFT_ONLY, run: () => exportActiveDoc('json') }),
   action({ id: 'render.open', title: (t) => t.render.open, group: 'file', keys: ['F12'], inInputs: true, command: 'render.image', run: openRenderDialog }),
   action({ id: 'file.close', title: (t) => t.actions.close, group: 'file', command: 'document.close', run: () => requestCloseDoc(useApp.getState().activeDocId) }),
 
@@ -218,6 +262,7 @@ export const actions: readonly Action[] = [
       id: `add.${type}`,
       title: (t) => t.actions.addPrimitive(t.primitives[type]),
       group: 'add',
+      formats: FREE_ONLY,
       // The new object is named in the UI language; the command's own default name is German.
       run: () => runOp('scene.add_primitive', { type, name: getT().primitives[type] }, (t) => t.primitives[type]),
     }),
@@ -226,8 +271,14 @@ export const actions: readonly Action[] = [
     id: 'add.text',
     title: (t) => t.actions.addPrimitive(t.shapes.text),
     group: 'add',
+    formats: FREE_ONLY,
     run: () => runOp('scene.add_text', { text: getT().shapes.text }, (t) => t.shapes.text),
   }),
+
+  // Minecraft Java
+  ...minecraftActions(action),
+  ...modelImportActions(action),
+  ...itemActions(action),
 
   // Ansicht
   ...shadings.map((shading) =>
@@ -258,7 +309,10 @@ export const actions: readonly Action[] = [
       run: () => execute('view.set_view', { preset }),
     }),
   ),
+  ...previewActions(action),
   action({ id: 'view.frame', title: (t) => t.actions.frame, group: 'view', keys: ['F', 'NumpadDecimal'], editKeys: ['NumpadDecimal'], command: 'view.frame', run: () => execute('view.frame') }),
+  action({ id: 'layout.manage', title: (t) => t.layout.manage, group: 'view', run: () => useLayout.setState({ manageOpen: true }) }),
+  action({ id: 'layout.reset', title: (t) => t.layout.reset, group: 'view', run: resetLayout }),
 
   // Werkzeug
   ...tools.map((tool) =>
@@ -267,6 +321,8 @@ export const actions: readonly Action[] = [
       title: (t) => t.actions.tool(t.tools[tool]),
       group: 'tool',
       keys: [toolKeys[tool]],
+      // Elements are resized in the element panel; the scale gizmo would only bake into the box.
+      formats: tool === 'scale' ? FREE_ONLY : undefined,
       run: () => execute('view.set_tool', { tool }),
     }),
   ),
@@ -277,9 +333,29 @@ export const actions: readonly Action[] = [
       id: `workspace.${workspace}`,
       title: (t) => t.actions.workspace(t.workspaces[workspace]),
       group: 'workspace',
+      formats: workspace === 'display' ? MINECRAFT_ONLY : undefined,
       run: () => execute('app.set_workspace', { workspace }),
     }),
   ),
+
+  // Projekt
+  action({ id: 'projects.toggle', title: (t) => t.projects.togglePanel, group: 'project', keys: ['Ctrl+Shift+E'], inInputs: true, run: togglePanel }),
+  action({ id: 'library.toggle', title: (t) => t.library.togglePanel, group: 'project', keys: ['Ctrl+Shift+L'], inInputs: true, run: toggleLibraryPanel }),
+  action({ id: 'history.toggle', title: (t) => t.history.togglePanel, group: 'view', keys: ['Ctrl+Shift+H'], inInputs: true, run: toggleHistoryPanel }),
+  action({
+    id: 'projects.save_into',
+    title: (t) => t.projects.saveInto,
+    group: 'project',
+    available: () => activeProject() !== null,
+    run: () => {
+      setPanelOpen(true);
+      useProjects.setState({ prompt: { kind: 'saveInto', dir: targetDir() } });
+    },
+  }),
+  action({ id: 'projects.github', title: (t) => t.projects.cloneFromGitHub, group: 'project', run: () => useProjects.setState({ githubOpen: true }) }),
+  action({ id: 'git.pull', title: (t) => t.projects.pull, group: 'project', available: () => useProjects.getState().status?.isRepo === true, run: pull }),
+  action({ id: 'git.commit', title: (t) => t.projects.commitTitle, group: 'project', available: () => (useProjects.getState().status?.files.length ?? 0) > 0, run: () => useProjects.setState({ commitOpen: true }) }),
+  action({ id: 'git.push', title: (t) => t.projects.push, group: 'project', available: () => useProjects.getState().status?.isRepo === true, run: push }),
 
   action({ id: 'preferences.open', title: (t) => t.actions.preferences, group: 'file', keys: ['Ctrl+,'], inInputs: true, run: () => useUi.setState({ preferencesOpen: true }) }),
   action({ id: 'palette.open', title: (t) => t.actions.palette, group: 'view', keys: ['Ctrl+K'], inInputs: true, hidden: true, run: () => useUi.setState((s) => ({ paletteOpen: !s.paletteOpen })) }),
@@ -363,6 +439,7 @@ export function matchShortcut(event: KeyboardEvent): Action | undefined {
   return bindings.find(
     ({ combo, mode: when, action }) =>
       (!when || when === mode) &&
+      isAllowedHere(action) &&
       (action.available?.() ?? true) &&
       combo.ctrl === ctrl &&
       combo.shift === event.shiftKey &&

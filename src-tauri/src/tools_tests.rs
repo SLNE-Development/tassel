@@ -434,6 +434,62 @@ fn file_import_and_open_forward_the_document() {
   }
   let message = error_of(&call(&mock, "file_open", json!({ "path": project, "activate": "no" })));
   assert!(message.contains("activate") && message.contains("true or false"), "{message}");
+
+  // A Minecraft Java model opens as a new Minecraft document with the textures found next to it.
+  let mock = Mock::new();
+  let mut png = vec![0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, b'I', b'H', b'D', b'R'];
+  png.extend([0, 0, 0, 16, 0, 0, 0, 16, 8, 6, 0, 0, 0]);
+  dir.file("gear.png", png);
+  let model = dir.file("gear.json", r#"{"textures":{"0":"mymod:item/gear"}}"#);
+  let output = call(&mock, "file_open", json!({ "path": model, "activate": false }));
+  assert!(!output.is_error, "{}", output.value);
+  let params = params_of(&mock, "document.import_java");
+  assert_eq!(params["json"], r#"{"textures":{"0":"mymod:item/gear"}}"#);
+  assert_eq!(params["name"], "gear");
+  assert_eq!(params["fileName"], "gear");
+  assert_eq!(params["filePath"], model.as_str());
+  assert_eq!(params["activate"], false);
+  assert_eq!(params["images"]["mymod:item/gear"]["width"], 16);
+  assert_eq!(output.value["opened"], true);
+  assert!(error_of(&call(&mock, "file_open", json!({ "path": "gear.json" }))).contains("not an absolute path"));
+}
+
+#[test]
+fn file_open_and_export_handle_factory_sidecars() {
+  let dir = TempDir::new("factory");
+  let model = dir.file("crusher.json", r#"{"elements":[]}"#);
+  let sidecar = dir.file("crusher.factory.json", r#"{"schema_version":1}"#);
+
+  // Opening the model or the sidecar opens both as a factory document, named after the model.
+  for path in [&model, &sidecar] {
+    let mock = Mock::new();
+    let output = call(&mock, "file_open", json!({ "path": path }));
+    assert!(!output.is_error, "{}", output.value);
+    let params = params_of(&mock, "document.import_factory");
+    assert_eq!(params["json"], r#"{"elements":[]}"#);
+    assert_eq!(params["sidecar"], r#"{"schema_version":1}"#);
+    assert_eq!(params["name"], "crusher");
+    assert_eq!(params["fileName"], "crusher");
+  }
+
+  // A sidecar without its model is refused; a model without a sidecar stays a plain Java model.
+  let lonely = dir.file("lonely.factory.json", "{}");
+  assert!(error_of(&call(&Mock::new(), "file_open", json!({ "path": lonely }))).contains("must be next to it"));
+  let plain = dir.file("plain.json", "{}");
+  let mock = Mock::new();
+  assert!(!call(&mock, "file_open", json!({ "path": plain })).is_error);
+  assert_eq!(params_of(&mock, "document.import_java")["name"], "plain");
+
+  // Exporting a factory document writes the sidecar next to the model, named after the chosen file.
+  let mock = Mock::new();
+  std::fs::create_dir_all(dir.0.join("out")).unwrap();
+  let target = dir.0.join("out").join("press.json").to_string_lossy().into_owned();
+  let output = call(&mock, "file_export", json!({ "path": target }));
+  assert!(!output.is_error, "{}", output.value);
+  let written = dir.0.join("out").join("press.factory.json").to_string_lossy().into_owned();
+  assert_eq!(output.value["files"], json!([target, written]));
+  assert_eq!(std::fs::read_to_string(&written).unwrap(), r#"{"schema_version":1}"#);
+  assert_eq!(std::fs::read_to_string(&target).unwrap(), r#"{"elements":[]}"#);
 }
 
 #[test]
@@ -451,11 +507,13 @@ fn unknown_tools_and_frontend_tools() {
 #[test]
 fn every_native_tool_is_listed_with_document_id() {
   let listed = native_tools();
-  assert_eq!(listed.len(), NATIVE_NAMES.len());
+  assert_eq!(listed.len(), NATIVE_NAMES.len() + workspace_tools::NAMES.len());
   for tool in &listed {
     assert!(is_native(tool.name), "{}", tool.name);
     assert_eq!(tool.input_schema["type"], "object");
-    assert!(tool.input_schema["properties"]["documentId"].is_object(), "{}", tool.name);
+    // Project and git tools work on a project, not a document (project_save excepted).
+    let on_document = NATIVE_NAMES.contains(&tool.name) || tool.name == "project_save";
+    assert_eq!(tool.input_schema["properties"]["documentId"].is_object(), on_document, "{}", tool.name);
     assert!(!tool.description.contains("  "), "{}: the description has a run of spaces", tool.name);
   }
 }

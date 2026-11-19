@@ -57,7 +57,11 @@ Files (absolute paths): file_save / file_open for .tessel project files; file_ex
 (+ .mtl and textures), .stl, .ply or .usdz; file_import reads .glb, .gltf, .obj, .stl, .ply or .fbx models and \
 .png / .jpg / .webp images as textures; scene_place_model puts a model file (also a .tessel project) into the \
 scene as one group at a position; material_import copies materials from another .tessel project. Prefer these \
-file tools over export_file / import_file / texture_get, which pass whole files through the conversation.";
+file tools over export_file / import_file / texture_get, which pass whole files through the conversation. \
+Team projects: project_list shows the project folders (git repositories, e.g. one per Minecraft server); \
+project_files lists their model files, project_open / project_save open and save .tessel documents by a path \
+relative to the project, and git_status, git_commit, git_pull, git_push, git_branches and git_switch_branch share \
+the work with the team through the GitHub account signed in to Tessel.";
 
 pub fn url() -> String {
   format!("http://127.0.0.1:{PORT}{PATH}")
