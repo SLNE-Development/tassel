@@ -175,6 +175,7 @@ function ViewItems() {
       <ActionItem id="view.frame" />
       <MenuSeparator />
       <ActionItem id="projects.toggle" />
+      <ActionItem id="library.toggle" />
       <MenuSeparator />
       {!minecraft && (
         <>
