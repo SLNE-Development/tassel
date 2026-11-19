@@ -1,13 +1,8 @@
 import {
   Box3,
-  Color,
-  DirectionalLight,
   DoubleSide,
-  Group,
-  HemisphereLight,
   Line2NodeMaterial,
   LineBasicMaterial,
-  LineSegments,
   MathUtils,
   Matrix4,
   Mesh,
@@ -16,7 +11,6 @@ import {
   Object3D,
   PerspectiveCamera,
   Raycaster,
-  Scene,
   Sphere,
   Vector2,
   Vector3,
@@ -24,52 +18,37 @@ import {
 } from 'three/webgpu';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { TransformControls } from 'three/addons/controls/TransformControls.js';
-import { LineSegments2 } from 'three/addons/lines/webgpu/LineSegments2.js';
+import { frameOf, pause, usePlayback } from '../app/playback';
 import { getAppearance, onAppearanceChange } from '../app/preferences';
 import { execute, useApp } from '../app/store';
-import { evaluateObject } from '../core/modifiers/evaluate';
+import { animatedState, cameraAt } from '../core/animation';
+import { describeCamera, fitDistance as fitShot, screenshotViews, sheetLayout, viewLabel, type Rect } from '../core/screenshotViews';
 import type { Preferences } from '../core/preferences';
 import type {
   AppState,
   CameraPose,
   DocState,
-  PolyMesh,
-  SceneObject,
   ScreenshotOptions,
-  Shading,
+  ScreenshotResult,
+  ScreenshotView,
+  ScreenshotViewInfo,
+  ShotSequence,
   Tool,
   Transform,
   Vec3,
+  ViewDocument,
   ViewportService,
   ViewPreset,
 } from '../core/types';
+import { applyTransform, boxCorners, DocScene, selectionBox, Stage, type Entry, type SceneLooks } from './docScene';
 import { EditMaterials, EditView, selectedVertices } from './editMesh';
 import { ElementPicker } from './editPick';
-import { DEFAULT_SPHERE, fitClipPlanes, fitDistance, placeCamera, viewDirection } from './framing';
-import { GeometryStore, type MeshGeometry } from './geometry';
-import { GroundGrid } from './grid';
+import { DEFAULT_SPHERE, fitDistance, viewDirection } from './framing';
+import { GeometryStore } from './geometry';
 import { PaintView } from './paintView';
 import { rotateAbout, scaleAbout } from './groupTransform';
 import { SurfaceMaterials } from './surfaces';
-import { VIEWPORT_PALETTES } from './theme';
-
-/** 0 = not selected, 1 = selected, 2 = active. */
-type Highlight = 0 | 1 | 2;
-
-interface Entry {
-  obj: SceneObject;
-  geometry: MeshGeometry;
-  /** Carries the object transform; the gizmo attaches to it. */
-  group: Group;
-  solid: Mesh;
-  wire: LineSegments | null;
-  outline: LineSegments2 | null;
-  /**
-   * Set while the object is being edited: it then shows its base mesh with the edit overlays, and
-   * `geometry` (the modifier result) is hidden and not kept up to date.
-   */
-  edit: EditView | null;
-}
+import { VIEWPORT_PALETTES, type ViewportPalette } from './theme';
 
 type Drag =
   | { kind: 'object'; start: Map<string, Vector3>; origin: Vector3 }
@@ -94,20 +73,16 @@ const round = (n: number) => Math.round(n * 1e6) / 1e6;
 const toVec3 = (v: { x: number; y: number; z: number }): Vec3 => [round(v.x), round(v.y), round(v.z)];
 const sameVec3 = (a: Vec3, b: Vec3) => a[0] === b[0] && a[1] === b[1] && a[2] === b[2];
 
-function applyTransform(group: Group, t: Transform): void {
-  group.position.set(...t.position);
-  group.rotation.set(
-    MathUtils.degToRad(t.rotation[0]),
-    MathUtils.degToRad(t.rotation[1]),
-    MathUtils.degToRad(t.rotation[2]),
-    'XYZ',
-  );
-  group.scale.set(...t.scale);
-}
+/** The look in which a document that is not the visible tab is drawn (only what bounding boxes need). */
+const plainLook = (app: AppState): AppState => ({ ...app, workspace: 'modeling', shading: 'solid' });
 
 /**
  * The imperative three.js side of the viewport. It mirrors the active document into a three scene
- * (diffing by reference identity), renders on demand and turns mouse input into commands.
+ * (`DocScene`, diffing by reference identity), renders on demand and turns mouse input into commands.
+ *
+ * Documents in the background (open, but not the visible tab) never enter that scene: a screenshot of
+ * one builds a second `DocScene` on a stage of its own for the duration of the picture, and their
+ * cameras are kept in `cameraByDoc`.
  */
 export class ViewportEngine {
   readonly service: ViewportService;
@@ -116,21 +91,40 @@ export class ViewportEngine {
 
   private readonly renderer: WebGPURenderer;
   private readonly canvas: HTMLCanvasElement;
-  private readonly scene = new Scene();
+  /** What the user sees: background, grid and lights around the objects of the visible document. */
+  private readonly stage = new Stage();
+  private readonly scene = this.stage.scene;
+  /** The same surroundings for pictures of documents in the background; made when first needed. */
+  private backStage: Stage | null = null;
   private readonly camera = new PerspectiveCamera(50, 1, 0.1, 1000);
   private readonly orbit: OrbitControls;
   private readonly gizmo: TransformControls;
   private readonly gizmoHelper: ReturnType<TransformControls['getHelper']>;
-  private readonly grid = new GroundGrid();
-  private readonly lightRig = new Group();
-  private readonly content = new Group();
+  private readonly grid = this.stage.grid;
   private readonly geometries = new GeometryStore();
-  private readonly entries = new Map<string, Entry>();
+  private readonly looks: SceneLooks;
+  /** The objects of the visible document. */
+  private readonly docScene: DocScene;
+  private readonly entries: Map<string, Entry>;
   private readonly raycaster = new Raycaster();
   private readonly resizeObserver: ResizeObserver;
   private readonly unsubscribe: () => void;
   private readonly unsubscribeAppearance: () => void;
+  private readonly unsubscribePlayback: () => void;
+  /**
+   * "Kamera-Ansicht": while `previewing`, the viewport is drawn through this camera, posed from the
+   * animated camera at the playhead. The user's own camera (`camera` with `orbit`) is not touched and
+   * is what the viewport returns to.
+   */
+  private readonly animCamera = new PerspectiveCamera(40, 1, 0.1, 1000);
+  private readonly animTarget = new Vector3();
+  private previewing = false;
   private readonly ready: Promise<void>;
+  /**
+   * The cameras of the documents in the background: where the user left them, or where a view command
+   * for that document put them. A document without an entry has not been looked at or posed yet and
+   * takes over the camera that is current when it becomes visible.
+   */
   private readonly cameraByDoc = new Map<string, CameraPose>();
 
   private readonly clay: MeshStandardMaterial[];
@@ -146,7 +140,7 @@ export class ViewportEngine {
   private readonly wireDim = new LineBasicMaterial({ fog: false });
   private readonly editMaterials = new EditMaterials();
   /** PBR materials and the UV checker; a texture that finishes decoding asks for another sync. */
-  private readonly ambient = new HemisphereLight('#e4e9f2', '#3a3632', 1.5);
+  private readonly ambient = this.stage.ambient;
   private readonly surfaces = new SurfaceMaterials(() => {
     this.needsSync = true;
     this.invalidate();
@@ -182,18 +176,6 @@ export class ViewportEngine {
     });
     container.appendChild(this.boxElement);
 
-    this.scene.background = new Color();
-    this.scene.fog = this.grid.fog;
-    this.scene.add(this.grid.object, this.content, this.lightRig);
-
-    // Soft studio lighting. The rig follows the camera so every view direction is lit the same way.
-    this.scene.add(this.ambient);
-    const key = new DirectionalLight('#fff3e4', 2.4);
-    key.position.set(-3, 5, 4);
-    const fill = new DirectionalLight('#a9bfe6', 0.7);
-    fill.position.set(5, -1, 2);
-    this.lightRig.add(key, fill);
-
     // Clay for [not selected, selected, active]; the offset keeps edge overlays free of z-fighting.
     const clay = (glow: number) =>
       new MeshStandardMaterial({
@@ -213,6 +195,26 @@ export class ViewportEngine {
       material.fog = false;
       return material;
     });
+    this.looks = {
+      geometries: this.geometries,
+      surfaces: this.surfaces,
+      clay: this.clay,
+      clayDim: this.clayDim,
+      wireMaterials: this.wireMaterials,
+      wireDim: this.wireDim,
+      overlayMaterials: this.overlayMaterials,
+      outlineMaterials: this.outlineMaterials,
+      editMaterials: this.editMaterials,
+    };
+    this.docScene = new DocScene(this.looks, (entry) => {
+      // Nothing may stay attached to an object that leaves the scene.
+      if (this.gizmo.object === entry.group || this.pivot.parent === entry.group) {
+        this.gizmo.detach();
+        this.pivot.removeFromParent();
+      }
+    });
+    this.entries = this.docScene.entries;
+    this.scene.add(this.docScene.content);
 
     this.camera.position.set(6.5, 4.5, 8);
     this.orbit = new OrbitControls(this.camera, this.canvas);
@@ -266,13 +268,19 @@ export class ViewportEngine {
       this.needsSync = true;
       this.invalidate();
     });
+    // The playhead moved, or the camera preview was switched: show the document at that frame.
+    this.unsubscribePlayback = usePlayback.subscribe(() => {
+      this.needsSync = true;
+      this.invalidate();
+    });
 
     this.service = {
-      screenshot: (opts) => this.screenshot(opts),
-      getCamera: () => this.getCamera(),
-      setCamera: (pose) => this.setCamera(pose),
-      setView: (preset) => this.setView(preset),
-      frame: (ids) => this.frame(ids),
+      screenshot: (opts, doc) => this.screenshot(opts, doc),
+      sequence: (doc) => this.sequence(doc),
+      getCamera: (doc) => this.getCamera(doc),
+      setCamera: (pose, doc) => this.setCamera(pose, doc),
+      setView: (preset, doc) => this.setView(preset, doc),
+      frame: (ids, doc) => this.frame(ids, doc),
     };
 
     this.ready = this.renderer.init().then(() => {
@@ -296,6 +304,7 @@ export class ViewportEngine {
     cancelAnimationFrame(this.frameRequest);
     this.unsubscribe();
     this.unsubscribeAppearance();
+    this.unsubscribePlayback();
     window.removeEventListener('resize', this.onWindowResize);
     this.resizeObserver.disconnect();
     this.canvas.removeEventListener('pointerdown', this.onPointerDown);
@@ -311,7 +320,8 @@ export class ViewportEngine {
     for (const entry of this.entries.values()) entry.edit?.dispose();
     this.entries.clear();
     this.geometries.dispose();
-    this.grid.dispose();
+    this.stage.dispose();
+    this.backStage?.dispose();
     this.editMaterials.dispose();
     this.surfaces.dispose();
     [
@@ -341,15 +351,46 @@ export class ViewportEngine {
   private renderNow(): void {
     if (!this.initialised || this.disposed) return;
     this.syncIfNeeded();
-    this.draw(this.camera, this.orbit.target);
+    this.stage.draw(this.renderer, this.viewCamera, this.previewing ? this.animTarget : this.orbit.target);
   }
 
-  private draw(camera: PerspectiveCamera, target: Vector3): void {
-    const distance = camera.position.distanceTo(target);
-    fitClipPlanes(camera, distance);
-    this.grid.update(target, distance);
-    this.lightRig.quaternion.copy(camera.quaternion);
-    this.renderer.render(this.scene, camera);
+  /** The camera the viewport is drawn through: the user's, or the animated one in the camera preview. */
+  private get viewCamera(): PerspectiveCamera {
+    return this.previewing ? this.animCamera : this.camera;
+  }
+
+  /**
+   * What the viewport shows of a document: with an animation, the pose at the playhead; in edit mode the
+   * static pose (the mesh is edited where the object rests). Objects that do not move keep their identity.
+   */
+  private displayed(doc: { id: string; state: DocState }): DocState {
+    const state = doc.state;
+    return state.animation && !state.edit ? animatedState(state, frameOf(doc.id)) : state;
+  }
+
+  /** Switches the camera preview on or off for the document on screen and poses its camera for the playhead. */
+  private updatePreview(app: AppState, doc: { id: string; state: DocState }): void {
+    const playback = usePlayback.getState();
+    const state = doc.state;
+    // Painting and edit-mode picking work with the user's camera.
+    const frame = playback.cameraView && !state.edit && app.workspace !== 'paint' ? cameraAt(state.animation, frameOf(doc.id, playback)) : null;
+    this.previewing = frame !== null;
+    if (frame) {
+      const camera = this.animCamera;
+      camera.fov = frame.fov;
+      camera.aspect = this.camera.aspect;
+      camera.position.set(...frame.position);
+      this.animTarget.set(...frame.target);
+      // Camera and target must not coincide.
+      if (camera.position.distanceToSquared(this.animTarget) < 1e-12) camera.position.z += 1;
+      camera.up.set(0, 1, 0);
+      camera.lookAt(this.animTarget);
+      camera.updateProjectionMatrix();
+      camera.updateMatrixWorld();
+    }
+    // The preview is not the user's camera to move.
+    this.orbit.enabled = !this.previewing && !this.drag;
+    if (this.gizmo.camera !== this.viewCamera) this.gizmo.camera = this.viewCamera;
   }
 
   private readonly onWindowResize = (): void => this.resize();
@@ -366,6 +407,8 @@ export class ViewportEngine {
     const cssZoom = this.container.getBoundingClientRect().width / width || 1;
     this.camera.aspect = width / height;
     this.camera.updateProjectionMatrix();
+    this.animCamera.aspect = width / height;
+    this.animCamera.updateProjectionMatrix();
     if (!this.initialised) return;
     this.renderer.setPixelRatio(Math.min((window.devicePixelRatio || 1) * cssZoom, 2));
     this.renderer.setSize(width, height, false);
@@ -380,8 +423,7 @@ export class ViewportEngine {
     const { theme, accent, accentActive } = getAppearance();
     const palette = VIEWPORT_PALETTES[theme];
     this.container.style.background = palette.background;
-    (this.scene.background as Color).set(palette.background);
-    this.grid.setPalette(palette);
+    this.stage.setPalette(palette);
     for (const material of this.clay) {
       material.color.set(palette.clay);
       material.emissive.set(accent);
@@ -434,44 +476,10 @@ export class ViewportEngine {
       this.docId = doc.id;
     }
 
-    const state = doc.state;
-    for (const [id, entry] of this.entries) {
-      if (!state.objects[id]) this.removeEntry(id, entry);
-    }
-
+    const state = this.displayed(doc);
     const edit = state.edit;
-    const selected = new Set(state.selection);
-    for (const id of state.order) {
-      const obj = state.objects[id];
-      const entry = this.entries.get(id) ?? this.createEntry(state, obj);
-      if (entry.obj.transform !== obj.transform) applyTransform(entry.group, obj.transform);
-      entry.obj = obj;
-      entry.group.visible = obj.visible;
-
-      if (edit?.objectId === id) {
-        // The edited object shows its base mesh, so that element indices match what is clicked.
-        if (entry.edit?.mesh !== obj.mesh) {
-          entry.edit?.dispose();
-          entry.edit = new EditView(obj.mesh, this.editMaterials, this.clay[0]);
-          entry.group.add(entry.edit.group);
-        }
-        entry.edit.setSelection(edit);
-        entry.edit.setLook(app.shading, edit.elementMode);
-        entry.solid.visible = false;
-        if (entry.wire) entry.wire.visible = false;
-        if (entry.outline) entry.outline.visible = false;
-        continue;
-      }
-
-      entry.edit?.dispose();
-      entry.edit = null;
-      const mesh = evaluateObject(state, id).mesh;
-      if (entry.geometry.mesh !== mesh || entry.geometry.smooth !== obj.smooth) this.swapGeometry(entry, mesh, obj.smooth);
-      // No selection overlays in the paint workspace: they would lie on top of what is painted.
-      const highlight: Highlight = app.workspace === 'paint' ? 0 : id === state.activeId ? 2 : selected.has(id) ? 1 : 0;
-      const surface = this.surfaces.pick(app, state, obj, entry.geometry.hasUvs);
-      this.applyLook(entry, app.shading, highlight, edit !== null, surface);
-    }
+    this.docScene.sync(app, state);
+    this.updatePreview(app, doc);
     this.surfaces.sweep(app);
     this.surfaces.applyLighting(app, this.scene, this.ambient);
 
@@ -481,7 +489,7 @@ export class ViewportEngine {
       // No gizmo.
     } else if (edit) {
       const entry = this.entries.get(edit.objectId);
-      const box = entry?.edit && entry.obj.visible ? this.selectionBox(entry.edit, edit) : null;
+      const box = entry?.edit && entry.obj.visible ? selectionBox(entry.edit, edit) : null;
       if (entry && box) {
         box.getCenter(this.pivot.position);
         this.pivot.quaternion.identity();
@@ -544,7 +552,7 @@ export class ViewportEngine {
     const state = this.docState();
     const items: { id: string; position?: Vec3; rotation?: Vec3; scale?: Vec3 }[] = [];
     for (const [id, next] of this.groupDragTransforms(drag)) {
-      const t = state?.objects[id]?.transform;
+      const t = state?.objects[id] ? this.entries.get(id)?.obj.transform : undefined;
       if (!t) continue;
       const item: (typeof items)[number] = { id };
       if (!sameVec3(next.position, t.position)) item.position = next.position;
@@ -553,93 +561,23 @@ export class ViewportEngine {
       if (item.position || item.rotation || item.scale) items.push(item);
     }
     if (items.length === 0) return this.resetTransforms();
-    execute('scene.set_transform', { items }).catch((error) => {
+    this.commitTransforms(items);
+  }
+
+  /**
+   * Commits dragged transforms as one undo step. On animated objects the drag changed the pose at the
+   * playhead: channels that have keys get a key on that frame with the resulting value, channels without
+   * keys change the static transform (anim.set_pose with autoKey). Without animated objects it is a plain
+   * scene.set_transform.
+   */
+  private commitTransforms(items: { id: string; position?: Vec3; rotation?: Vec3; scale?: Vec3 }[]): void {
+    const tracks = this.docState()?.animation?.tracks;
+    const animated = tracks !== undefined && this.docId !== null && items.some((item) => Object.hasOwn(tracks, item.id));
+    const run = animated ? execute('anim.set_pose', { frame: frameOf(this.docId!), items, autoKey: true }) : execute('scene.set_transform', { items });
+    run.catch((error) => {
       console.error(error);
       this.resetTransforms();
     });
-  }
-
-  /** Local-space bounding box of the selected elements, or null if nothing is selected. */
-  private selectionBox(view: EditView, edit: NonNullable<DocState['edit']>): Box3 | null {
-    const box = new Box3();
-    const point = new Vector3();
-    const count = view.vertexPositions.length / 3;
-    for (const v of selectedVertices(view.mesh, edit)) {
-      if (v < count) box.expandByPoint(point.fromArray(view.vertexPositions, v * 3));
-    }
-    return box.isEmpty() ? null : box;
-  }
-
-  private createEntry(state: DocState, obj: SceneObject): Entry {
-    const geometry = this.geometries.acquire(evaluateObject(state, obj.id).mesh, obj.smooth);
-    const group = new Group();
-    applyTransform(group, obj.transform);
-    const solid = new Mesh(geometry.solid, this.clay[0]);
-    solid.userData.id = obj.id;
-    group.add(solid);
-    this.content.add(group);
-    const entry: Entry = { obj, geometry, group, solid, wire: null, outline: null, edit: null };
-    this.entries.set(obj.id, entry);
-    return entry;
-  }
-
-  private removeEntry(id: string, entry: Entry): void {
-    if (this.gizmo.object === entry.group || this.pivot.parent === entry.group) {
-      this.gizmo.detach();
-      this.pivot.removeFromParent();
-    }
-    entry.edit?.dispose();
-    this.content.remove(entry.group);
-    this.geometries.release(entry.geometry);
-    this.entries.delete(id);
-  }
-
-  private swapGeometry(entry: Entry, mesh: PolyMesh, smooth: boolean): void {
-    const next = this.geometries.acquire(mesh, smooth);
-    this.geometries.release(entry.geometry);
-    entry.geometry = next;
-    entry.solid.geometry = next.solid;
-    // Edge objects are rebuilt lazily by applyLook.
-    if (entry.wire) entry.group.remove(entry.wire);
-    if (entry.outline) entry.group.remove(entry.outline);
-    entry.wire = null;
-    entry.outline = null;
-  }
-
-  /** `dim`: another object is being edited; this one steps back and shows no selection. */
-  private applyLook(entry: Entry, shading: Shading, highlight: Highlight, dim: boolean, surface: MeshStandardMaterial | null = null): void {
-    const wireframe = shading === 'wireframe';
-    if (dim) highlight = 0;
-    entry.solid.visible = !wireframe;
-    // `surface`: the object's PBR material or the UV checker instead of the clay (see surfaces.ts).
-    entry.solid.material = dim ? this.clayDim : (surface ?? this.clay[highlight]);
-
-    // All edges: the object itself in wireframe shading, a faint overlay on selected solid objects.
-    if (wireframe || highlight > 0) {
-      const material = dim ? this.wireDim : wireframe ? this.wireMaterials[highlight] : this.overlayMaterials[highlight - 1];
-      if (!entry.wire) {
-        entry.wire = new LineSegments(entry.geometry.wire, material);
-        entry.group.add(entry.wire);
-      }
-      entry.wire.material = material;
-      entry.wire.visible = true;
-    } else if (entry.wire) {
-      entry.wire.visible = false;
-    }
-
-    // Wide lines along borders and creases of selected objects.
-    const outlineGeometry = highlight > 0 ? entry.geometry.outline : null;
-    if (outlineGeometry) {
-      const material = this.outlineMaterials[highlight - 1];
-      if (!entry.outline) {
-        entry.outline = new LineSegments2(outlineGeometry, material);
-        entry.group.add(entry.outline);
-      }
-      entry.outline.material = material;
-      entry.outline.visible = true;
-    } else if (entry.outline) {
-      entry.outline.visible = false;
-    }
   }
 
   // ---------------------------------------------------------------- mouse
@@ -811,8 +749,9 @@ export class ViewportEngine {
     const targets: Mesh[] = [];
     for (const entry of this.entries.values()) if (entry.obj.visible) targets.push(entry.solid);
     this.scene.updateMatrixWorld();
-    this.camera.updateMatrixWorld();
-    this.raycaster.setFromCamera(ndc, this.camera);
+    // Objects are picked where they are displayed (the animated pose), through the camera that displays them.
+    this.viewCamera.updateMatrixWorld();
+    this.raycaster.setFromCamera(ndc, this.viewCamera);
     const hit = this.raycaster.intersectObjects(targets, false)[0];
     return hit ? (hit.object.userData.id as string) : null;
   }
@@ -821,12 +760,14 @@ export class ViewportEngine {
 
   private readonly onGizmoDragging = (event: { value: unknown }): void => {
     const dragging = event.value === true;
-    this.orbit.enabled = !dragging;
+    this.orbit.enabled = !dragging && !this.previewing;
     if (dragging) this.beginDrag();
     else this.endDrag();
   };
 
   private beginDrag(): void {
+    // The pose is edited at the frame the playhead stands on.
+    pause();
     const state = this.docState();
     if (this.gizmo.object === this.pivot) {
       const view = state?.edit ? this.entries.get(state.edit.objectId)?.edit : undefined;
@@ -838,7 +779,11 @@ export class ViewportEngine {
     if (this.gizmo.object === this.groupPivot) {
       if (!state) return;
       const transforms = new Map<string, Transform>();
-      for (const id of state.selection) if (this.entries.has(id)) transforms.set(id, state.objects[id].transform);
+      // The transforms as displayed: at the playhead, animated objects are not where their static values put them.
+      for (const id of state.selection) {
+        const entry = this.entries.get(id);
+        if (entry) transforms.set(id, entry.obj.transform);
+      }
       this.drag = { kind: 'group', start: transforms, pivot: this.groupPivot.position.clone() };
       return;
     }
@@ -902,7 +847,8 @@ export class ViewportEngine {
     const items: { id: string; position?: Vec3; rotation?: Vec3; scale?: Vec3 }[] = [];
     if (state && active && state.objects[active.obj.id]) {
       const g = active.group;
-      const t = state.objects[active.obj.id].transform;
+      // Compared with what is displayed: the pose at the playhead.
+      const t = active.obj.transform;
       const item: (typeof items)[number] = { id: active.obj.id };
       const position = toVec3(g.position);
       const rotation = toVec3({
@@ -921,18 +867,12 @@ export class ViewportEngine {
           const obj = state.objects[id];
           if (!entry || !obj) continue;
           const p = toVec3(entry.group.position);
-          if (!sameVec3(p, obj.transform.position)) items.push({ id, position: p });
+          if (!sameVec3(p, entry.obj.transform.position)) items.push({ id, position: p });
         }
       }
     }
-    if (items.length > 0) {
-      execute('scene.set_transform', { items }).catch((error) => {
-        console.error(error);
-        this.resetTransforms();
-      });
-    } else {
-      this.resetTransforms();
-    }
+    if (items.length > 0) this.commitTransforms(items);
+    else this.resetTransforms();
   }
 
   /** Commits an edit-mode gizmo drag as one `mesh.transform` in the object's local space. */
@@ -971,11 +911,38 @@ export class ViewportEngine {
 
   // ---------------------------------------------------------------- camera / service
 
-  private getCamera(): CameraPose {
+  /**
+   * The document a service call is about if that is NOT the one on screen, else null. Brings the scene up
+   * to date first, so that a tab switch that has not been drawn yet counts.
+   */
+  private inBackground(doc: ViewDocument | undefined): ViewDocument | null {
+    if (!doc) return null;
+    this.syncIfNeeded();
+    return doc.id === (this.docId ?? useApp.getState().activeDocId) ? null : doc;
+  }
+
+  /** The camera the user gets when they switch to that document's tab. */
+  private rememberedCamera(id: string): CameraPose {
+    return this.cameraByDoc.get(id) ?? this.getCamera();
+  }
+
+  private getCamera(doc?: ViewDocument): CameraPose {
+    const background = this.inBackground(doc);
+    if (background) return this.rememberedCamera(background.id);
     return { position: toVec3(this.camera.position), target: toVec3(this.orbit.target) };
   }
 
-  private setCamera(pose: Partial<CameraPose>): void {
+  private setCamera(pose: Partial<CameraPose>, doc?: ViewDocument): void {
+    const background = this.inBackground(doc);
+    if (background) {
+      const current = this.rememberedCamera(background.id);
+      const position = pose.position ?? current.position;
+      const target = pose.target ?? current.target;
+      // Camera and target must not coincide.
+      const apart = Math.hypot(position[0] - target[0], position[1] - target[1], position[2] - target[2]) >= 1e-6;
+      this.cameraByDoc.set(background.id, { position: apart ? position : [position[0], position[1], position[2] + 1], target });
+      return;
+    }
     if (pose.position) this.camera.position.set(...pose.position);
     if (pose.target) this.orbit.target.set(...pose.target);
     // Camera and target must not coincide.
@@ -984,83 +951,75 @@ export class ViewportEngine {
     this.invalidate();
   }
 
-  /** World-space bounding sphere of the visible objects among `ids` (all objects if empty). */
-  private bounds(ids: readonly string[]): Sphere {
-    this.syncIfNeeded();
-    const collect = (list: Iterable<Entry | undefined>): Box3 => {
-      const box = new Box3();
-      const part = new Box3();
-      for (const entry of list) {
-        const local = entry?.edit ? entry.edit.box : entry?.geometry.solid.boundingBox;
-        if (!entry || !entry.obj.visible || !local || local.isEmpty()) continue;
-        entry.group.updateMatrix();
-        box.union(part.copy(local).applyMatrix4(entry.group.matrix));
-      }
-      return box;
-    };
-    let box = collect(ids.map((id) => this.entries.get(id)));
-    if (box.isEmpty()) box = collect(this.entries.values());
-    if (box.isEmpty()) return DEFAULT_SPHERE.clone();
-    const sphere = box.getBoundingSphere(new Sphere());
-    if (!(sphere.radius > 1e-6)) sphere.radius = 1;
-    return sphere;
-  }
-
-  private currentDirection(): Vector3 {
-    const direction = this.camera.position.clone().sub(this.orbit.target);
-    return direction.lengthSq() > 0 ? direction.normalize() : viewDirection('iso');
-  }
-
-  private lookFrom(direction: Vector3, sphere: Sphere): void {
+  /** The camera that looks at `sphere` from `direction` with all of it in frame. */
+  private framed(direction: Vector3, sphere: Sphere): CameraPose {
     const distance = fitDistance(sphere.radius, this.camera.fov, this.camera.aspect);
-    this.orbit.target.copy(sphere.center);
-    this.camera.position.copy(sphere.center).addScaledVector(direction, distance);
-    this.orbit.update();
-    this.invalidate();
+    return { position: sphere.center.clone().addScaledVector(direction, distance).toArray(), target: sphere.center.toArray() };
   }
 
-  private setView(preset: ViewPreset): void {
-    this.lookFrom(viewDirection(preset), this.bounds([]));
+  /**
+   * Moves the camera of the document a call is about: the viewport camera, or for a document in the
+   * background its remembered one. `pose` gets that camera's current viewing direction and the scene that
+   * shows the document - for a document in the background one built just for this, to measure it.
+   */
+  private moveCamera(doc: ViewDocument | undefined, pose: (direction: Vector3, scene: DocScene, state: DocState | undefined) => CameraPose): void {
+    const direction = (from: CameraPose) => {
+      const d = new Vector3(...from.position).sub(new Vector3(...from.target));
+      return d.lengthSq() > 0 ? d.normalize() : viewDirection('iso');
+    };
+    const background = this.inBackground(doc);
+    if (!background) {
+      this.syncIfNeeded();
+      this.setCamera(pose(direction({ position: this.camera.position.toArray(), target: this.orbit.target.toArray() }), this.docScene, this.docState()));
+      return;
+    }
+    const scene = new DocScene(this.looks);
+    try {
+      scene.sync(plainLook(useApp.getState()), background.state);
+      this.cameraByDoc.set(background.id, pose(direction(this.rememberedCamera(background.id)), scene, background.state));
+    } finally {
+      scene.dispose();
+    }
+  }
+
+  private setView(preset: ViewPreset, doc?: ViewDocument): void {
+    this.moveCamera(doc, (_, scene) => this.framed(viewDirection(preset), scene.bounds([])));
   }
 
   /** Frames the objects; in edit mode the selected elements, if there are any. */
-  private frame(ids: readonly string[]): void {
-    this.lookFrom(this.currentDirection(), this.editSelectionBounds() ?? this.bounds(ids));
+  private frame(ids: readonly string[], doc?: ViewDocument): void {
+    this.moveCamera(doc, (direction, scene, state) => this.framed(direction, (state && scene.editSelectionBounds(state)) ?? scene.bounds(ids)));
   }
 
-  private editSelectionBounds(): Sphere | null {
-    this.syncIfNeeded();
-    const edit = this.docState()?.edit;
-    const entry = edit ? this.entries.get(edit.objectId) : undefined;
-    const box = edit && entry?.edit ? this.selectionBox(entry.edit, edit) : null;
-    if (!entry || !box) return null;
-    entry.group.updateMatrix();
-    const sphere = box.applyMatrix4(entry.group.matrix).getBoundingSphere(new Sphere());
-    // A single vertex still needs some room around it.
-    if (!(sphere.radius > 1e-6)) sphere.radius = 0.5;
-    return sphere;
+  /** The surroundings for a picture of a document in the background, in the current theme and preferences. */
+  private backgroundStage(): Stage {
+    const stage = (this.backStage ??= new Stage());
+    stage.setPalette(VIEWPORT_PALETTES[getAppearance().theme]);
+    const { showGrid, showAxes } = useApp.getState().preferences;
+    stage.grid.setVisible(showGrid, showAxes);
+    return stage;
   }
 
-  private async screenshot(opts: ScreenshotOptions): Promise<string> {
+  /**
+   * Renders a document to a PNG: one view, or several on a captioned sheet.
+   *
+   * The visible document is rendered from the scene on screen: everything changed for the picture (camera,
+   * size, shading, which objects show, x-ray) is put back before this returns, in the same task as the
+   * rendering, so the user never sees it and no state of the app is touched.
+   *
+   * A document in the background (`doc` is not the visible tab) gets a scene of its own for the picture,
+   * built from its state on the background stage and thrown away afterwards; geometry, materials and
+   * textures come from the shared caches. It shows that document's selection and edit mode and uses its
+   * remembered camera for `current`. The scene on screen is not touched; it is only drawn again at the end,
+   * because the picture is rendered through the same canvas.
+   */
+  private async screenshot(opts: ScreenshotOptions, doc?: ViewDocument): Promise<ScreenshotResult> {
     await this.ready;
-    if (this.disposed || !this.initialised) throw new Error('The 3D viewport is not available');
-    this.syncIfNeeded();
     const width = Math.max(1, Math.round(opts.width));
     const height = Math.max(1, Math.round(opts.height));
-
-    // A temporary camera, so the user's camera never moves.
-    const camera = new PerspectiveCamera(this.camera.fov, width / height);
-    const target = this.orbit.target.clone();
-    if (opts.view === 'current' && !opts.fit) {
-      camera.position.copy(this.camera.position);
-      camera.quaternion.copy(this.camera.quaternion);
-    } else {
-      const sphere = this.bounds([]);
-      const direction = opts.view === 'current' ? this.currentDirection() : viewDirection(opts.view);
-      placeCamera(camera, sphere, direction);
-      target.copy(sphere.center);
-    }
-    camera.updateMatrixWorld();
+    const views = screenshotViews(opts);
+    const sheet = opts.views && opts.views.length > 0 ? sheetLayout(views.length, width, height) : null;
+    const rects: Rect[] = sheet ? sheet.tiles.map((t) => t.image) : [{ x: 0, y: 0, width, height }];
 
     const output = document.createElement('canvas');
     output.width = width;
@@ -1068,20 +1027,231 @@ export class ViewportEngine {
     const context = output.getContext('2d');
     if (!context) throw new Error('Could not create a canvas for the screenshot');
 
+    // Drawn apart from the scene on screen: a document in the background, or (`offscreen`) the state that came with the call.
+    const apart = this.inBackground(doc) ?? (opts.offscreen && doc ? doc : null);
+    const look = this.shotLook(opts, apart !== null);
+    const encode = (info: Omit<ScreenshotResult, 'base64'>): ScreenshotResult => ({ base64: output.toDataURL('image/png').slice('data:image/png;base64,'.length), ...info });
+    if (!apart) return encode(await this.renderShot(opts, output, context, sheet, views, rects, look, this.docScene, this.stage, null));
+    const scene = new DocScene(this.looks);
+    const stage = this.backgroundStage();
+    stage.scene.add(scene.content);
+    try {
+      return encode(await this.renderShot(opts, output, context, sheet, views, rects, look, scene, stage, apart));
+    } finally {
+      stage.scene.remove(scene.content);
+      scene.dispose();
+    }
+  }
+
+  /** The look a picture is drawn in: the app's, with the picture's own shading. */
+  private shotLook(opts: ScreenshotOptions, apart: boolean): () => AppState {
+    return () => {
+      const app = useApp.getState();
+      const shading = opts.shading ?? app.shading;
+      // The UV checker and the paint look belong to what the user does in their own tab; a document
+      // drawn apart from the scene on screen is drawn as the modeling workspace shows it.
+      const workspace = apart ? 'modeling' : app.workspace;
+      return shading === app.shading && workspace === app.workspace ? app : { ...app, shading, workspace };
+    };
+  }
+
+  /**
+   * A run of single-view pictures of one document (the frames of a video), each drawn into the canvas
+   * that comes with the call. The scene is built once and kept between the pictures, so a picture only
+   * updates what changed since the last one; the scene on screen is never touched (it is drawn again
+   * after every picture, because pictures go through the same canvas).
+   */
+  private sequence(doc: ViewDocument): ShotSequence {
+    const scene = new DocScene(this.looks);
+    let ended = false;
+    return {
+      shot: async (opts, state, target) => {
+        await this.ready;
+        if (ended) throw new Error('This run of pictures has ended');
+        const output = target as HTMLCanvasElement;
+        const width = Math.max(1, Math.round(opts.width));
+        const height = Math.max(1, Math.round(opts.height));
+        if (output.width !== width) output.width = width;
+        if (output.height !== height) output.height = height;
+        const context = output.getContext('2d');
+        if (!context) throw new Error('Could not draw on the canvas of the video');
+        const stage = this.backgroundStage();
+        stage.scene.add(scene.content);
+        try {
+          const single = { ...opts, views: undefined };
+          return await this.renderShot(single, output, context, null, screenshotViews(single), [{ x: 0, y: 0, width, height }], this.shotLook(opts, true), scene, stage, { id: doc.id, state });
+        } finally {
+          stage.scene.remove(scene.content);
+        }
+      },
+      end: () => {
+        if (ended) return;
+        ended = true;
+        scene.dispose();
+      },
+    };
+  }
+
+  /** The rendering of `screenshot`: `scene` on `stage` is the scene on screen, or for `background` one made for this picture. */
+  private async renderShot(
+    opts: ScreenshotOptions,
+    output: HTMLCanvasElement,
+    context: CanvasRenderingContext2D,
+    sheet: ReturnType<typeof sheetLayout> | null,
+    views: ReturnType<typeof screenshotViews>,
+    rects: Rect[],
+    look: () => AppState,
+    scene: DocScene,
+    stage: Stage,
+    background: ViewDocument | null,
+  ): Promise<Omit<ScreenshotResult, 'base64'>> {
+    const { width, height } = output;
+    /** Brings `scene` to the look of `app`. */
+    const show = (app: AppState) => {
+      if (background) {
+        scene.sync(app, background.state);
+        this.surfaces.applyLighting(app, stage.scene, stage.ambient);
+      } else if (app === useApp.getState()) this.syncIfNeeded();
+      else this.sync(app);
+    };
+    // Texture images are decoded asynchronously. Ask for them, step back to the user's look and wait,
+    // so that materials show their maps in the picture.
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const app = look();
+      if (this.disposed || !this.initialised || app.shading !== 'material') break;
+      show(app);
+      const decoding = this.surfaces.settled();
+      if (!background && app !== useApp.getState()) this.sync(useApp.getState());
+      if (!decoding) break;
+      await decoding;
+    }
+    if (this.disposed || !this.initialised) throw new Error('The 3D viewport is not available');
+
+    const app = look();
+    const overridden = !background && app !== useApp.getState();
+    // `current`: the camera of the document the picture shows.
+    // (A state of the visible document that is drawn apart from the screen still has the camera on screen.)
+    const current: CameraPose =
+      background && background.id !== this.docId
+        ? this.rememberedCamera(background.id)
+        : { position: this.camera.position.toArray(), target: this.orbit.target.toArray() };
+    const hide = new Set(opts.hideIds);
+    const only = opts.onlyIds ? new Set(opts.onlyIds) : null;
+    const infos: ScreenshotViewInfo[] = [];
+    const undo: (() => void)[] = [];
     const pixelRatio = this.renderer.getPixelRatio();
     const gizmoVisible = this.gizmoHelper.visible;
     this.gizmoHelper.visible = false;
     try {
+      show(app);
+
+      const shown: Entry[] = [];
+      for (const [id, entry] of scene.entries) {
+        if (!entry.obj.visible) continue;
+        const show = !hide.has(id) && (!only || only.has(id));
+        entry.group.visible = show;
+        if (show) shown.push(entry);
+      }
+      if (opts.xray) scene.applyXray(shown, undo);
+
+      const fitIds = typeof opts.fit === 'boolean' ? [] : opts.fit;
+      // What presets and `fit` frame: the corners of the objects' boxes.
+      let corners = scene.cornersOf(fitIds.length > 0 ? fitIds.map((id) => scene.entries.get(id)) : shown, shown);
+      if (corners.length === 0) corners = [DEFAULT_SPHERE.center.clone()];
+      const bounds = new Box3().setFromPoints(corners);
+      // An empty scene or a single point still needs some room around it.
+      if (bounds.getSize(new Vector3()).length() < 1e-6) corners = boxCorners(bounds.expandByScalar(corners.length > 1 ? 0.5 : DEFAULT_SPHERE.radius));
+      const frame = { points: corners.map((c) => c.toArray()), centre: bounds.getCenter(new Vector3()) };
+      const palette = VIEWPORT_PALETTES[getAppearance().theme];
+      if (sheet) {
+        context.fillStyle = palette.gridMajor;
+        context.fillRect(0, 0, width, height);
+      }
       this.renderer.setPixelRatio(1);
-      this.renderer.setSize(width, height, false);
-      this.draw(camera, target);
-      // Read the canvas in the same task, before the browser presents (and may discard) the frame.
-      context.drawImage(this.canvas, 0, 0, width, height);
+      views.forEach(({ name, view }, i) => {
+        const rect = rects[i];
+        const camera = new PerspectiveCamera(this.camera.fov, rect.width / rect.height);
+        const target = this.poseShot(camera, view, opts.fit !== false, frame, current);
+        // Each view is rendered at its own size, not scaled down from a larger picture.
+        this.renderer.setSize(rect.width, rect.height, false);
+        stage.draw(this.renderer, camera, target);
+        // Read the canvas in the same task, before the browser presents (and may discard) the frame.
+        context.drawImage(this.canvas, rect.x, rect.y, rect.width, rect.height);
+        const cameraPosition = toVec3(camera.position);
+        const cameraTarget = toVec3(target);
+        const words = describeCamera(cameraPosition, cameraTarget);
+        infos.push({ name, cameraPosition, cameraTarget, fov: camera.fov, ...words, rect });
+        if (sheet) this.drawCaption(context, sheet.tiles[i].tile, sheet.labelHeight, sheet.fontSize, viewLabel(name, words), palette);
+      });
     } finally {
+      undo.forEach((restore) => restore());
+      for (const entry of scene.entries.values()) entry.group.visible = entry.obj.visible;
+      if (overridden) this.sync(useApp.getState());
+      // Materials are shared by id: should the two documents have one in common (the same file opened
+      // twice), it was last set up for the other document, and the scene on screen sets it up again.
+      if (background) this.needsSync = true;
       this.gizmoHelper.visible = gizmoVisible;
       this.renderer.setPixelRatio(pixelRatio);
+      // Draws what the user sees again, in this same task: the picture went through the visible canvas.
       this.resize();
     }
-    return output.toDataURL('image/png').slice('data:image/png;base64,'.length);
+    return { views: infos, width, height, backend: this.backend ?? 'webgl2' };
+  }
+
+  /**
+   * Places a screenshot camera for `view` and returns the point it looks at. Presets always frame
+   * `frame`; the document's camera (`current`) and a given camera keep their direction and frame it if `fit` is set.
+   */
+  private poseShot(camera: PerspectiveCamera, view: ScreenshotView, fit: boolean, frame: { points: Vec3[]; centre: Vector3 }, current: CameraPose): Vector3 {
+    const target = new Vector3();
+    if (view === 'current') {
+      camera.position.set(...current.position);
+      target.set(...current.target);
+    } else if (typeof view !== 'string') {
+      camera.position.set(...view.position);
+      target.set(...view.target);
+      // Camera and target must not coincide.
+      if (camera.position.distanceToSquared(target) < 1e-12) camera.position.z += 1;
+      if (view.fov !== undefined) camera.fov = view.fov;
+    }
+    const preset = typeof view === 'string' && view !== 'current' ? view : null;
+    if (preset || fit) {
+      const direction = preset ? viewDirection(preset) : camera.position.clone().sub(target).normalize();
+      target.copy(frame.centre);
+      camera.position.copy(target).addScaledVector(direction, fitShot(frame.points, target.toArray(), direction.toArray(), camera.fov, camera.aspect));
+    }
+    camera.up.set(0, 1, 0);
+    camera.lookAt(target);
+    camera.updateProjectionMatrix();
+    camera.updateMatrixWorld();
+    return target;
+  }
+
+  /** The caption strip at the top of a sheet tile; the text shrinks to fit the tile's width. */
+  private drawCaption(
+    context: CanvasRenderingContext2D,
+    tile: Rect,
+    labelHeight: number,
+    fontSize: number,
+    text: string,
+    palette: ViewportPalette,
+  ): void {
+    const padding = 8;
+    const font = (size: number) => `600 ${size}px "Segoe UI", system-ui, sans-serif`;
+    context.save();
+    context.beginPath();
+    context.rect(tile.x, tile.y, tile.width, labelHeight);
+    context.clip();
+    context.fillStyle = palette.background;
+    context.fillRect(tile.x, tile.y, tile.width, labelHeight);
+    context.font = font(fontSize);
+    const available = tile.width - 2 * padding;
+    const needed = context.measureText(text).width;
+    if (needed > available) context.font = font(Math.max(8, Math.floor((fontSize * available) / needed)));
+    context.fillStyle = palette.caption;
+    context.textAlign = 'left';
+    context.textBaseline = 'middle';
+    context.fillText(text, tile.x + padding, tile.y + labelHeight / 2 + 1);
+    context.restore();
   }
 }

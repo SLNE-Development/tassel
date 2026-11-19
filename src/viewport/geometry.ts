@@ -10,6 +10,8 @@ export class MeshGeometry {
   private edgePositions: Float32Array | null = null;
   private wireGeometry: BufferGeometry | null = null;
   private outlineGeometry: LineSegmentsGeometry | null | undefined;
+  private featurePositions: Float32Array | null = null;
+  private creaseGeometry: BufferGeometry | null | undefined;
 
   constructor(
     readonly mesh: PolyMesh,
@@ -48,14 +50,28 @@ export class MeshGeometry {
    */
   get outline(): LineSegmentsGeometry | null {
     if (this.outlineGeometry === undefined) {
-      const positions = featureEdgePositions(this.mesh);
+      const positions = this.features();
       this.outlineGeometry = positions.length > 0 ? new LineSegmentsGeometry().setPositions(positions) : null;
     }
     return this.outlineGeometry;
   }
 
+  private features(): Float32Array {
+    return (this.featurePositions ??= featureEdgePositions(this.mesh));
+  }
+
+  /** The feature edges as thin lines (x-ray screenshots), or null for a mesh without such edges. */
+  get creases(): BufferGeometry | null {
+    if (this.creaseGeometry === undefined) {
+      const positions = this.features();
+      this.creaseGeometry = positions.length > 0 ? new BufferGeometry().setAttribute('position', new BufferAttribute(positions, 3)) : null;
+    }
+    return this.creaseGeometry;
+  }
+
   dispose(): void {
     this.solid.dispose();
+    this.creaseGeometry?.dispose();
     this.wireGeometry?.dispose();
     this.outlineGeometry?.dispose();
   }

@@ -2,6 +2,7 @@
 import { Euler, MathUtils, Matrix4, Quaternion, Vector3 } from 'three';
 import type { BufferAttribute, BufferGeometry, InterleavedBufferAttribute, Material as ThreeMaterial, Mesh, Object3D } from 'three';
 import type { ImportedScene, PolyMesh, Transform } from '../core/types';
+import { polygonLoops } from './polygons';
 import { looksSmooth, soupToPolyMesh } from './soup';
 
 type Attribute = BufferAttribute | InterleavedBufferAttribute;
@@ -52,17 +53,23 @@ export interface TreeOptions {
   material(material: ThreeMaterial): number | null;
   /** Name for nodes without one. */
   fallbackName: string;
+  /** The node's name where the loader's `node.name` is not the original (GLTFLoader rewrites names); '' = it has none. */
+  name?(node: Object3D): string;
+  /** The polygon structure the file notes for a mesh (see polygons.ts), as read: untrusted. */
+  polygons?(node: Mesh): unknown;
 }
 
 /**
  * Walks the tree. Every mesh becomes an object (one per material if it has several) carrying its world
  * transform; every node above meshes, except the root, becomes a group so the hierarchy survives.
  */
-export function convertTree(root: Object3D, options: TreeOptions): Pick<ImportedScene, 'objects' | 'groups'> & { dropped: number } {
+export function convertTree(root: Object3D, options: TreeOptions): Pick<ImportedScene, 'objects' | 'groups' | 'warnings'> & { dropped: number } {
   root.updateMatrixWorld(true);
   const objects: ImportedScene['objects'] = [];
   const groups: ImportedScene['groups'] = [];
+  const warnings: string[] = [];
   let dropped = 0;
+  const nameOf = (node: Object3D) => (options.name ? options.name(node) : node.name) || options.fallbackName;
 
   const isMesh = (node: Object3D): node is Mesh => (node as Mesh).isMesh === true && !!(node as Mesh).geometry?.attributes?.position;
   const meshCount = new Map<Object3D, number>();
@@ -93,7 +100,7 @@ export function convertTree(root: Object3D, options: TreeOptions): Pick<Imported
         byMaterial.set(g.materialIndex ?? 0, list);
       }
     }
-    const name = node.name || options.fallbackName;
+    const name = nameOf(node);
     const smooth = () => looksSmooth(plain(geometry.attributes.normal, 3), indices, positions.length / 3);
     const push = (mesh: PolyMesh, isSmooth: boolean, material: ThreeMaterial | undefined) => {
       if (mesh.faces.length === 0) return;
@@ -103,7 +110,20 @@ export function convertTree(root: Object3D, options: TreeOptions): Pick<Imported
     if (byMaterial.size <= 1) {
       let converted = transform ? shared.get(geometry) : undefined;
       if (!converted) {
-        const result = soupToPolyMesh({ positions, indices, uvs, flipV: options.flipV, matrix: transform ? null : node.matrixWorld.elements });
+        const input = { positions, indices, uvs, flipV: options.flipV, matrix: transform ? null : node.matrixWorld.elements };
+        let result: ReturnType<typeof soupToPolyMesh> | null = null;
+        const noted = options.polygons?.(node);
+        if (noted !== undefined && noted !== null) {
+          // Polygons only if the note fits the triangles and every polygon survives; otherwise the triangles as they are.
+          const polygons = polygonLoops(noted, indices, positions.length / 3);
+          const restored = typeof polygons === 'string' ? null : soupToPolyMesh({ ...input, polygons });
+          if (restored && restored.dropped === 0) result = restored;
+          else {
+            const problem = typeof polygons === 'string' ? polygons : `${restored!.dropped} polygon(s) are degenerate`;
+            warnings.push(`"${name}": the polygon structure stored in the file does not fit its triangles (${problem}), so the mesh was imported as triangles`);
+          }
+        }
+        result ??= soupToPolyMesh(input);
         dropped += result.dropped;
         converted = { mesh: result.mesh, smooth: smooth() };
         if (transform) shared.set(geometry, converted);
@@ -127,10 +147,10 @@ export function convertTree(root: Object3D, options: TreeOptions): Pick<Imported
   function visit(node: Object3D, parentGroup: number | null) {
     let group = parentGroup;
     const below = (meshCount.get(node) ?? 0) - (isMesh(node) ? 1 : 0);
-    if (node !== root && below > 0) group = groups.push({ name: node.name || options.fallbackName, parent: parentGroup }) - 1;
+    if (node !== root && below > 0) group = groups.push({ name: nameOf(node), parent: parentGroup }) - 1;
     if (isMesh(node)) addMesh(node, group);
     for (const child of node.children) if ((meshCount.get(child) ?? 0) > 0) visit(child, group);
   }
   visit(root, null);
-  return { objects, groups, dropped };
+  return { objects, groups, warnings, dropped };
 }

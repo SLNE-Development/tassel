@@ -15,7 +15,20 @@ use tokio::sync::oneshot;
 
 pub const MAIN_WINDOW: &str = "main";
 pub const CALL_EVENT: &str = "mcp://call";
-const CALL_TIMEOUT: Duration = Duration::from_secs(30);
+pub const CALL_TIMEOUT: Duration = Duration::from_secs(30);
+
+pub type Reply = Result<Value, String>;
+
+/// What the MCP tools need from the editor window. A trait so that the tools (and the batch engine
+/// in particular) can be tested without the app.
+pub trait Frontend: Sync {
+  /// Dotted command id of a registered frontend tool, by its MCP tool name.
+  fn command_id(&self, tool: &str) -> Option<String>;
+  /// False until the frontend has registered its commands.
+  fn is_ready(&self) -> bool;
+  /// Runs a frontend command by its dotted id and waits for the result.
+  fn call(&self, command: &str, params: Value, timeout: Duration) -> impl Future<Output = Reply> + Send;
+}
 
 /// A frontend command as exposed to MCP clients.
 #[derive(Debug, Clone, Deserialize)]
@@ -47,8 +60,6 @@ pub struct McpStatus {
   pub error: Option<String>,
 }
 
-type Reply = Result<Value, String>;
-
 pub struct Bridge {
   app: AppHandle,
   commands: RwLock<Vec<FrontendCommand>>,
@@ -72,7 +83,7 @@ impl Bridge {
     self.commands.read().unwrap().clone()
   }
 
-  pub fn find_command(&self, tool: &str) -> Option<FrontendCommand> {
+  fn find_command(&self, tool: &str) -> Option<FrontendCommand> {
     self.commands.read().unwrap().iter().find(|c| c.name == tool).cloned()
   }
 
@@ -82,13 +93,8 @@ impl Bridge {
     status.error = error;
   }
 
-  /// Runs a frontend command by its dotted id and waits for the result.
-  pub async fn call(&self, command: &str, params: Value) -> Reply {
-    self.call_with_timeout(command, params, CALL_TIMEOUT).await
-  }
-
-  /// Like `call`, for commands that may take longer than the usual limit (reading and writing files).
-  pub async fn call_with_timeout(&self, command: &str, params: Value, timeout: Duration) -> Reply {
+  /// Runs a frontend command by its dotted id and waits up to `timeout` for the result.
+  async fn call_with_timeout(&self, command: &str, params: Value, timeout: Duration) -> Reply {
     if self.commands.read().unwrap().is_empty() {
       return Err(
         "The Tessel editor window has not finished starting (no commands registered yet). Try again in a moment."
@@ -132,6 +138,20 @@ impl Bridge {
       }
       None => Err(format!("No pending MCP request \"{request_id}\" (it may have timed out)")),
     }
+  }
+}
+
+impl Frontend for Bridge {
+  fn command_id(&self, tool: &str) -> Option<String> {
+    self.find_command(tool).map(|command| command.command_id())
+  }
+
+  fn is_ready(&self) -> bool {
+    !self.commands.read().unwrap().is_empty()
+  }
+
+  async fn call(&self, command: &str, params: Value, timeout: Duration) -> Reply {
+    self.call_with_timeout(command, params, timeout).await
   }
 }
 

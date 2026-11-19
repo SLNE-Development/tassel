@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { resolveMaterialId } from '../refs';
 import { colorSchema, textureBytes } from '../materials';
 import { newId, own, uniqueName } from '../state';
 import { blendModes, textureSlots } from '../types';
@@ -77,13 +78,14 @@ export const paintCommands = [
       width: size.default(1024),
       height: size.default(1024),
       color: colorSchema('Fill colour').default('#808080'),
-      materialId: z.string().optional(),
+      materialId: z.string().optional().describe('Material id or name.'),
       slot: z.enum(textureSlots).optional(),
     }),
     async run(ctx, p) {
       if ((p.materialId === undefined) !== (p.slot === undefined)) throw new Error('Pass materialId and slot together, or neither');
       const requireMaterial = () => {
-        if (p.materialId !== undefined && !own(docState(ctx).materials, p.materialId)) throw new Error(`Material "${p.materialId}" does not exist`);
+        // Accepts a material name; from here on p.materialId is the id.
+        if (p.materialId !== undefined) p.materialId = resolveMaterialId(docState(ctx), p.materialId);
       };
       requireMaterial();
       const data = await imagingOf(ctx).blank(p.width, p.height, p.color);

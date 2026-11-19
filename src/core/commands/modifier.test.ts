@@ -57,12 +57,12 @@ describe('modifier.add', () => {
     expect(modifiers(a)).toEqual([
       { id: mirror.id, enabled: true, type: 'mirror', axes: { x: true, y: false, z: false }, mergeDistance: 0.001 },
       { id: subdivision.id, enabled: true, type: 'subdivision', levels: 1 },
-      { id: array.id, enabled: true, type: 'array', count: 2, offset: [2, 0, 0] },
+      { id: array.id, enabled: true, type: 'array', count: 2, offset: [2, 0, 0], rotation: [0, 0, 0], pivot: [0, 0, 0], offsetSpace: 'local' },
       { id: boolean.id, enabled: true, type: 'boolean', operation: 'difference', targetId: null },
     ]);
     expect(new Set(modifiers(a).map((m) => m.id)).size).toBe(4);
-    expect(mirror).toEqual({ id: expect.any(String) });
-    expect(boolean).toEqual({ id: expect.any(String), error: expect.stringMatching(/No target/) });
+    expect(mirror).toEqual({ id: expect.any(String), objectId: a });
+    expect(boolean).toEqual({ id: expect.any(String), objectId: a, error: expect.stringMatching(/No target/) });
   });
 
   it('takes the type parameters flat and an explicit object', async () => {
@@ -109,7 +109,7 @@ describe('modifier.add', () => {
     const a = await add();
     const b = await add('cube', { position: [1, 0, 0] });
     const result = await run('modifier.add', { objectId: a, type: 'boolean', targetId: b });
-    expect(result).toEqual({ id: expect.any(String) });
+    expect(result).toEqual({ id: expect.any(String), objectId: a });
     expect(volume(evaluated(a).mesh)).toBeCloseTo(4, 4);
 
     const plane = await add('plane');
@@ -177,11 +177,12 @@ describe('modifier.update', () => {
     expect(evaluated(a).errors[onA.id]).toMatch(/cycle/);
     expect(await run('modifier.update', { objectId: b, modifierId: onB.id, targetId: null })).toEqual({
       id: onB.id,
+      objectId: b,
       error: expect.stringMatching(/No target/),
     });
     expect(evaluated(a).errors).toEqual({});
     expect(volume(evaluated(a).mesh)).toBeCloseTo(4, 4);
-    expect(await run('modifier.update', { objectId: a, modifierId: onA.id, operation: 'union' })).toEqual({ id: onA.id });
+    expect(await run('modifier.update', { objectId: a, modifierId: onA.id, operation: 'union' })).toEqual({ id: onA.id, objectId: a });
     expect(volume(evaluated(a).mesh)).toBeCloseTo(12, 4);
   });
 });
@@ -238,7 +239,7 @@ describe('modifier.apply', () => {
     const subdivision = (await run('modifier.add', { type: 'subdivision' })).id;
     const before = evaluated(a).mesh;
 
-    expect(await run('modifier.apply', { modifierId: mirror })).toEqual({ vertices: 12, faces: 10 });
+    expect(await run('modifier.apply', { modifierId: mirror })).toEqual({ objectId: a, vertices: 12, faces: 10 });
     expect(modifiers(a).map((m) => m.id)).toEqual([subdivision]);
     expect(isClosedManifold(state().objects[a].mesh)).toBe(true);
     expect(boundingBox(state().objects[a].mesh)).toEqual({ min: [-1, -1, -1], max: [1, 1, 1] });

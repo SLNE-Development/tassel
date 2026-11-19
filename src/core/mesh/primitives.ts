@@ -1,19 +1,44 @@
 import { z } from 'zod';
-import type { PolyMesh } from '../types';
+import type { PolyMesh, Vec3 } from '../types';
 
-export const primitiveTypes = ['cube', 'plane', 'uv_sphere', 'ico_sphere', 'cylinder', 'cone', 'torus'] as const;
+export const primitiveTypes = ['cube', 'plane', 'uv_sphere', 'ico_sphere', 'cylinder', 'cone', 'torus', 'arc'] as const;
 export type PrimitiveType = (typeof primitiveTypes)[number];
 
 /** Shape parameters. Each primitive reads only the ones that apply to it. */
 export const primitiveShape = {
   size: z.number().positive().default(2).describe('Edge length of cube / plane'),
+  dimensions: z
+    .tuple([z.number().positive(), z.number().positive(), z.number().positive()])
+    .optional()
+    .describe('cube only: edge lengths along X, Y, Z in meters (a box). Overrides size.'),
   radius: z.number().positive().default(1).describe('Radius of sphere / cylinder / cone / torus (major radius)'),
-  height: z.number().positive().default(2).describe('Height of cylinder / cone'),
-  segments: z.number().int().min(3).max(256).default(32).describe('Segments around the axis'),
+  height: z.number().positive().default(2).describe('Height of cylinder / cone / arc (along Y)'),
+  segments: z
+    .number()
+    .int()
+    .min(3)
+    .max(256)
+    .default(32)
+    .describe('Segments around the axis. arc: segments along the arc, over its whole angle (8-16 is plenty for a 90 degree curve).'),
   rings: z.number().int().min(2).max(128).default(16).describe('Rings of a uv_sphere'),
   subdivisions: z.number().int().min(0).max(5).default(2).describe('Subdivision level of an ico_sphere'),
   minorRadius: z.number().positive().default(0.25).describe('Tube radius of a torus'),
   minorSegments: z.number().int().min(3).max(128).default(12).describe('Segments around the torus tube'),
+  innerRadius: z.number().min(0).default(0.5).describe('arc: inner radius in meters, smaller than outerRadius. 0 gives a pie slice (a full disc at angle 360).'),
+  outerRadius: z.number().positive().default(1).describe('arc: outer radius in meters'),
+  angle: z
+    .number()
+    .gt(0)
+    .max(360)
+    .default(90)
+    .describe('arc: swept angle in degrees, 0 < angle <= 360. 360 gives a closed ring without end caps.'),
+  startAngle: z
+    .number()
+    .finite()
+    .default(0)
+    .describe(
+      'arc: where the arc starts, in degrees around the Y axis. 0 is the +X direction; angles increase counter-clockwise seen from above (+Y), i.e. from +X towards -Z: 90 = -Z, 180 = -X, 270 = +Z. The arc runs from startAngle to startAngle + angle.',
+    ),
 };
 const shapeSchema = z.object(primitiveShape);
 export type PrimitiveShape = z.infer<typeof shapeSchema>;
@@ -23,7 +48,7 @@ export function createPrimitive(type: PrimitiveType, shape: Partial<PrimitiveSha
   const s = shapeSchema.parse(shape);
   switch (type) {
     case 'cube':
-      return cube(s.size);
+      return cube(s.dimensions ?? [s.size, s.size, s.size]);
     case 'plane':
       return plane(s.size);
     case 'uv_sphere':
@@ -36,6 +61,8 @@ export function createPrimitive(type: PrimitiveType, shape: Partial<PrimitiveSha
       return cone(s.radius, s.height, s.segments);
     case 'torus':
       return torus(s.radius, s.minorRadius, s.segments, s.minorSegments);
+    case 'arc':
+      return arc(s.innerRadius, s.outerRadius, s.height, s.angle, s.startAngle, s.segments);
   }
 }
 
@@ -176,13 +203,62 @@ function torus(radius: number, minorRadius: number, segments: number, minorSegme
   return { positions, faces };
 }
 
-function cube(size: number): PolyMesh {
-  const h = size / 2;
+/**
+ * Annulus sector around the Y axis, centred in height on the origin: from `startAngle` over `angle`
+ * degrees (see the angle convention above: 0 is +X, increasing towards -Z). Quads on the top, bottom,
+ * inner and outer side and one quad per end cap. With `innerRadius` 0 the inner side collapses onto
+ * the axis (top and bottom become triangle fans); with `angle` 360 the ring is closed and has no caps.
+ */
+function arc(innerRadius: number, outerRadius: number, height: number, angle: number, startAngle: number, segments: number): PolyMesh {
+  if (innerRadius >= outerRadius) throw new Error(`innerRadius (${innerRadius}) must be smaller than outerRadius (${outerRadius})`);
+  const h = height / 2;
+  const closed = angle === 360;
+  const columns = closed ? segments : segments + 1;
+  const pie = innerRadius === 0;
+  const positions: number[] = [];
+  // Per column: outer bottom, outer top, and unless it is a pie slice inner bottom, inner top.
+  const per = pie ? 2 : 4;
+  for (let i = 0; i < columns; i++) {
+    const a = ((startAngle + (angle * i) / segments) * Math.PI) / 180;
+    const [c, s] = [Math.cos(a), -Math.sin(a)];
+    positions.push(outerRadius * c + 0, -h, outerRadius * s + 0, outerRadius * c + 0, h, outerRadius * s + 0);
+    if (!pie) positions.push(innerRadius * c + 0, -h, innerRadius * s + 0, innerRadius * c + 0, h, innerRadius * s + 0);
+  }
+  // A pie slice shares two vertices on the axis instead.
+  const axis = columns * per;
+  if (pie) positions.push(0, -h, 0, 0, h, 0);
+  const outerBottom = (i: number) => (i % columns) * per;
+  const outerTop = (i: number) => (i % columns) * per + 1;
+  const innerBottom = (i: number) => (pie ? axis : (i % columns) * per + 2);
+  const innerTop = (i: number) => (pie ? axis + 1 : (i % columns) * per + 3);
+
+  const faces: number[][] = [];
+  for (let i = 0; i < segments; i++) {
+    const j = i + 1;
+    faces.push([outerBottom(i), outerBottom(j), outerTop(j), outerTop(i)]); // outer side
+    if (pie) {
+      faces.push([outerTop(i), outerTop(j), innerTop(i)]); // top
+      faces.push([outerBottom(j), outerBottom(i), innerBottom(i)]); // bottom
+    } else {
+      faces.push([outerTop(i), outerTop(j), innerTop(j), innerTop(i)]); // top
+      faces.push([outerBottom(j), outerBottom(i), innerBottom(i), innerBottom(j)]); // bottom
+      faces.push([innerBottom(j), innerBottom(i), innerTop(i), innerTop(j)]); // inner side
+    }
+  }
+  if (!closed) {
+    faces.push([innerBottom(0), outerBottom(0), outerTop(0), innerTop(0)]); // cap at startAngle
+    faces.push([outerBottom(segments), innerBottom(segments), innerTop(segments), outerTop(segments)]); // cap at the end
+  }
+  return { positions, faces };
+}
+
+function cube([x, y, z]: Vec3): PolyMesh {
+  const [a, b, c] = [x / 2, y / 2, z / 2];
   return {
     // prettier-ignore
     positions: [
-      -h, -h, -h,  h, -h, -h,  h, h, -h,  -h, h, -h,
-      -h, -h,  h,  h, -h,  h,  h, h,  h,  -h, h,  h,
+      -a, -b, -c,  a, -b, -c,  a, b, -c,  -a, b, -c,
+      -a, -b,  c,  a, -b,  c,  a, b,  c,  -a, b,  c,
     ],
     faces: [
       [4, 5, 6, 7], // +Z

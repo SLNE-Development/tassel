@@ -286,6 +286,8 @@ export class EditView {
     }
     if (this.highlight) {
       this.group.remove(this.highlight);
+      // Frees the renderer's per-object GPU data; see `releaseObjects` in docScene.ts.
+      this.highlight.dispatchEvent({ type: 'dispose' } as never);
       this.highlight.geometry.dispose();
       this.highlight = null;
     }

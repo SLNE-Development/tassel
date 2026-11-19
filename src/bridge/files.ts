@@ -116,3 +116,60 @@ export async function importFile(): Promise<ImportOutcome | null> {
   const base64 = await invoke<string>('read_binary_file', { path });
   return (await execute('import.file', { format, name: fileName(path), base64 })) as ImportOutcome;
 }
+
+const imageExtensions = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp' } as const;
+
+/**
+ * Saves a rendered image: in the desktop app through a save dialog, in a plain browser as a download.
+ * `name` is the suggested file name without extension. Resolves false if the dialog was cancelled.
+ */
+export async function saveImage(image: { mimeType: keyof typeof imageExtensions; base64: string }, name: string): Promise<boolean> {
+  const extension = imageExtensions[image.mimeType];
+  if (!isTauri()) {
+    const link = document.createElement('a');
+    link.href = `data:${image.mimeType};base64,${image.base64}`;
+    link.download = suggestedFileName(name, extension);
+    link.click();
+    return true;
+  }
+  const chosen = await save({
+    defaultPath: suggestedFileName(name, extension),
+    filters: [{ name: getT().render.imageFile(extension === 'jpg' ? 'JPEG' : extension.toUpperCase()), extensions: extension === 'jpg' ? ['jpg', 'jpeg'] : [extension] }],
+  });
+  if (!chosen) return false;
+  const path = extension === 'jpg' && chosen.toLowerCase().endsWith('.jpeg') ? chosen : withExtension(chosen, extension);
+  await invoke('write_binary_file', { path, base64: image.base64 });
+  return true;
+}
+
+/** A file from base64 data as a download (plain browser). Large files go through a Blob: data URLs have length limits. */
+async function download(mimeType: string, base64: string, fileName: string): Promise<void> {
+  const blob = await (await fetch(`data:${mimeType};base64,${base64}`)).blob();
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = fileName;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}
+
+const videoExtensions = { 'video/mp4': 'mp4', 'video/webm': 'webm' } as const;
+
+/**
+ * Saves an exported video: in the desktop app through a save dialog, in a plain browser as a download.
+ * `name` is the suggested file name without extension. Resolves false if the dialog was cancelled.
+ */
+export async function saveVideo(video: { mimeType: keyof typeof videoExtensions; base64: string }, name: string): Promise<boolean> {
+  const extension = videoExtensions[video.mimeType];
+  if (!isTauri()) {
+    await download(video.mimeType, video.base64, suggestedFileName(name, extension));
+    return true;
+  }
+  const chosen = await save({
+    defaultPath: suggestedFileName(name, extension),
+    filters: [{ name: getT().video.file(extension.toUpperCase()), extensions: [extension] }],
+  });
+  if (!chosen) return false;
+  await invoke('write_binary_file', { path: withExtension(chosen, extension), base64: video.base64 });
+  return true;
+}

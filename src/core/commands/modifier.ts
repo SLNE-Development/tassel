@@ -1,17 +1,18 @@
 import { z } from 'zod';
 import { applyModifier, evaluateObject, initModifiers } from '../modifiers/evaluate';
 import { modifierCommandParams, modifierParams } from '../modifiers/schema';
+import { resolveObjectId } from '../refs';
 import { newId, own } from '../state';
 import { modifierTypes, type DocState, type Modifier, type ModifierType, type SceneObject } from '../types';
 import { defineCommand, docState, updateDocState, type CommandContext } from './registry';
 
-const objectIdParam = z.string().optional().describe('Object id. Defaults to the active object.');
+const objectIdParam = z.string().optional().describe('Object id or name (exact, or a glob matching exactly one object). Defaults to the active object.');
 
 const paramNames = Object.keys(modifierCommandParams) as (keyof typeof modifierCommandParams)[];
 type TypeParams = { [K in keyof typeof modifierCommandParams]?: z.infer<(typeof modifierCommandParams)[K]> };
 
 function requireObject(state: DocState, objectId: string | undefined): SceneObject {
-  const id = objectId ?? state.activeId;
+  const id = objectId === undefined ? state.activeId : resolveObjectId(state, objectId);
   if (!id) throw new Error('No objectId given and there is no active object');
   const object = own(state.objects, id);
   if (!object) throw new Error(`Object "${id}" does not exist`);
@@ -36,8 +37,10 @@ function mergeParams(state: DocState, object: SceneObject, type: ModifierType, c
     merged[name] = name === 'axes' ? { ...(merged.axes as object), ...given.axes } : given[name];
   }
   if (type === 'boolean' && given.targetId != null) {
-    if (given.targetId === object.id) throw new Error('An object cannot be its own boolean target');
-    if (!own(state.objects, given.targetId)) throw new Error(`Target object "${given.targetId}" does not exist`);
+    // The target may be given by name; the modifier stores its id.
+    const targetId = resolveObjectId(state, given.targetId);
+    if (targetId === object.id) throw new Error('An object cannot be its own boolean target');
+    merged.targetId = targetId;
   }
   return merged;
 }
@@ -70,7 +73,7 @@ export const modifierCommands = [
     id: 'modifier.add',
     title: 'Modifikator hinzufügen',
     description:
-      'Add a non-destructive modifier to the end of an object\'s modifier stack. Modifiers are evaluated top to bottom on the base mesh in local space; the base mesh stays editable. Types: mirror (across local planes through the origin, welds the seam), subdivision (Catmull-Clark smoothing), array (repeated copies), boolean (union / difference / intersect with another object; both meshes must be closed manifolds). Pass only the parameters of the chosen type. Returns the modifier id, and "error" if the modifier currently cannot be evaluated (it is then skipped).',
+      'Add a non-destructive modifier to the end of an object\'s modifier stack. Modifiers are evaluated top to bottom on the base mesh in local space; the base mesh stays editable. Types: mirror (across local planes through the origin, welds the seam), subdivision (Catmull-Clark smoothing), array (count copies, each moved by offset and/or turned by rotation about pivot relative to the previous one: a row, a radial array with rotation [0, 360 / count, 0] and offset [0, 0, 0], or a spiral with both; offsetSpace "world" gives the offset in world meters instead of local units. By default the array offset is in the LOCAL units of the object, i.e. before its scale and rotation: world offset = offset x object scale, turned with the object - an offset of 2 on an object with scale 0.5 moves each copy 1 m), boolean (union / difference / intersect with another object; both meshes must be closed manifolds). Pass only the parameters of the chosen type. Returns the modifier id, the objectId it was added to, and "error" if the modifier currently cannot be evaluated (it is then skipped).',
     params: z.object({ objectId: objectIdParam, type: z.enum(modifierTypes), ...modifierCommandParams }),
     async run(ctx, p) {
       const { objectId, type, ...given } = p;
@@ -80,7 +83,7 @@ export const modifierCommands = [
       const params = modifierParams[type].parse(mergeParams(state, object, type, defaults, given));
       const modifier = { id: newId(), enabled: true, type, ...params } as Modifier;
       setModifiers(ctx, object.id, [...object.modifiers, modifier]);
-      return { id: modifier.id, ...(await modifierError(ctx, object.id, modifier)) };
+      return { id: modifier.id, objectId: object.id, ...(await modifierError(ctx, object.id, modifier)) };
     },
   }),
 
@@ -107,7 +110,7 @@ export const modifierCommands = [
         object.id,
         object.modifiers.map((m) => (m.id === id ? modifier : m)),
       );
-      return { id, ...(await modifierError(ctx, object.id, modifier)) };
+      return { id, objectId: object.id, ...(await modifierError(ctx, object.id, modifier)) };
     },
   }),
 
@@ -124,6 +127,7 @@ export const modifierCommands = [
         object.id,
         object.modifiers.filter((m) => m.id !== p.modifierId),
       );
+      return { objectId: object.id, modifierId: p.modifierId };
     },
   }),
 
@@ -165,7 +169,7 @@ export const modifierCommands = [
         object.modifiers.filter((m) => m !== modifier),
         mesh,
       );
-      return { vertices: mesh.positions.length / 3, faces: mesh.faces.length };
+      return { objectId: id, vertices: mesh.positions.length / 3, faces: mesh.faces.length };
     },
   }),
 ];

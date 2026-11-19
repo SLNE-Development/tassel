@@ -1,6 +1,6 @@
 // glTF 2.0 / GLB reader. Geometry and hierarchy go through three's GLTFLoader; materials and images are
 // read straight from the JSON, so images keep their original bytes and no DOM is needed to load them.
-import type { Material as ThreeMaterial } from 'three';
+import type { Object3D, Material as ThreeMaterial } from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { defaultMaterial } from '../core/materials';
 import type { ImportedScene, Texture, TextureSlot } from '../core/types';
@@ -151,7 +151,13 @@ export async function readGltf(bytes: Uint8Array<ArrayBuffer>, fallbackName: str
 
   // --- Materials ---------------------------------------------------------------------------------
   const materials: ImportedScene['materials'] = [];
+  /** glTF material index -> index in `materials`; null for the stand-in the exporter writes for "no material". */
+  const materialOf: (number | null)[] = [];
   for (const [i, material] of list(json.materials).entries()) {
+    if (material.extras?.tessel?.noMaterial === true) {
+      materialOf.push(null);
+      continue;
+    }
     const pbr: Json = typeof material.pbrMetallicRoughness === 'object' && material.pbrMetallicRoughness ? material.pbrMetallicRoughness : {};
     const color = (value: unknown, fallback: number[]) => rgbToHex((Array.isArray(value) && value.length >= 3 ? value : fallback).map(linearToSrgb));
     const maps: Partial<Record<TextureSlot, number>> = {};
@@ -174,6 +180,7 @@ export async function readGltf(bytes: Uint8Array<ArrayBuffer>, fallbackName: str
       }
     }
     if (occlusion !== null && occlusion !== packed) set('occlusion', whole(occlusion));
+    materialOf.push(materials.length);
     materials.push({
       name: typeof material.name === 'string' && material.name ? material.name : `${fallbackName}_material${i}`,
       baseColor: color(pbr.baseColorFactor, [1, 1, 1]),
@@ -202,9 +209,15 @@ export async function readGltf(bytes: Uint8Array<ArrayBuffer>, fallbackName: str
     buffers: [{ byteLength: merged.length }],
     bufferViews: list(json.bufferViews).map((view) => ({ ...view, buffer: 0, byteOffset: (view.byteOffset ?? 0) + (offsets[view.buffer] ?? 0) })),
     materials: list(json.materials).map((material) => ({ name: material.name })),
+    meshes: list(json.meshes).map((mesh) => ({
+      ...mesh,
+      // Without extras: the loader would copy them onto every geometry.
+      primitives: list(mesh.primitives).map(({ extras: _extras, ...primitive }) => primitive),
+    })),
   };
   for (const key of ['images', 'textures', 'samplers', 'animations', 'skins', 'cameras', 'extensionsUsed', 'extensionsRequired', 'extensions']) delete stripped[key];
   if (stripped.materials.length === 0) delete stripped.materials;
+  if (stripped.meshes.length === 0) delete stripped.meshes;
   if (list(json.bufferViews).length === 0) delete stripped.bufferViews;
   if (merged.length === 0) delete stripped.buffers;
   stripped.nodes = list(json.nodes).map(({ skin: _skin, camera: _camera, extensions: _extensions, ...node }) => node);
@@ -219,14 +232,30 @@ export async function readGltf(bytes: Uint8Array<ArrayBuffer>, fallbackName: str
   });
   const root = gltf.scene ?? gltf.scenes?.[0];
   if (!root) throw new FileError('The glTF file contains no scene');
+  // GLTFLoader rewrites names for its animation system ("Rib -1.2 +1" becomes "Rib_-12_+1") and numbers
+  // duplicates, so names are taken from the JSON: the node's, else its mesh's, else (for the parts of a
+  // mesh with several materials) the name of the node above.
+  const nodes = list(json.nodes);
+  const meshes = list(json.meshes);
+  const text = (value: unknown) => (typeof value === 'string' ? value : '');
+  const jsonName = (node: Object3D | null): string => {
+    const found = node && gltf.parser.associations.get(node);
+    return (found && (text(nodes[found.nodes]?.name) || text(meshes[found.meshes]?.name))) || '';
+  };
   const tree = convertTree(root, {
     flipV: true,
     fallbackName,
     material: (material: ThreeMaterial) => {
       const index = gltf.parser.associations.get(material)?.materials;
-      return typeof index === 'number' && materials[index] ? index : null;
+      return typeof index === 'number' ? (materialOf[index] ?? null) : null;
+    },
+    name: (node) => jsonName(node) || (gltf.parser.associations.get(node)?.nodes === undefined ? jsonName(node.parent) : ''),
+    polygons: (node) => {
+      const found = gltf.parser.associations.get(node);
+      return found && meshes[found.meshes]?.primitives?.[found.primitives]?.extras?.tessel?.polygons;
     },
   });
+  warnings.push(...tree.warnings);
   if (tree.dropped > 0) warnings.push(`Dropped ${tree.dropped} degenerate triangle(s)`);
   return { objects: tree.objects, groups: tree.groups, materials, textures, warnings };
 }

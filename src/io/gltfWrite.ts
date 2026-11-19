@@ -3,7 +3,8 @@
 import type { DocState, Material, Texture } from '../core/types';
 import { fromBase64, toBase64 } from './bytes';
 import type { ImageOps, PackedImage } from './imageOps';
-import { hexToRgb, indexedTriangles, srgbToLinear, transformQuaternion, type ExportItem } from './scene';
+import { polygonExtra } from './polygons';
+import { fallbackMaterial, hexToRgb, indexedTriangles, srgbToLinear, transformQuaternion, type ExportItem } from './scene';
 
 type Json = Record<string, unknown>;
 
@@ -121,6 +122,8 @@ async function build(state: DocState, items: readonly ExportItem[], ops: ImageOp
       roughnessFactor: material.roughness,
     };
     const out: Json = { name: material.name, pbrMetallicRoughness: pbr };
+    // The stand-in for "no material" (other applications show the clay look); the importer takes it as none.
+    if (material === fallbackMaterial) out.extras = { tessel: { noMaterial: true } };
     const baseColor = map('baseColor');
     if (baseColor) pbr.baseColorTexture = { index: plain(baseColor) };
     const roughness = map('roughness');
@@ -171,7 +174,11 @@ async function build(state: DocState, items: readonly ExportItem[], ops: ImageOp
     }
     const small = tris.positions.length / 3 <= 65535;
     const indices = buffer.accessor(small ? new Uint16Array(tris.indices) : tris.indices, 'SCALAR', ELEMENT_ARRAY_BUFFER);
-    const index = meshes.push({ name: item.name, primitives: [{ attributes, indices, material, mode: 4 }] }) - 1;
+    const primitive: Json = { attributes, indices, material, mode: 4 };
+    // glTF has only triangles; this note lets the importer restore the polygons (see polygons.ts).
+    const polygons = polygonExtra(item.mesh, tris.indices);
+    if (polygons) primitive.extras = { tessel: { polygons } };
+    const index = meshes.push({ name: item.name, primitives: [primitive] }) - 1;
     meshIndex.set(key, index);
     return index;
   }

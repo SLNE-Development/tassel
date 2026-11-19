@@ -1,8 +1,9 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { z } from 'zod';
 import { commandsById } from '../core/commands';
 import { commandTitle, useT } from '../i18n';
 import { PickMenu, Switch } from './controls';
+import { BUILTIN_FONT, FontPicker } from './FontPicker';
 import { tweakOp, useLastOp } from './live';
 import { ScrubField } from './ScrubField';
 
@@ -10,14 +11,25 @@ import { ScrubField } from './ScrubField';
 const shown: Record<string, (params: Record<string, unknown>) => readonly string[]> = {
   'scene.add_primitive': (params) => [
     ...({
-      cube: ['size'],
+      cube: ['size', 'dimensions'],
       plane: ['size'],
       uv_sphere: ['radius', 'segments', 'rings'],
       ico_sphere: ['radius', 'subdivisions'],
       cylinder: ['radius', 'height', 'segments'],
       cone: ['radius', 'height', 'segments'],
       torus: ['radius', 'minorRadius', 'segments', 'minorSegments'],
+      arc: ['innerRadius', 'outerRadius', 'height', 'angle', 'startAngle', 'segments'],
     }[params.type as string] ?? []),
+    'position',
+  ],
+  // Bold and italic are styles of an installed font; the built-in one has neither.
+  'scene.add_text': (params) => [
+    'text',
+    'font',
+    ...(String(params.font ?? BUILTIN_FONT).trim().toLowerCase() === BUILTIN_FONT ? [] : ['bold', 'italic']),
+    'size',
+    'depth',
+    'align',
     'position',
   ],
   'uv.unwrap': (params) => ['method', ...({ smart: ['angle', 'margin'], box: ['margin'] }[params.method as string] ?? ['axis'])],
@@ -29,6 +41,8 @@ type Field =
   | { kind: 'number'; key: string; fallback?: number; integer: boolean; min?: number; max?: number }
   | { kind: 'boolean'; key: string; fallback?: boolean }
   | { kind: 'enum'; key: string; fallback?: string; options: string[] }
+  | { kind: 'font'; key: string; fallback?: string }
+  | { kind: 'text'; key: string; fallback?: string; maxLength?: number }
   | { kind: 'vec3'; key: string; fallback?: number[] };
 
 interface JsonProp {
@@ -38,6 +52,7 @@ interface JsonProp {
   minimum?: number;
   maximum?: number;
   exclusiveMinimum?: number;
+  maxLength?: number;
   prefixItems?: { type?: string }[];
 }
 
@@ -61,6 +76,11 @@ function fieldsOf(commandId: string): Field[] {
       fields.push({ kind: 'boolean', key, fallback: p.default as boolean | undefined });
     } else if (p.type === 'string' && p.enum?.every((v) => typeof v === 'string')) {
       fields.push({ kind: 'enum', key, fallback: p.default as string | undefined, options: p.enum as string[] });
+    } else if (p.type === 'string' && key === 'font') {
+      fields.push({ kind: 'font', key, fallback: p.default as string | undefined });
+    } else if (p.type === 'string') {
+      // Free text (enums and the font have their own controls above).
+      fields.push({ kind: 'text', key, fallback: p.default as string | undefined, maxLength: p.maxLength });
     } else if (p.type === 'array' && p.prefixItems?.length === 3 && p.prefixItems.every((i) => i.type === 'number')) {
       fields.push({ kind: 'vec3', key, fallback: p.default as number[] | undefined });
     }
@@ -76,6 +96,53 @@ const axes = [
 
 const rowLabel = 'min-w-0 flex-1 truncate text-[calc(12px*var(--font-scale))] text-dim';
 
+/** String parameters that take several lines, by command. */
+const multiline: Record<string, readonly string[]> = { 'scene.add_text': ['text'] };
+
+/**
+ * A string parameter. The operation is re-run when the field is left or with Ctrl+Enter (Enter alone
+ * in a single-line field), not on every keystroke: half-typed text would run the operation each time.
+ * Escape puts the committed text back.
+ */
+function TextParam({ label, value, lines, maxLength, onCommit }: { label: string; value: string; lines: boolean; maxLength?: number; onCommit(value: string): void }) {
+  const [draft, setDraft] = useState(value);
+  useEffect(() => setDraft(value), [value]);
+  const commit = () => {
+    // An empty text is not a value the operation takes; the field falls back to what it had.
+    if (draft === '') setDraft(value);
+    else if (draft !== value) onCommit(draft);
+  };
+  const shared = {
+    'aria-label': label,
+    value: draft,
+    maxLength,
+    spellCheck: false,
+    autoComplete: 'off',
+    onBlur: commit,
+    className:
+      'w-full min-w-0 rounded-md bg-ink px-2 text-[calc(12.5px*var(--font-scale))] text-text ring-1 ring-line outline-none ring-inset select-text hover:ring-line-strong focus:ring-accent',
+  };
+  const onKeyDown = (event: React.KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    if (event.key === 'Enter' && (event.ctrlKey || event.metaKey || !lines)) {
+      event.preventDefault();
+      commit();
+    } else if (event.key === 'Escape') {
+      event.stopPropagation();
+      setDraft(value);
+    }
+  };
+  return (
+    <label className="flex flex-col gap-1">
+      <span className="pt-0.5 pl-2 text-[calc(12px*var(--font-scale))] text-dim">{label}</span>
+      {lines ? (
+        <textarea {...shared} rows={Math.min(5, Math.max(2, draft.split('\n').length))} className={`${shared.className} resize-none py-1 leading-snug`} onChange={(event) => setDraft(event.currentTarget.value)} onKeyDown={onKeyDown} />
+      ) : (
+        <input {...shared} className={`${shared.className} h-7`} onChange={(event) => setDraft(event.currentTarget.value)} onKeyDown={onKeyDown} />
+      )}
+    </label>
+  );
+}
+
 /**
  * Parameters of the operation that just ran. Changing one re-runs the operation in place of its
  * previous run (see `live.ts`), which replaces mouse-driven modal tools.
@@ -90,7 +157,7 @@ export function LastOpPanel() {
   const offered = only ? only.flatMap((key) => fields.filter((f) => f.key === key)) : fields;
   const visible = offered.filter(
     // A number or vector needs a value to start from.
-    (f) => f.kind === 'enum' || (op.params[f.key] ?? f.fallback) !== undefined,
+    (f) => f.kind === 'enum' || f.kind === 'font' || f.kind === 'text' || (op.params[f.key] ?? f.fallback) !== undefined,
   );
   const def = commandsById.get(op.commandId);
   const title = op.title?.(t) ?? (def ? commandTitle(def) : op.commandId);
@@ -136,6 +203,28 @@ export function LastOpPanel() {
                 <div key={field.key} className="flex h-7 items-center gap-2 pr-1.5 pl-2">
                   <span className={rowLabel}>{label}</span>
                   <Switch label={label} checked={value as boolean} onChange={(v) => set(field.key, v)} />
+                </div>
+              );
+            }
+            if (field.kind === 'text') {
+              return (
+                <TextParam
+                  key={field.key}
+                  label={label}
+                  value={(value as string | undefined) ?? ''}
+                  lines={multiline[op.commandId]?.includes(field.key) ?? false}
+                  maxLength={field.maxLength}
+                  onCommit={(v) => set(field.key, v)}
+                />
+              );
+            }
+            if (field.kind === 'font') {
+              return (
+                <div key={field.key} className="flex h-7 items-center gap-2 pl-2">
+                  <span className={rowLabel}>{label}</span>
+                  <div className="w-36 shrink-0">
+                    <FontPicker label={label} value={(value as string | undefined) ?? BUILTIN_FONT} onChange={(v) => set(field.key, v)} />
+                  </div>
                 </div>
               );
             }

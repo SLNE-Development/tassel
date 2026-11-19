@@ -1,12 +1,14 @@
 import { execute, selectDocState, useApp } from '../app/store';
 import { exportFile, importFile, openProject, saveProject } from '../bridge/files';
 import { openBakeDialog } from './bake/bakeStore';
+import { openRenderDialog } from './render/renderStore';
 import { primitiveTypes } from '../core/mesh/primitives';
 import { elementModes, shadings, tools, viewPresets, workspaces, type ExportFormat, type ViewPreset } from '../core/types';
 import { getT, type Dictionary } from '../i18n';
 import { groupSelection, newEmptyGroup, ungroupSelection } from './groupActions';
 import { runOp } from './live';
 import { paintActions } from './paint/paintActions';
+import { timelineActions } from './timeline/timelineActions';
 import { notifyError, notifyInfo, notifySuccess } from './toast';
 import { useUi } from './uiStore';
 import { uvActions } from './uv/uvActions';
@@ -148,6 +150,7 @@ export const actions: readonly Action[] = [
   ...(['obj', 'stl', 'ply', 'usdz'] as const).map((format) =>
     action({ id: `file.export_${format}`, title: (t) => t.files.exportAs(t.files.formats[format]), group: 'file', run: () => exportActiveDoc(format) }),
   ),
+  action({ id: 'render.open', title: (t) => t.render.open, group: 'file', keys: ['F12'], inInputs: true, command: 'render.image', run: openRenderDialog }),
   action({ id: 'file.close', title: (t) => t.actions.close, group: 'file', command: 'document.close', run: () => requestCloseDoc(useApp.getState().activeDocId) }),
 
   // Bearbeiten
@@ -205,6 +208,9 @@ export const actions: readonly Action[] = [
   // Malen
   ...paintActions(action),
 
+  // Animation
+  ...timelineActions(action),
+
   // Hinzufügen
   action({ id: 'add.menu', title: (t) => t.actions.addMenu, group: 'add', keys: ['Shift+A'], hidden: true, run: () => useUi.setState({ addMenuOpen: true }) }),
   ...primitiveTypes.map((type) =>
@@ -216,6 +222,12 @@ export const actions: readonly Action[] = [
       run: () => runOp('scene.add_primitive', { type, name: getT().primitives[type] }, (t) => t.primitives[type]),
     }),
   ),
+  action({
+    id: 'add.text',
+    title: (t) => t.actions.addPrimitive(t.shapes.text),
+    group: 'add',
+    run: () => runOp('scene.add_text', { text: getT().shapes.text }, (t) => t.shapes.text),
+  }),
 
   // Ansicht
   ...shadings.map((shading) =>

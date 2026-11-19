@@ -1,6 +1,10 @@
+mod batch;
 mod bridge;
 mod files;
+mod fonts;
 mod mcp;
+#[cfg(test)]
+mod testing;
 mod tools;
 
 use std::sync::Arc;
@@ -35,6 +39,8 @@ pub fn run() {
       files::write_text_file,
       files::write_binary_file,
       files::write_obj_export,
+      fonts::fonts_list,
+      fonts::fonts_outline,
     ])
     .run(tauri::generate_context!())
     .expect("error while running Tessel");

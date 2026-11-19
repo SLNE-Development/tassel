@@ -5,7 +5,7 @@ import { faceNormal } from '../core/mesh/polymesh';
 import type { DocState, ExportResult, ImportedScene, Material, PolyMesh, Texture, TextureSlot } from '../core/types';
 import { FileError } from './bytes';
 import { sanitizeFileName, uniqueFileName } from './names';
-import { hexToRgb, vertexNormals, worldMesh, type ExportItem } from './scene';
+import { fallbackMaterial, hexToRgb, vertexNormals, worldMesh, type ExportItem } from './scene';
 
 /** Up to six decimals (a micrometre), without trailing zeros or "-0". */
 const num = (x: number) => String(Number(x.toFixed(6)) || 0);
@@ -34,6 +34,7 @@ export function writeObj(state: DocState, items: readonly ExportItem[], name: st
   const out: string[] = ['# Tessel OBJ export. Y up, meters.', `mtllib ${mtlName}`];
 
   const materialNames = new Map<Material, string>();
+  const noted = new Set<Material>();
   const takenMaterials = new Set<string>();
   const nameOf = (material: Material) => {
     let known = materialNames.get(material);
@@ -85,6 +86,12 @@ export function writeObj(state: DocState, items: readonly ExportItem[], name: st
     // No spreads: a large mesh has more lines than a call can take arguments.
     for (const line of vtLines) out.push(line);
     for (const line of vnLines) out.push(line);
+    // Material names lose their spaces in OBJ; this comment keeps the real name for Tessel's importer.
+    // Likewise the stand-in for "no material" is marked, so that it does not come back as a material.
+    if (!noted.has(item.material) && (item.material === fallbackMaterial || nameOf(item.material) !== item.material.name)) {
+      noted.add(item.material);
+      out.push(item.material === fallbackMaterial ? `# tessel:no-material ${nameOf(item.material)}` : `# tessel:material ${nameOf(item.material)} ${oneLine(item.material.name)}`);
+    }
     out.push(`usemtl ${nameOf(item.material)}`, `s ${item.smooth ? '1' : 'off'}`);
     for (const line of faceLines) out.push(line);
     vBase += p.length / 3;
@@ -155,6 +162,8 @@ export function parseObj(text: string, fallbackName: string): ImportedScene {
   const v: number[] = [];
   const vt: number[] = [];
   const parts = new Map<string, Part>();
+  const realNames = new Map<string, string>();
+  const noMaterial = new Set<string>();
   const warnings: string[] = [];
   let objectName = fallbackName;
   let materialName: string | null = null;
@@ -181,6 +190,16 @@ export function parseObj(text: string, fallbackName: string): ImportedScene {
     const line = text.slice(lineStart, lineEnd).trim();
     lineStart = lineEnd + 1;
     lineNumber++;
+    if (line.startsWith('# tessel:material ')) {
+      // Written by Tessel's exporter: the material's real name for the space-free one in `usemtl`.
+      const [written, ...real] = line.slice('# tessel:material '.length).trim().split(/\s+/);
+      if (written && real.length > 0) realNames.set(written, real.join(' '));
+      continue;
+    }
+    if (line.startsWith('# tessel:no-material ')) {
+      noMaterial.add(line.slice('# tessel:no-material '.length).trim());
+      continue;
+    }
     if (line === '' || line[0] === '#') continue;
     const space = line.search(/\s/);
     const keyword = space === -1 ? line : line.slice(0, space);
@@ -266,8 +285,8 @@ export function parseObj(text: string, fallbackName: string): ImportedScene {
   for (const p of parts.values()) {
     if (p.faces.length === 0) continue;
     let material: number | null = null;
-    if (p.material !== null) {
-      material = materialIndex.get(p.material) ?? scene.materials.push({ ...defaultMaterial, name: p.material, maps: {} }) - 1;
+    if (p.material !== null && !noMaterial.has(p.material)) {
+      material = materialIndex.get(p.material) ?? scene.materials.push({ ...defaultMaterial, name: realNames.get(p.material) ?? p.material, maps: {}, nameOnly: true }) - 1;
       materialIndex.set(p.material, material);
     }
     const mesh: PolyMesh = p.hasUvs ? { positions: p.positions, faces: p.faces, uvs: p.uvs } : { positions: p.positions, faces: p.faces };

@@ -12,6 +12,11 @@ export interface SoupInput {
   /** Only these triangles: first index position and number of indices (like three's geometry groups). */
   start?: number;
   count?: number;
+  /**
+   * Polygons to build instead of the triangles: each a loop of vertex indices (see polygons.ts). A polygon
+   * that is unusable after welding (a corner twice, a non-finite corner) is dropped and counted.
+   */
+  polygons?: readonly (readonly number[])[] | null;
   /** Column-major 4x4 matrix applied to the positions. A mirroring matrix also reverses the winding. */
   matrix?: ArrayLike<number> | null;
   /** v → 1 - v, for sources whose v axis points down (glTF). */
@@ -70,9 +75,29 @@ export function soupToPolyMesh(input: SoupInput): { mesh: PolyMesh; dropped: num
     }
     return vertexOf[id];
   };
+  const cornerUv = (s: number): [number, number] => {
+    const u = Number(uvIn![s * 2]);
+    const v = Number(uvIn![s * 2 + 1]);
+    return [Number.isFinite(u) ? tidyFloat(u) || 0 : 0, Number.isFinite(v) ? tidyFloat(flipV ? Math.fround(1 - v) : v) || 0 : 0];
+  };
   const weld = (i: number) => (i >= 0 && i < weldOf.length ? weldOf[i] : -1);
   let dropped = 0;
-  for (let t = start; t + 2 < end; t += 3) {
+  for (const polygon of input.polygons ?? []) {
+    // Mirrored: keep the first corner, reverse the rest.
+    const src = mirrored ? [polygon[0], ...polygon.slice(1).reverse()] : polygon;
+    const ids = src.map(weld);
+    if (ids.includes(-1) || new Set(ids).size !== ids.length || ids.length < 3) {
+      dropped++;
+      continue;
+    }
+    faces.push(ids.map(vertex));
+    if (uvIn) {
+      const uv: number[] = [];
+      for (const s of src) uv.push(...cornerUv(s));
+      uvs.push(uv);
+    }
+  }
+  for (let t = input.polygons ? end : start; t + 2 < end; t += 3) {
     const src = [indices ? indices[t] : t, indices ? indices[t + 1] : t + 1, indices ? indices[t + 2] : t + 2];
     if (mirrored) [src[1], src[2]] = [src[2], src[1]];
     const a = weld(src[0]);
@@ -85,11 +110,7 @@ export function soupToPolyMesh(input: SoupInput): { mesh: PolyMesh; dropped: num
     faces.push([vertex(a), vertex(b), vertex(c)]);
     if (uvIn) {
       const uv: number[] = [];
-      for (const s of src) {
-        const u = Number(uvIn[s * 2]);
-        const v = Number(uvIn[s * 2 + 1]);
-        uv.push(Number.isFinite(u) ? tidyFloat(u) || 0 : 0, Number.isFinite(v) ? tidyFloat(flipV ? Math.fround(1 - v) : v) || 0 : 0);
-      }
+      for (const s of src) uv.push(...cornerUv(s));
       uvs.push(uv);
     }
   }

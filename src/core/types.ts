@@ -3,6 +3,8 @@
 // Conventions: Y is up, units are meters, rotations are Euler XYZ in degrees.
 
 import type { Preferences } from './preferences';
+import type { RenderService, RenderSettings } from './render';
+import type { VideoService } from './video';
 
 export type Vec3 = [number, number, number];
 
@@ -99,7 +101,18 @@ export type Modifier =
       readonly mergeDistance: number;
     })
   | (ModifierBase & { readonly type: 'subdivision'; /** Catmull-Clark levels, 1-4. */ readonly levels: number })
-  | (ModifierBase & { readonly type: 'array'; readonly count: number; /** Offset per copy in local units. */ readonly offset: Vec3 })
+  | (ModifierBase & {
+      readonly type: 'array';
+      readonly count: number;
+      /** Offset per copy, in local units or (see `offsetSpace`) in world meters. */
+      readonly offset: Vec3;
+      /** Euler XYZ in degrees by which each copy is turned further than the one before it. */
+      readonly rotation: Vec3;
+      /** Local point the per-copy rotation turns about. */
+      readonly pivot: Vec3;
+      /** 'world': `offset` is along the world axes in meters, whatever the object's rotation and scale. */
+      readonly offsetSpace: 'local' | 'world';
+    })
   | (ModifierBase & {
       readonly type: 'boolean';
       readonly operation: BooleanOperation;
@@ -150,6 +163,52 @@ export interface EditState {
   readonly faces: readonly number[];
 }
 
+export const keyInterpolations = ['linear', 'smooth', 'step'] as const;
+/** How a value gets from one key to the NEXT one: straight, eased in and out, or held and then jumping. */
+export type KeyInterpolation = (typeof keyInterpolations)[number];
+
+/** A keyframe: the value of one channel at an integer frame (>= 0). */
+export interface Key<T> {
+  readonly frame: number;
+  readonly value: T;
+  /** Applies from this key to the next one. */
+  readonly interpolation: KeyInterpolation;
+}
+
+/**
+ * The animated channels of one object. Every array is sorted by frame with at most one key per frame; a
+ * channel without keys (absent) keeps the object's static value. Before the first and after the last
+ * key the value holds. `visible` always switches at its keys.
+ */
+export interface ObjectTrack {
+  readonly position?: readonly Key<Vec3>[];
+  /** Euler XYZ in degrees; between two keys the rotation takes the shortest way (see core/animation.ts). */
+  readonly rotation?: readonly Key<Vec3>[];
+  readonly scale?: readonly Key<Vec3>[];
+  readonly visible?: readonly Key<boolean>[];
+}
+
+/** A keyframe of the animated camera; `fov` is the vertical field of view in degrees. */
+export interface CameraKey {
+  readonly frame: number;
+  readonly position: Vec3;
+  readonly target: Vec3;
+  readonly fov: number;
+  readonly interpolation: KeyInterpolation;
+}
+
+/** Keyframe animation of a document. Frames are integers from 0; time in seconds = frame / fps. Helpers: core/animation.ts. */
+export interface Animation {
+  /** Frames per second, 1..120. */
+  readonly fps: number;
+  /** Length in frames, 1..100000: the animation shows the frames 0 .. frameCount - 1. */
+  readonly frameCount: number;
+  /** Tracks by object id; only objects that have at least one key. */
+  readonly tracks: Readonly<Record<string, ObjectTrack>>;
+  /** Camera keys sorted by frame, at most one per frame. Empty: the camera is not animated. */
+  readonly camera: readonly CameraKey[];
+}
+
 /** The undoable part of a document. */
 export interface DocState {
   readonly objects: Readonly<Record<string, SceneObject>>;
@@ -167,6 +226,10 @@ export interface DocState {
   readonly activeId: string | null;
   /** Set while in edit mode, null in object mode. */
   readonly edit: EditState | null;
+  /** Keyframe animation; absent = nothing is animated. `objects` always holds the static (un-animated) values. */
+  readonly animation?: Animation;
+  /** How the document is rendered to pictures (render.* commands; see core/render.ts). Absent = the defaults. */
+  readonly render?: RenderSettings;
 }
 
 export interface Doc {
@@ -208,30 +271,113 @@ export interface CameraPose {
   target: Vec3;
 }
 
+/** A camera for one screenshot only; `fov` is the vertical field of view in degrees (default: the viewport's). */
+export interface ScreenshotCamera {
+  position: Vec3;
+  target: Vec3;
+  fov?: number;
+}
+
+export type ScreenshotView = ViewPreset | 'current' | ScreenshotCamera;
+
+/** Nothing here changes the user's camera, shading, selection or the visibility of objects in the document. */
 export interface ScreenshotOptions {
+  /** Size of the whole image, also when it shows several views. */
   width: number;
   height: number;
   /** 'current' uses the user's camera; a preset renders from that direction without moving the user's camera. */
   view: ViewPreset | 'current';
-  /** Fit all visible objects into the frame (always true for presets). */
-  fit: boolean;
+  /** Fit into the frame: all objects the screenshot shows, or just the objects with these ids (always done for presets). */
+  fit: boolean | readonly string[];
+  /** Render from this camera instead of `view`. */
+  camera?: ScreenshotCamera;
+  /** Several views on one sheet, each with a caption; replaces `view` and `camera`. */
+  views?: readonly ScreenshotView[];
+  /** Object ids left out of this screenshot. */
+  hideIds?: readonly string[];
+  /** If given, only these objects are shown. */
+  onlyIds?: readonly string[];
+  /** Shading for this screenshot (default: the viewport's). */
+  shading?: Shading;
+  /** Surfaces semi-transparent with all edges drawn, so that hidden parts show through. */
+  xray?: boolean;
+  /**
+   * Render the state that is passed with the call from a scene of its own even when the document is the
+   * visible one (as documents in the background always are), instead of the scene on screen: for pictures
+   * of the document at another frame of its animation than the one the viewport shows.
+   */
+  offscreen?: boolean;
 }
 
-/** Implemented by src/viewport, registered on mount. */
+/**
+ * A run of pictures of one document, e.g. the frames of a video. The scene is kept between the pictures,
+ * so only what moved is updated; the scene on screen is never touched. `end` must be called when done.
+ */
+export interface ShotSequence {
+  /**
+   * Draws `state` (the document at one moment) into `target`, an HTMLCanvasElement or OffscreenCanvas
+   * (opaque here, as core is DOM-free) that is resized to the picture. Selection highlights and
+   * edit-mode overlays are drawn as `state` has them.
+   */
+  shot(opts: ScreenshotOptions, state: DocState, target: unknown): Promise<Omit<ScreenshotResult, 'base64'>>;
+  end(): void;
+}
+
+/** What one view of a screenshot shows. */
+export interface ScreenshotViewInfo {
+  name: string;
+  cameraPosition: Vec3;
+  cameraTarget: Vec3;
+  /** Vertical field of view in degrees. */
+  fov: number;
+  /** In words, e.g. `camera at +Z looking toward -Z`. */
+  direction: string;
+  /** The world directions that point right and up in the image, e.g. `+X` and `+Y`. */
+  imageRight: string;
+  imageUp: string;
+  /** Where this view is in the image, in pixels from the top left (the whole image for a single view). */
+  rect: { x: number; y: number; width: number; height: number };
+}
+
+export interface ScreenshotResult {
+  /** PNG as base64 (no data: prefix). */
+  base64: string;
+  views: ScreenshotViewInfo[];
+  width: number;
+  height: number;
+  backend: 'webgpu' | 'webgl2';
+}
+
+/** The open document a viewport call is about: its id and its current state. */
+export interface ViewDocument {
+  id: string;
+  state: DocState;
+}
+
+/**
+ * Implemented by src/viewport, registered on mount.
+ *
+ * Every method takes the document it is about (default: the visible one). For a document that is not
+ * the visible tab nothing the user sees changes: a screenshot renders that document off-screen, and
+ * the camera methods read / write its remembered camera - the one the user gets when they switch to
+ * its tab and that `view: 'current'` screenshots of it use.
+ */
 export interface ViewportService {
-  /** Returns a PNG as base64 (no data: prefix). */
-  screenshot(opts: ScreenshotOptions): Promise<string>;
-  getCamera(): CameraPose;
-  setCamera(pose: Partial<CameraPose>): void;
-  setView(preset: ViewPreset): void;
+  screenshot(opts: ScreenshotOptions, doc?: ViewDocument): Promise<ScreenshotResult>;
+  /** Starts a run of pictures of a document (see `ShotSequence`). Optional: not every viewport can. */
+  sequence?(doc: ViewDocument): ShotSequence;
+  getCamera(doc?: ViewDocument): CameraPose;
+  setCamera(pose: Partial<CameraPose>, doc?: ViewDocument): void;
+  setView(preset: ViewPreset, doc?: ViewDocument): void;
   /** Frame the given objects; an empty array frames everything. */
-  frame(ids: readonly string[]): void;
+  frame(ids: readonly string[], doc?: ViewDocument): void;
 }
 
 export const exportFormats = ['glb', 'gltf', 'obj', 'stl', 'ply', 'usdz'] as const;
 export type ExportFormat = (typeof exportFormats)[number];
 
-export const importFormats = ['glb', 'gltf', 'obj', 'stl', 'ply', 'fbx'] as const;
+/** `tessel` is a project file whose content is merged into the document; `import.file` reads it itself, without the import service. */
+export const importFormats = ['glb', 'gltf', 'obj', 'stl', 'ply', 'fbx', 'tessel'] as const;
 export type ImportFormat = (typeof importFormats)[number];
 
 /** An exported file: binary formats as base64, text formats as text. OBJ comes with its material library and images. */
@@ -265,10 +411,22 @@ export interface ImportedScene {
     material: number | null;
     /** Index into `groups`, or null at top level. */
     group: number | null;
+    /** Default: visible. */
+    visible?: boolean;
+    /** Default: none. A boolean modifier's `targetId` names the `key` of another object in `objects`. */
+    modifiers?: readonly Modifier[];
+    /** What boolean modifiers of this scene call this object (its id in the source project). */
+    key?: string;
   }[];
   /** Parents come before their children. */
   groups: { name: string; parent: number | null }[];
-  materials: (Omit<Material, 'id' | 'maps'> & { maps: Partial<Record<TextureSlot, number>> })[];
+  /** True: groups without objects are added too (a merged project). Default: only groups that hold objects. */
+  keepEmptyGroups?: boolean;
+  /**
+   * `nameOnly`: the file names the material but its values are unknown (OBJ without its .mtl); such a
+   * material stands for an existing material of the same name whatever that one's values are.
+   */
+  materials: (Omit<Material, 'id' | 'maps'> & { maps: Partial<Record<TextureSlot, number>>; nameOnly?: boolean })[];
   textures: Omit<Texture, 'id'>[];
   /** Things the file had that were not imported, in English. */
   warnings: string[];
@@ -277,7 +435,7 @@ export interface ImportedScene {
 /** Implemented by src/io, registered at startup. */
 export interface ImportService {
   /** Parses a file. Throws an Error with a clear English message if it cannot be read. */
-  import(file: { format: ImportFormat; name: string; base64?: string; text?: string }): Promise<ImportedScene>;
+  import(file: { format: Exclude<ImportFormat, 'tessel'>; name: string; base64?: string; text?: string }): Promise<ImportedScene>;
 }
 
 /** One point of a brush stroke: texture coordinates (v up, 0..1) and optional pen pressure (0..1, default 1). */
@@ -346,10 +504,67 @@ export interface BakeService {
   bake(state: DocState, request: BakeRequest): Promise<BakeOutput>;
 }
 
+export const fontStyles = ['regular', 'bold', 'italic', 'bold-italic'] as const;
+
+/** One available style of an installed font family. */
+export interface FontStyle {
+  /** bold = weight 600 and above. */
+  style: (typeof fontStyles)[number];
+  /** 100 (thin) to 900 (black); 400 is regular, 700 bold. */
+  weight: number;
+  italic: boolean;
+}
+
+export interface FontFamily {
+  family: string;
+  styles: FontStyle[];
+  monospaced: boolean;
+}
+
+/**
+ * One closed contour of a glyph in font units, y up. `ops` has one letter per segment and `coords` its
+ * numbers: `M` x y (start), `L` x y (line), `Q` cx cy x y (quadratic Bezier), `C` c1x c1y c2x c2y x y (cubic Bezier).
+ */
+export interface FontContour {
+  ops: string;
+  coords: number[];
+}
+
+/** What a font has for the characters of a text. Lengths are in font units. */
+export interface FontOutline {
+  /** The family and style that were used (the closest style the family has). */
+  family: string;
+  style: FontStyle;
+  unitsPerEm: number;
+  /** Height of capital letters. */
+  capHeight: number;
+  ascender: number;
+  /** Negative: below the baseline. */
+  descender: number;
+  lineGap: number;
+  /** Every different character of the text the font has a glyph for. `contours` is empty for blanks. */
+  glyphs: { char: string; advance: number; contours: FontContour[] }[];
+  /** Characters of the text the font has no glyph for. */
+  missing: string[];
+  /** Added to the advance of `left` when `right` follows it directly; usually negative. */
+  kerning: { left: string; right: string; value: number }[];
+}
+
+/** The fonts installed on the computer. Implemented by src/bridge/fonts.ts; only present in the desktop app. */
+export interface FontService {
+  /** All installed families, sorted by name. */
+  list(): Promise<FontFamily[]>;
+  /** Rejects with a clear English message if the family is not installed or the font cannot be read. */
+  outline(request: { family: string; bold?: boolean; italic?: boolean; text: string }): Promise<FontOutline>;
+}
+
 export interface Services {
   viewport: ViewportService | null;
   exporter: ExportService | null;
   importer?: ImportService | null;
   imaging?: ImagingService | null;
   baker?: BakeService | null;
+  fonts?: FontService | null;
+  renderer?: RenderService | null;
+  video?: VideoService | null;
 }

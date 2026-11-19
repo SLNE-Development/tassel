@@ -34,6 +34,10 @@ function resolveTarget(state: DocState, object: SceneObject, targetId: string | 
   return { transform: target.transform, evaluated: evaluateObject(state, targetId) };
 }
 
+function sameOrientation(a: Transform, b: Transform): boolean {
+  return a === b || [0, 1, 2].every((i) => a.rotation[i] === b.rotation[i] && a.scale[i] === b.scale[i]);
+}
+
 function sameTarget(a: Target, b: Target): boolean {
   if (typeof a === 'string' || typeof b === 'string') return a === b;
   return a.transform === b.transform && a.evaluated === b.evaluated;
@@ -46,7 +50,7 @@ function applyResolved(object: SceneObject, mesh: PolyMesh, modifier: Modifier, 
     case 'subdivision':
       return subdivide(mesh, modifier.levels);
     case 'array':
-      return array(mesh, modifier.count, modifier.offset);
+      return array(mesh, modifier.count, modifier.offset, { ...modifier, transform: object.transform });
     case 'boolean': {
       if (typeof target === 'string') throw new Error(target);
       const matrix = relativeMatrix(target!.transform, object.transform);
@@ -70,6 +74,8 @@ interface CacheEntry {
   ready: boolean;
   /** One per enabled boolean modifier, in stack order. Empty: the result depends on mesh + modifiers only. */
   targets: Target[];
+  /** An enabled array modifier offsets in world space, so the result depends on the object's rotation and scale. */
+  worldArray: boolean;
   result: Evaluated;
 }
 
@@ -82,6 +88,7 @@ const unmodified = new WeakMap<PolyMesh, Evaluated>();
 
 function isValid(entry: CacheEntry | undefined, state: DocState, object: SceneObject): entry is CacheEntry {
   if (!entry || entry.mesh !== object.mesh) return false;
+  if (entry.worldArray && !sameOrientation(entry.transform, object.transform)) return false;
   if (entry.targets.length === 0) return true;
   if (entry.objectId !== object.id || entry.transform !== object.transform || entry.ready !== manifoldReady()) return false;
   let i = 0;
@@ -124,7 +131,8 @@ export function evaluateObject(state: DocState, objectId: string): Evaluated {
           errors[modifier.id] = error instanceof Error ? error.message : String(error);
         }
       }
-      entry = { objectId, mesh: object.mesh, transform: object.transform, ready, targets, result: { mesh, errors } };
+      const worldArray = enabled.some((m) => m.type === 'array' && m.offsetSpace === 'world');
+      entry = { objectId, mesh: object.mesh, transform: object.transform, ready, targets, worldArray, result: { mesh, errors } };
       byModifiers.set(object.modifiers, entry);
     }
     byObject.set(object, entry);

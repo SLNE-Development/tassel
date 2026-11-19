@@ -116,7 +116,8 @@ describe('group.create', () => {
     const b = await add();
     const c = await add();
     const result = await run('group.create', { ids: [a, c] });
-    expect(result).toEqual({ id: expect.any(String), name: 'Gruppe' });
+    expect(result).toMatchObject({ id: expect.any(String), name: 'Gruppe', parentId: null, childGroupIds: [] });
+    expect(result.objectIds).toHaveLength(2);
     expect(state().groups).toEqual({ [result.id]: { id: result.id, name: 'Gruppe', parentId: null } });
     expect(state().groupOrder).toEqual([result.id]);
     expect([groupOf(a), groupOf(b), groupOf(c)]).toEqual([result.id, null, result.id]);

@@ -3,6 +3,8 @@ import { Tooltip } from '@base-ui/react/tooltip';
 import { useT } from '../i18n';
 import { Centre } from './Centre';
 import { BakeDialog } from './bake/BakeDialog';
+import { RenderDialog } from './render/RenderDialog';
+import { VideoDialog } from './timeline/VideoDialog';
 import { CommandPalette } from './CommandPalette';
 import { Dialogs } from './Dialogs';
 import { Outliner } from './Outliner';
@@ -38,6 +40,8 @@ export function App() {
         <Dialogs />
         <Preferences />
         <BakeDialog />
+        <RenderDialog />
+        <VideoDialog />
         <Toasts />
       </Tooltip.Provider>
     </Toast.Provider>

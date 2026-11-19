@@ -29,8 +29,9 @@ import {
   selectMore,
   type MeshSelection,
 } from '../mesh/selection';
+import { resolveObjectId } from '../refs';
 import { activeDoc, own } from '../state';
-import { elementModes, type DocState, type Edge, type EditState, type ElementMode, type PolyMesh } from '../types';
+import { elementModes, type DocState, type Edge, type EditState, type ElementMode, type PolyMesh, type Vec3 } from '../types';
 import { defineCommand, docState, updateDocState, vec3, type CommandContext } from './registry';
 
 /** Element mode last used per document id. Not part of the document state: it is a UI preference, not undoable. */
@@ -82,7 +83,23 @@ function applyOp(ctx: CommandContext, result: MeshOpResult, keepSelection = fals
     objects: { ...s.objects, [edit.objectId]: { ...s.objects[edit.objectId], mesh: result.mesh } },
     edit: { ...edit, ...sel },
   }));
-  return { ...meshStats(result.mesh), ...selectionResult(sel), ...uvsDropped };
+  return { ...meshStats(result.mesh), ...selectionResult(sel), selectionBounds: selectionBounds(result.mesh, sel), ...uvsDropped };
+}
+
+/** Bounding box of the selected elements' vertices in the object's local space, or null if nothing is selected. */
+function selectionBounds(mesh: PolyMesh, sel: MeshSelection): { min: Vec3; max: Vec3 } | null {
+  const vertices = selectedVertices(mesh, sel);
+  if (vertices.length === 0) return null;
+  const min: Vec3 = [Infinity, Infinity, Infinity];
+  const max: Vec3 = [-Infinity, -Infinity, -Infinity];
+  for (const v of vertices) {
+    for (let a = 0; a < 3; a++) {
+      const c = mesh.positions[v * 3 + a];
+      if (c < min[a]) min[a] = c;
+      if (c > max[a]) max[a] = c;
+    }
+  }
+  return { min, max };
 }
 
 /** The selection as faces, or an error naming the command that needs them. */
@@ -104,7 +121,7 @@ function requireMeshEdge(mesh: PolyMesh, edge: Edge): Edge {
 
 function enterEdit(ctx: CommandContext, objectId: string | undefined) {
   const state = docState(ctx);
-  const id = objectId ?? state.activeId;
+  const id = objectId === undefined ? state.activeId : resolveObjectId(state, objectId);
   if (!id) throw new Error('No object given and there is no active object to edit');
   const obj = own(state.objects, id);
   if (!obj) throw new Error(`Object "${id}" does not exist`);
@@ -132,8 +149,10 @@ export const meshCommands = [
       'Enter edit mode to edit the vertices, edges and faces of one object (default: the active object). ' +
       'The object becomes the only selected object. Edit mode starts in the element mode last used in this document (initially vertex) with nothing selected. ' +
       'Element indices refer to the base mesh (before modifiers); inspect them with mesh.get_elements. ' +
-      'Typical workflow: edit.enter, edit.set_element_mode, mesh.select_by / mesh.select, then an operation such as mesh.extrude, finally edit.exit.',
-    params: z.object({ id: z.string().optional().describe('Object id. Defaults to the active object.') }),
+      'Typical workflow: edit.enter, edit.set_element_mode, mesh.select_by / mesh.select, then an operation such as mesh.extrude, finally edit.exit. ' +
+      'Every mesh operation (mesh.extrude, mesh.inset, mesh.bevel, mesh.transform, ...) returns the new mesh statistics, the number of selected elements and `selectionBounds` { min, max }: ' +
+      'the bounding box of the resulting selection in the LOCAL space of the object (before its transform; null if nothing is selected), so the next step can be placed without querying the elements.',
+    params: z.object({ id: z.string().optional().describe('Object id or name (exact, or a glob matching exactly one object). Defaults to the active object.') }),
     history: false,
     run: (ctx, p) => enterEdit(ctx, p.id),
   }),
@@ -141,11 +160,13 @@ export const meshCommands = [
   defineCommand({
     id: 'edit.exit',
     title: 'Bearbeitungsmodus beenden',
-    description: 'Leave edit mode and return to object mode. The edited object stays selected. Does nothing in object mode.',
+    description: 'Leave edit mode and return to object mode. The edited object stays selected. Returns `objectId`, the object that was being edited (null if the editor was already in object mode, in which case nothing happens).',
     params: z.object({}),
     history: false,
     run(ctx) {
+      const objectId = docState(ctx).edit?.objectId ?? null;
       updateDocState(ctx, (s) => (s.edit ? { ...s, edit: null } : s));
+      return { objectId };
     },
   }),
 
@@ -323,7 +344,7 @@ export const meshCommands = [
     id: 'mesh.select_by',
     title: 'Nach Kriterien auswählen',
     description:
-      'Select elements of the current element mode by geometric criteria, in the LOCAL space of the edited object (Y up; the object transform is ignored). ' +
+      'Select elements of the current element mode by geometric criteria, in the LOCAL space of the edited object (Y up; the object transform is ignored: `normal`, `boxMin` and `boxMax` are all in object coordinates, not world coordinates). ' +
       'Criteria are combined with AND; give at least one. ' +
       '`normal` + `angle`: faces whose normal is within `angle` degrees of that direction, e.g. normal [0,1,0] for everything facing up ' +
       '(in vertex / edge mode: the vertices / edges of those faces). ' +
@@ -331,10 +352,10 @@ export const meshCommands = [
       'either corner may be omitted for a half-open region, e.g. boxMin [-100,0.9,-100] for everything with y >= 0.9. ' +
       `Returns how many elements are selected afterwards. ${needsEdit} ${noUndo}`,
     params: z.object({
-      normal: vec3.optional().describe('Direction to compare face normals with (any length).'),
+      normal: vec3.optional().describe('Direction in LOCAL space to compare face normals with (any length).'),
       angle: z.number().min(0).max(180).default(10).describe('Maximum deviation from `normal` in degrees.'),
-      boxMin: vec3.optional(),
-      boxMax: vec3.optional(),
+      boxMin: vec3.optional().describe('Minimum corner of the box in LOCAL space (object coordinates, before the object transform).'),
+      boxMax: vec3.optional().describe('Maximum corner of the box in LOCAL space.'),
       action: actionParam,
     }),
     history: false,
@@ -491,7 +512,7 @@ export const meshCommands = [
       const result = mergeByDistance(mesh, vertices.length > 0 ? vertices : null, p.distance);
       const removedVertices = (mesh.positions.length - result.mesh.positions.length) / 3;
       // Nothing to weld: leave the document untouched instead of recording an empty undo step.
-      if (removedVertices === 0) return { removedVertices, ...meshStats(mesh), ...selectionResult(edit) };
+      if (removedVertices === 0) return { removedVertices, ...meshStats(mesh), ...selectionResult(edit), selectionBounds: selectionBounds(mesh, edit) };
       return { removedVertices, ...applyOp(ctx, result) };
     },
   }),
@@ -527,7 +548,7 @@ export const meshCommands = [
       'Applied in the order scale, rotate, translate. `translate` is an offset in meters, `rotate` Euler XYZ angles in degrees, `scale` a factor per axis. ' +
       'Rotation and scaling happen about `pivot`, which defaults to the centre of the bounding box of the selected vertices ' +
       '(so scale [0.5,0.5,0.5] shrinks a face in place, scale [1,0,1] flattens the selection in Y). ' +
-      'The topology, the selection and the UVs do not change.',
+      'The topology, the selection and the UVs do not change. Returns the mesh statistics and `selectionBounds` { min, max }: the bounding box of the selection after the move, in the LOCAL space of the object.',
     params: z.object({
       translate: vec3.optional(),
       rotate: vec3.optional().describe('Euler XYZ in degrees'),

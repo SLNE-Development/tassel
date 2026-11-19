@@ -333,7 +333,10 @@ describe('operations', () => {
     await editCube('face');
     await run('mesh.select_by', { normal: [0, 1, 0] });
     const result = await run('mesh.extrude', { distance: 1 });
-    expect(result).toEqual({ vertices: 12, edges: 20, faces: 10, triangles: 20, elementMode: 'face', selected: 1 });
+    expect(result).toEqual({
+      vertices: 12, edges: 20, faces: 10, triangles: 20, elementMode: 'face', selected: 1,
+      selectionBounds: { min: [-1, 2, -1], max: [1, 2, 1] },
+    });
     expect(edit().faces).toEqual([4]);
     expect(positionsOf(mesh().faces[4])).toEqual([[-1, 2, -1], [-1, 2, 1], [1, 2, -1], [1, 2, 1]]);
     expect(meshProblems(mesh())).toEqual([]);
@@ -383,7 +386,9 @@ describe('operations', () => {
   it("merge: a cube's top face at its centre gives a pyramid", async () => {
     await editCube('face');
     await run('mesh.select', { indices: [4] });
-    expect(await run('mesh.merge')).toEqual({ vertices: 5, edges: 8, faces: 5, triangles: 6, elementMode: 'face', selected: 0 });
+    expect(await run('mesh.merge')).toEqual({
+      vertices: 5, edges: 8, faces: 5, triangles: 6, elementMode: 'face', selected: 0, selectionBounds: null,
+    });
     expect(meshProblems(mesh())).toEqual([]);
     expect(positionsOf([0, 1, 2, 3, 4])).toContainEqual([0, 1, 0]);
   });
@@ -411,7 +416,7 @@ describe('operations', () => {
     expect(await run('mesh.merge_by_distance', { distance: 0.01 })).toMatchObject({ removedVertices: 0 });
     await run('mesh.select_none');
     expect(await run('mesh.merge_by_distance', { distance: 0.01 })).toEqual({
-      removedVertices: 4, vertices: 8, edges: 12, faces: 6, triangles: 12, elementMode: 'face', selected: 0,
+      removedVertices: 4, vertices: 8, edges: 12, faces: 6, triangles: 12, elementMode: 'face', selected: 0, selectionBounds: null,
     });
     expect(doc().past).toHaveLength(past + 1);
     expect(meshProblems(mesh())).toEqual([]);
@@ -588,7 +593,7 @@ describe('bevel and loop tools (mocked kernel functions)', () => {
     const before = mesh();
     const result = changed();
     vi.mocked(bevelEdges).mockReturnValue({ mesh: result, faces: [6] });
-    expect(await run('mesh.bevel', { width: 0.25, segments: 3 })).toEqual({
+    expect(await run('mesh.bevel', { width: 0.25, segments: 3 })).toMatchObject({
       vertices: 9, edges: 14, faces: 7, triangles: 13, elementMode: 'edge', selected: 3,
     });
     expect(bevelEdges).toHaveBeenCalledExactlyOnceWith(before, [[6, 7], [2, 3]], 0.25, 3);

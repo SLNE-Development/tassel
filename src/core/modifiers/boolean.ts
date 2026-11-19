@@ -26,6 +26,12 @@ export function manifoldReady(): boolean {
   return lib !== null;
 }
 
+/** The loaded WASM module, for generators that need its 2D cross-sections. Throws until `initManifold()` has resolved. */
+export function manifoldModule(): ManifoldToplevel {
+  if (!lib) throw new Error('The geometry engine is still loading');
+  return lib;
+}
+
 /** Affine matrix, row-major 3x4: [m00 m01 m02 tx, m10 m11 m12 ty, m20 m21 m22 tz]. */
 export type Mat = readonly number[];
 

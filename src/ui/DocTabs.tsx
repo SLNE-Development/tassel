@@ -1,9 +1,50 @@
 import { Plus, X } from 'lucide-react';
-import { memo, useEffect, useRef } from 'react';
+import { memo, useEffect, useRef, useState } from 'react';
+import { agentActivityLeft, useAgentActivity } from '../app/agentActivity';
 import { useApp } from '../app/store';
 import { documentName, useT } from '../i18n';
 import { dispatch, requestCloseDoc, runAction, shortcutLabel } from './actions';
 import { Tip } from './Tip';
+
+/** True from an AI client's tool call against this document until a few seconds after its last one. */
+function useAgentWorking(id: string): boolean {
+  const last = useAgentActivity((s) => s.lastCall[id]);
+  const [working, setWorking] = useState(false);
+  useEffect(() => {
+    const left = agentActivityLeft(last);
+    setWorking(left > 0);
+    if (left <= 0) return;
+    const timer = setTimeout(() => setWorking(false), left);
+    return () => clearTimeout(timer);
+  }, [last]);
+  return working;
+}
+
+/**
+ * Shows that an AI client is working in this document: a small ring around a breathing core, in the
+ * colour of the tab's text so that it stays apart from the accent-coloured "unsaved" dot. It takes its
+ * place only while it shows, and comes and goes softly.
+ */
+function AgentIndicator({ id }: { id: string }) {
+  const t = useT();
+  const working = useAgentWorking(id);
+  return (
+    <Tip label={t.mcp.agentWorking}>
+      <span
+        role="status"
+        data-agent-working={working || undefined}
+        className={`flex h-full shrink-0 items-center justify-center overflow-hidden transition-[width,opacity] duration-500 ease-out ${
+          working ? 'w-4 opacity-100' : 'pointer-events-none w-0 opacity-0'
+        }`}
+      >
+        <span aria-hidden className="flex size-2.5 items-center justify-center rounded-full border border-current opacity-80">
+          <span className={`size-1 rounded-full bg-current ${working ? 'anim-agent' : ''}`} />
+        </span>
+        {working && <span className="sr-only">{t.mcp.agentWorking}</span>}
+      </span>
+    </Tip>
+  );
+}
 
 const DocTab = memo(function DocTab({ id }: { id: string }) {
   const t = useT();
@@ -41,6 +82,7 @@ const DocTab = memo(function DocTab({ id }: { id: string }) {
         <span className="truncate">{name}</span>
         {dirty && <span className="sr-only">{t.topBar.unsaved}</span>}
       </button>
+      <AgentIndicator id={id} />
       <button
         aria-label={t.topBar.closeDocument(name)}
         className={`mr-1 flex size-5 shrink-0 items-center justify-center rounded text-faint hover:bg-line-strong hover:text-text focus-visible:opacity-100 ${

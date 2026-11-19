@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { PolyMesh, Vec3 } from '../types';
 import { boundingBox, edges, faceNormal, polyMeshSchema } from './polymesh';
+import { isClosedManifold, volume } from '../modifiers/testing';
 import { createPrimitive, primitiveTypes, type PrimitiveShape, type PrimitiveType } from './primitives';
 
 const vertexCount = (mesh: PolyMesh) => mesh.positions.length / 3;
@@ -90,11 +91,14 @@ function outwardness(type: PrimitiveType, mesh: PolyMesh, face: readonly number[
   return dot(n, [c[0] - center[0], c[1] - center[1], c[2] - center[2]]);
 }
 
-const closedTypes = primitiveTypes.filter((t) => t !== 'plane');
+// The arc is not star-shaped around the origin; it has its own checks below.
+const closedTypes = primitiveTypes.filter((t) => t !== 'plane' && t !== 'arc');
 
 const variants: [PrimitiveType, Partial<PrimitiveShape>][] = [
   ...closedTypes.map((t): [PrimitiveType, Partial<PrimitiveShape>] => [t, {}]),
   ['cube', { size: 0.5 }],
+  ['cube', { dimensions: [1, 2, 3] }],
+  ['cube', { size: 5, dimensions: [0.1, 4, 0.02] }],
   ['uv_sphere', { radius: 2.5, segments: 3, rings: 2 }],
   ['uv_sphere', { radius: 0.3, segments: 7, rings: 5 }],
   ['uv_sphere', { segments: 64, rings: 32 }],
@@ -136,6 +140,7 @@ describe('default parameters', () => {
     ['cylinder', 64, 34],
     ['cone', 33, 33],
     ['torus', 32 * 12, 32 * 12],
+    ['arc', 33 * 4, 32 * 4 + 2],
   ])('%s has %i vertices and %i faces', (type, vertices, faces) => {
     const mesh = createPrimitive(type);
     expect(vertexCount(mesh)).toBe(vertices);
@@ -192,6 +197,14 @@ describe('extent', () => {
   }
 
   it('cube spans size', () => expectBox(createPrimitive('cube', { size: 3 }), [1.5, 1.5, 1.5]));
+
+  it('cube with dimensions is a box with those edge lengths, whatever the size', () => {
+    const mesh = createPrimitive('cube', { size: 7, dimensions: [1, 2, 0.5] });
+    expect(boundingBox(mesh)).toEqual({ min: [-0.5, -1, -0.25], max: [0.5, 1, 0.25] });
+    expect(mesh.faces).toEqual(createPrimitive('cube').faces);
+    expect(volume(mesh)).toBeCloseTo(1, 12);
+    expect(() => createPrimitive('cube', { dimensions: [1, 0, 1] })).toThrow();
+  });
 
   it('uv_sphere: all vertices on the sphere, box spans the diameter', () => {
     const mesh = createPrimitive('uv_sphere', { radius: 1.5 });
@@ -283,5 +296,101 @@ describe('parameters', () => {
 
   it('implements every declared primitive type', () => {
     for (const type of primitiveTypes) expect(createPrimitive(type).faces.length).toBeGreaterThan(0);
+  });
+});
+
+describe('arc', () => {
+  type ArcShape = Required<Pick<PrimitiveShape, 'innerRadius' | 'outerRadius' | 'height' | 'angle' | 'startAngle' | 'segments'>>;
+  const grid: ArcShape[] = [];
+  for (const innerRadius of [0, 0.25, 1.5]) {
+    for (const angle of [10, 90, 180, 270, 359, 360]) {
+      for (const segments of [3, 4, 16]) {
+        for (const startAngle of [0, 45, -200]) grid.push({ innerRadius, outerRadius: 2, height: 0.5, angle, startAngle, segments });
+      }
+    }
+  }
+
+  describe.each(grid)('%j', (shape) => {
+    const mesh = createPrimitive('arc', shape);
+    const { innerRadius: ri, outerRadius: ro, height, angle, segments } = shape;
+
+    it('is a closed manifold without degenerate faces, duplicate or unused vertices', () => {
+      expectValidFaces(mesh);
+      expectNoDuplicateVertices(mesh);
+      expectClosedManifold(mesh);
+      expect(isClosedManifold(mesh)).toBe(true);
+      // A closed ring with a hole is a torus; everything else is a ball.
+      expect(eulerCharacteristic(mesh)).toBe(angle === 360 && ri > 0 ? 0 : 2);
+    });
+
+    it('faces outward: every face is horizontal or vertical and the volume is the positive volume of the prism', () => {
+      for (const face of mesh.faces) {
+        const n = faceNormal(mesh, face);
+        expect(Math.abs(n[1]) < 1e-9 || Math.abs(Math.abs(n[1]) - 1) < 1e-9).toBe(true);
+        // Top faces are the ones above the middle, and they face up.
+        if (Math.abs(n[1]) > 0.5) expect(n[1] * centroid(mesh, face)[1]).toBeGreaterThan(0);
+      }
+      const step = ((angle / segments) * Math.PI) / 180;
+      expect(volume(mesh)).toBeCloseTo(segments * 0.5 * (ro * ro - ri * ri) * Math.sin(step) * height, 9);
+    });
+
+    it('has every vertex on the inner or outer radius (or the axis), at half the height above or below the origin', () => {
+      for (let i = 0; i < mesh.positions.length; i += 3) {
+        const r = Math.hypot(mesh.positions[i], mesh.positions[i + 2]);
+        expect(Math.min(Math.abs(r - ri), Math.abs(r - ro))).toBeLessThan(1e-12);
+        expect(Math.abs(mesh.positions[i + 1])).toBe(height / 2);
+      }
+    });
+
+    it('has quads everywhere, except for the triangle fans of a pie slice', () => {
+      const sizes = mesh.faces.map((f) => f.length);
+      expect(sizes.filter((n) => n === 3)).toHaveLength(ri === 0 ? 2 * segments : 0);
+      expect(sizes.filter((n) => n === 4)).toHaveLength((ri === 0 ? segments : 4 * segments) + (angle === 360 ? 0 : 2));
+      expect(vertexCount(mesh)).toBe((angle === 360 ? segments : segments + 1) * (ri === 0 ? 2 : 4) + (ri === 0 ? 2 : 0));
+    });
+  });
+
+  const box = (shape: Partial<PrimitiveShape>) => {
+    const b = boundingBox(createPrimitive('arc', { innerRadius: 1, outerRadius: 2, height: 0.5, segments: 12, ...shape }))!;
+    return [...b.min, ...b.max].map((v) => Math.round(v * 1e12) / 1e12 + 0);
+  };
+
+  it('starts at +X and turns counter-clockwise seen from above, towards -Z', () => {
+    expect(box({ angle: 90 })).toEqual([0, -0.25, -2, 2, 0.25, 0]);
+    expect(box({ angle: 180 })).toEqual([-2, -0.25, -2, 2, 0.25, 0]);
+    expect(box({ angle: 270 })).toEqual([-2, -0.25, -2, 2, 0.25, 2]);
+    expect(box({ angle: 360 })).toEqual([-2, -0.25, -2, 2, 0.25, 2]);
+    expect(box({ angle: 90, startAngle: 90 })).toEqual([-2, -0.25, -2, 0, 0.25, 0]);
+    expect(box({ angle: 90, startAngle: 180 })).toEqual([-2, -0.25, 0, 0, 0.25, 2]);
+    expect(box({ angle: 90, startAngle: -90 })).toEqual([0, -0.25, 0, 2, 0.25, 2]);
+    expect(box({ angle: 90, innerRadius: 0 })).toEqual([0, -0.25, -2, 2, 0.25, 0]);
+    expect(box({ angle: 90, innerRadius: 0, height: 3 })).toEqual([0, -1.5, -2, 2, 1.5, 0]);
+  });
+
+  it('has its end caps exactly in the planes of the start and end angle', () => {
+    const mesh = createPrimitive('arc', { innerRadius: 1, outerRadius: 2, height: 1, angle: 90, segments: 5 });
+    const [start, end] = mesh.faces.slice(-2);
+    for (const v of start) expect(mesh.positions[v * 3 + 2]).toBe(0);
+    for (const v of end) expect(Math.abs(mesh.positions[v * 3])).toBeLessThan(1e-12);
+    // The cap at the start looks back along the arc (towards +Z), the one at the end forward (towards -X).
+    expect(faceNormal(mesh, start)[2]).toBeCloseTo(1, 12);
+    expect(faceNormal(mesh, end)[0]).toBeCloseTo(-1, 12);
+  });
+
+  it('a full pie slice is a cylinder with fan caps', () => {
+    const mesh = createPrimitive('arc', { innerRadius: 0, outerRadius: 1, height: 2, angle: 360, segments: 16 });
+    const cylinder = createPrimitive('cylinder', { segments: 16 });
+    expect(volume(mesh)).toBeCloseTo(volume(cylinder), 12);
+    expect(boundingBox(mesh)).toEqual(boundingBox(cylinder));
+  });
+
+  it('rejects impossible shapes', () => {
+    expect(() => createPrimitive('arc', { innerRadius: 1, outerRadius: 1 })).toThrow(/smaller than outerRadius/);
+    expect(() => createPrimitive('arc', { innerRadius: 2, outerRadius: 1 })).toThrow(/smaller than outerRadius/);
+    expect(() => createPrimitive('arc', { innerRadius: -0.1 })).toThrow();
+    expect(() => createPrimitive('arc', { angle: 0 })).toThrow();
+    expect(() => createPrimitive('arc', { angle: 360.5 })).toThrow();
+    expect(() => createPrimitive('arc', { segments: 2 })).toThrow();
+    expect(() => createPrimitive('arc', { startAngle: Infinity })).toThrow();
   });
 });

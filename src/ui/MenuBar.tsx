@@ -1,5 +1,6 @@
 import { Menu } from '@base-ui/react/menu';
 import { Menubar } from '@base-ui/react/menubar';
+import { Type } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { selectActiveDoc, useApp } from '../app/store';
 import { primitiveTypes } from '../core/mesh/primitives';
@@ -8,6 +9,7 @@ import { useT } from '../i18n';
 import { shortcutLabel } from './actions';
 import { groupToUngroup } from './groupActions';
 import { meshToolIcons, primitiveIcons } from './labels';
+import { TimelineItems } from './timeline/TimelineMenu';
 import { UvMenuItems } from './uv/UvMenu';
 import { ActionItem, MenuLabel, MenuPopup, MenuSeparator, RadioActionItem, Submenu } from './menu';
 
@@ -150,6 +152,8 @@ function ViewItems() {
       <MenuSeparator />
       <ActionItem id="view.frame" />
       <MenuSeparator />
+      <TimelineItems />
+      <MenuSeparator />
       <ActionItem id="palette.open" title={t.menu.palette} />
     </>
   );
@@ -162,6 +166,8 @@ export function AddItems() {
       {primitiveTypes.map((type) => (
         <ActionItem key={type} id={`add.${type}`} title={t.primitives[type]} icon={primitiveIcons[type]} />
       ))}
+      <MenuSeparator />
+      <ActionItem id="add.text" title={t.shapes.text} icon={Type} />
     </>
   );
 }
@@ -184,6 +190,8 @@ export function MenuBar() {
             <ActionItem key={format} id={`file.export_${format}`} title={t.files.menu[format]} />
           ))}
         </Submenu>
+        <ActionItem id="render.open" />
+        <ActionItem id="video.export" />
         <MenuSeparator />
         <ActionItem id="preferences.open" />
         <MenuSeparator />

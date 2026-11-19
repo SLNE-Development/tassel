@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { resolveMaterialId } from '../refs';
 import { MAX_TEXTURE_BASE64, MAX_TEXTURE_SIZE, textureBytes, textureDataProblem, textureSizeProblem, textureUsers } from '../materials';
 import { newId, own, uniqueName } from '../state';
 import { textureMimeTypes, textureSlots } from '../types';
@@ -126,13 +127,14 @@ export const textureCommands = [
       strength: z.number().min(0).max(100).default(2),
       invert: z.boolean().default(false),
       name: z.string().min(1).optional().describe('Default: "<source name> normal"'),
-      materialId: z.string().optional(),
+      materialId: z.string().optional().describe('Material id or name.'),
     }),
     async run(ctx, p) {
       if (!ctx.services.imaging) throw new Error('The imaging service is not ready yet');
       const source = requirePaintable(docState(ctx), p.sourceId);
       const requireMaterial = () => {
-        if (p.materialId !== undefined && !own(docState(ctx).materials, p.materialId)) throw new Error(`Material "${p.materialId}" does not exist`);
+        // Accepts a material name; from here on p.materialId is the id.
+        if (p.materialId !== undefined) p.materialId = resolveMaterialId(docState(ctx), p.materialId);
       };
       requireMaterial();
       const data = await ctx.services.imaging.normalFromHeight(source, p.strength, p.invert);

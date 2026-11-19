@@ -3,6 +3,7 @@ import { parseProject, serializeProject } from '../project';
 import { DEFAULT_DOC_NAME, activeDoc, addDoc, createDoc, own, uniqueName, withDoc } from '../state';
 import type { AppState, Doc } from '../types';
 import { defineCommand, type CommandContext } from './registry';
+import { DOCUMENT_ID_HINT } from './targeting';
 
 function requireDoc(app: AppState, id: string | undefined): Doc {
   const doc = own(app.docs, id ?? app.activeDocId);
@@ -25,10 +26,21 @@ function docSummary(app: AppState, doc: Doc) {
   };
 }
 
-function open(ctx: CommandContext, doc: Doc) {
-  ctx.set((app) => addDoc(app, doc));
-  return { id: doc.id, name: doc.name };
+/** Adds the document as a new tab; `activate: false` leaves the visible tab as it is. */
+function open(ctx: CommandContext, doc: Doc, activate: boolean) {
+  ctx.set((app) => {
+    const next = addDoc(app, doc);
+    return activate ? next : { ...next, activeDocId: app.activeDocId };
+  });
+  return { id: doc.id, name: doc.name, active: activate };
 }
+
+const activateParam = z
+  .boolean()
+  .default(true)
+  .describe(
+    'true: switch the visible tab to the new document. false: add it as a tab in the background and leave the user where they are - then pass the returned id as "documentId" to every tool that should work in it.',
+  );
 
 const docIdParam = z.string().optional().describe('Document id. Defaults to the active document.');
 
@@ -36,17 +48,18 @@ export const documentCommands = [
   defineCommand({
     id: 'document.new',
     title: 'Neues Modell',
-    description: 'Create a new empty document (model) in a new tab and switch to it. Returns the document id.',
-    params: z.object({ name: z.string().min(1).default(DEFAULT_DOC_NAME) }),
+    description:
+      'Create a new empty document (model) in a new tab. Returns { id, name, active }: id is the document id, to be used as "documentId" of other tools. By default the visible tab switches to it; with activate: false it is created in the background, so that you do not pull the user away from what they are looking at - you can still build in it and take screenshots of it by passing its id as documentId on every call.',
+    params: z.object({ name: z.string().min(1).default(DEFAULT_DOC_NAME), activate: activateParam }),
     run(ctx, p) {
-      return open(ctx, createDoc(uniqueName(docNames(ctx.get()), p.name)));
+      return open(ctx, createDoc(uniqueName(docNames(ctx.get()), p.name)), p.activate);
     },
   }),
 
   defineCommand({
     id: 'document.list',
     title: 'Dokumente auflisten',
-    description: 'List all open documents (tabs) and which one is active.',
+    description: `List all open documents (tabs) in tab order: id, name, filePath (null if never saved), dirty (has unsaved changes), active (the visible tab) and objectCount (the number of scene objects in the document; groups, materials and textures are not counted). Use an id from here as "documentId" of other tools. ${DOCUMENT_ID_HINT}`,
     params: z.object({}),
     run(ctx) {
       const app = ctx.get();
@@ -57,7 +70,8 @@ export const documentCommands = [
   defineCommand({
     id: 'document.switch',
     title: 'Dokument wechseln',
-    description: 'Switch to another open document tab.',
+    description:
+      'Switch the visible tab to another open document. This changes what the user is looking at; to work in a document without that, leave the tab alone and pass its id as "documentId" to the other tools.',
     params: z.object({ id: z.string() }),
     run(ctx, p) {
       const doc = requireDoc(ctx.get(), p.id);
@@ -116,11 +130,11 @@ export const documentCommands = [
     id: 'document.load',
     title: 'Dokument laden',
     description:
-      'Open Tessel project JSON text as a new document tab. Usually you want the file_open tool instead, which reads a file from disk.',
-    params: z.object({ json: z.string(), name: z.string().min(1).optional(), filePath: z.string().optional() }),
+      'Open Tessel project JSON text as a new document tab. Usually you want the file_open tool instead, which reads a file from disk. Returns { id, name, active }; with activate: false the tab opens in the background and the visible tab stays (use the id as "documentId").',
+    params: z.object({ json: z.string(), name: z.string().min(1).optional(), filePath: z.string().optional(), activate: activateParam }),
     run(ctx, p) {
       const project = parseProject(p.json);
-      return open(ctx, createDoc(p.name ?? project.name, project.state, p.filePath ?? null));
+      return open(ctx, createDoc(p.name ?? project.name, project.state, p.filePath ?? null), p.activate);
     },
   }),
 

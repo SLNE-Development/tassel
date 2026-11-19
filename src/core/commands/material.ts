@@ -1,19 +1,17 @@
 import { z } from 'zod';
 import { defaultMaterial, materialFields } from '../materials';
+import { REFS_HINT, resolveMaterialId, resolveObjectIds } from '../refs';
 import { newId, own, uniqueName } from '../state';
 import { textureSlots } from '../types';
 import type { DocState, Material, TextureSlot } from '../types';
 import { defineCommand, docState, updateDocState } from './registry';
 
-function requireMaterial(state: DocState, id: string): Material {
-  const material = own(state.materials, id);
-  if (!material) throw new Error(`Material "${id}" does not exist`);
-  return material;
+/** The material for an id or a name (exact, or a glob that matches exactly one material). */
+function requireMaterial(state: DocState, ref: string): Material {
+  return state.materials[resolveMaterialId(state, ref)];
 }
 
-function requireObjects(state: DocState, ids: readonly string[]): void {
-  for (const id of ids) if (!own(state.objects, id)) throw new Error(`Object "${id}" does not exist`);
-}
+const materialRef = z.string().describe('Material id, exact material name, or a glob pattern that matches exactly one material.');
 
 function materialNames(state: DocState, exceptId?: string): string[] {
   return Object.values(state.materials)
@@ -55,12 +53,12 @@ export const materialCommands = [
     params: z.object({
       name: z.string().min(1).default('Material'),
       ...optionalFields,
-      assignTo: z.array(z.string()).optional().describe('Object ids that get the new material.'),
+      assignTo: z.array(z.string()).optional().describe(`Objects that get the new material: ${REFS_HINT}.`),
     }),
     run(ctx, p) {
-      const { name, assignTo = [], ...fields } = p;
+      const { name, assignTo: assignRefs = [], ...fields } = p;
       const state = docState(ctx);
-      requireObjects(state, assignTo);
+      const assignTo = resolveObjectIds(state, assignRefs);
       const given = Object.fromEntries(Object.entries(fields).filter(([, value]) => value !== undefined));
       const material: Material = { id: newId(), name: uniqueName(materialNames(state), name), ...defaultMaterial, ...given };
       updateDocState(ctx, (s) => ({ ...assign(s, assignTo, material.id), materials: { ...s.materials, [material.id]: material } }));
@@ -73,11 +71,12 @@ export const materialCommands = [
     title: 'Material ändern',
     description:
       'Change a material; omitted fields stay as they are. maps sets or clears (null) the texture of individual slots: baseColor, normal, roughness, metallic, emissive, occlusion. Textures are only visible on objects that have UVs (see uv.unwrap). Scalar maps (roughness, metallic, occlusion) are read from the image luminance and multiplied with the scalar value. Returns the updated material.',
-    params: z.object({ id: z.string(), name: z.string().min(1).optional(), ...optionalFields, maps: mapsParam }),
+    params: z.object({ id: materialRef, name: z.string().min(1).optional(), ...optionalFields, maps: mapsParam }),
     run(ctx, p) {
-      const { id, name, maps: mapChanges, ...fields } = p;
+      const { id: ref, name, maps: mapChanges, ...fields } = p;
       const state = docState(ctx);
-      const current = requireMaterial(state, id);
+      const current = requireMaterial(state, ref);
+      const id = current.id;
       const maps: Partial<Record<TextureSlot, string>> = { ...current.maps };
       for (const slot of textureSlots) {
         const textureId = mapChanges?.[slot];
@@ -103,10 +102,10 @@ export const materialCommands = [
     title: 'Material löschen',
     description:
       'Delete a material. Objects that used it fall back to no material (the default clay look); its textures stay in the document. Returns the ids of the objects that lost it.',
-    params: z.object({ id: z.string() }),
+    params: z.object({ id: materialRef }),
     run(ctx, p) {
       const state = docState(ctx);
-      requireMaterial(state, p.id);
+      p.id = requireMaterial(state, p.id).id;
       const users = state.order.filter((id) => state.objects[id].materialId === p.id);
       updateDocState(ctx, (s) => {
         const materials = { ...s.materials };
@@ -122,7 +121,7 @@ export const materialCommands = [
     title: 'Material duplizieren',
     description:
       'Copy a material with all its values and texture maps (the textures themselves are shared, not copied). The copy is not assigned to any object. Returns the new material id.',
-    params: z.object({ id: z.string() }),
+    params: z.object({ id: materialRef }),
     run(ctx, p) {
       const state = docState(ctx);
       const source = requireMaterial(state, p.id);
@@ -138,17 +137,38 @@ export const materialCommands = [
     description:
       'Give objects (defaults to the current selection) a material, or remove their material with materialId null. An object has exactly one material or none.',
     params: z.object({
-      materialId: z.string().nullable().describe('Material id, or null for no material.'),
-      ids: z.array(z.string()).optional().describe('Object ids. Defaults to the current selection.'),
+      materialId: z.string().nullable().describe('Material id or name, or null for no material.'),
+      ids: z.array(z.string()).optional().describe(`Objects: ${REFS_HINT}. Defaults to the current selection.`),
     }),
     run(ctx, p) {
       const state = docState(ctx);
-      if (p.materialId !== null) requireMaterial(state, p.materialId);
-      const ids = p.ids ?? state.selection;
+      const materialId = p.materialId === null ? null : requireMaterial(state, p.materialId).id;
+      const ids = p.ids ? resolveObjectIds(state, p.ids) : state.selection;
       if (ids.length === 0) throw new Error('No objects given and nothing is selected');
-      requireObjects(state, ids);
-      updateDocState(ctx, (s) => assign(s, ids, p.materialId));
-      return { materialId: p.materialId, ids: [...new Set(ids)] };
+      updateDocState(ctx, (s) => assign(s, ids, materialId));
+      return { materialId, ids: [...new Set(ids)] };
+    },
+  }),
+
+  defineCommand({
+    id: 'material.replace',
+    title: 'Material ersetzen',
+    description:
+      'Replace one material by another on all objects that use it, in one undo step: every object whose material is "from" gets "to" instead. from and to are material ids or names; from null means "objects without a material", to null removes the material (default clay look). With ids only those objects are considered (they keep their material unless it is "from"). The material "from" itself is not deleted (see material.delete). The selection does not change. Returns { from, to } as material ids and "ids": the objects that were changed, in outliner order (empty if no object used "from").',
+    params: z.object({
+      from: z.string().nullable().describe('The material to replace: id or name; null = objects that have no material.'),
+      to: z.string().nullable().describe('The material they get instead: id or name; null = no material.'),
+      ids: z.array(z.string()).optional().describe(`Limit the replacement to these objects: ${REFS_HINT}. Default: all objects of the document.`),
+    }),
+    run(ctx, p) {
+      const state = docState(ctx);
+      const from = p.from === null ? null : requireMaterial(state, p.from).id;
+      const to = p.to === null ? null : requireMaterial(state, p.to).id;
+      if (from === to) throw new Error('from and to are the same material; nothing to replace');
+      const scope = p.ids ? new Set(resolveObjectIds(state, p.ids)) : null;
+      const ids = state.order.filter((id) => state.objects[id].materialId === from && (!scope || scope.has(id)));
+      if (ids.length > 0) updateDocState(ctx, (s) => assign(s, ids, to));
+      return { from, to, ids };
     },
   }),
 

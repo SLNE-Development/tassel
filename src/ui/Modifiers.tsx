@@ -100,6 +100,43 @@ function Params({ objectId, modifier }: { objectId: string; modifier: Modifier }
               ))}
             </div>
           </div>
+          <Row title={t.offsetSpace}>
+            <Segmented
+              label={t.offsetSpace}
+              value={modifier.offsetSpace ?? 'local'}
+              options={(['local', 'world'] as const).map((space) => ({ value: space, title: t.offsetSpaces[space] }))}
+              onChange={(offsetSpace) => update({ offsetSpace })}
+            />
+          </Row>
+          {(
+            [
+              ['rotation', t.rotation, '°', 1],
+              ['pivot', t.pivot, 'm', 0.01],
+            ] as const
+          ).map(([key, title, unit, step]) => {
+            const value = modifier[key] ?? [0, 0, 0];
+            return (
+              <div key={key} role="group" aria-label={title}>
+                <div className="mb-1 flex items-baseline gap-1.5 text-[calc(12px*var(--font-scale))]">
+                  <span className="text-dim">{title}</span>
+                  <span className="text-faint">{unit}</span>
+                </div>
+                <div className="grid grid-cols-3 gap-1">
+                  {axes.map((axis, i) => (
+                    <ScrubField
+                      key={axis.key}
+                      label={axis.label}
+                      ariaLabel={`${title} ${axis.label}`}
+                      color={axis.color}
+                      value={value[i]}
+                      step={step}
+                      {...scrub((v) => ({ [key]: value.map((old, j) => (j === i ? v : old)) }))}
+                    />
+                  ))}
+                </div>
+              </div>
+            );
+          })}
         </>
       );
     case 'boolean': {

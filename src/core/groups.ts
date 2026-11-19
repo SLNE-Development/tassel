@@ -56,3 +56,18 @@ export function repairGroups(
   }
   return { objects: fixedObjects, groups: fixedGroups };
 }
+
+/**
+ * A group as commands report it: its direct members in display order. `id` null describes the top
+ * level (objects and groups that are in no group).
+ */
+export function groupSummary(state: DocState, id: string | null) {
+  const group = id === null ? null : state.groups[id];
+  return {
+    id,
+    name: group ? group.name : null,
+    parentId: group ? group.parentId : null,
+    objectIds: state.order.filter((objectId) => state.objects[objectId].groupId === id),
+    childGroupIds: state.groupOrder.filter((groupId) => state.groups[groupId].parentId === id),
+  };
+}

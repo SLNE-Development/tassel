@@ -1,6 +1,9 @@
+import { animCommands } from './anim';
+import { animPoseCommands } from './animPose';
 import { bakeCommands } from './bake';
 import { documentCommands } from './document';
 import { fileCommands } from './files';
+import { fontCommands } from './font';
 import { groupCommands } from './group';
 import { materialCommands } from './material';
 import { meshCommands } from './mesh';
@@ -8,9 +11,14 @@ import { modifierCommands } from './modifier';
 import { paintCommands } from './paint';
 import { preferencesCommands } from './preferences';
 import type { AnyCommand } from './registry';
+import { renderCommands } from './render';
 import { sceneCommands } from './scene';
+import { sceneOpsCommands } from './sceneOps';
+import { shapeCommands } from './shapes';
 import { textureCommands } from './texture';
 import { uvCommands } from './uv';
+import { createValidateCommands } from './validate';
+import { videoCommands } from './video';
 import { viewCommands } from './view';
 
 export const commands: readonly AnyCommand[] = [
@@ -18,6 +26,9 @@ export const commands: readonly AnyCommand[] = [
   ...documentCommands,
   ...fileCommands,
   ...sceneCommands,
+  ...sceneOpsCommands,
+  ...shapeCommands,
+  ...fontCommands,
   ...groupCommands,
   ...materialCommands,
   ...textureCommands,
@@ -27,6 +38,11 @@ export const commands: readonly AnyCommand[] = [
   ...modifierCommands,
   ...preferencesCommands,
   ...bakeCommands,
+  ...renderCommands,
+  ...animCommands,
+  ...animPoseCommands,
+  ...videoCommands,
+  ...createValidateCommands(() => commands),
 ];
 
 export const commandsById: ReadonlyMap<string, AnyCommand> = new Map(commands.map((c) => [c.id, c]));

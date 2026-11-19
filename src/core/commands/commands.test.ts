@@ -39,7 +39,12 @@ beforeEach(() => {
 describe('scene.add_primitive', () => {
   it('adds, selects and names the object', async () => {
     const result = await run('scene.add_primitive', { type: 'cube', position: [1, 2, 3] });
-    expect(result).toEqual({ id: expect.any(String), name: 'Würfel' });
+    expect(result).toEqual({
+      id: expect.any(String),
+      name: 'Würfel',
+      transform: { position: [1, 2, 3], rotation: [0, 0, 0], scale: [1, 1, 1] },
+      bounds: { min: [0, 1, 2], max: [2, 3, 4], center: [1, 2, 3], size: [2, 2, 2] },
+    });
     const s = state();
     expect(s.order).toEqual([result.id]);
     expect(s.selection).toEqual([result.id]);

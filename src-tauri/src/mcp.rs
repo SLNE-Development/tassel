@@ -28,12 +28,33 @@ const PATH: &str = "/mcp";
 const INSTRUCTIONS: &str = "Tessel is a desktop 3D editor for polygon modeling; this server controls the running editor \
 window, so the user sees every change you make live. Start with app_get_state to learn which documents are open, \
 what is selected and where the camera is. Every editor action is a tool (scene_*, mesh_*, uv_*, material_*, \
-texture_*, group_*, modifier_*, view_*, document_*, history_*), and each change is one undo step. Conventions: Y is \
-up, units are meters, rotations are Euler XYZ in degrees. Call view_screenshot to see the result of your work. \
+texture_*, group_*, modifier_*, view_*, document_*, history_*), and each change is one undo step. \
+Conventions: Y is up, units are meters, rotations are Euler XYZ in degrees. View presets are named after where \
+the camera stands: front = camera on +Z looking towards -Z, back = on -Z, right = on +X, left = on -X, top = on +Y \
+looking down, bottom = on -Y. Call view_screenshot to see the result of your work. \
+Use render_image for presentation-quality pictures (path traced, takes seconds to minutes) and view_screenshot \
+for quick checks. \
+Building anything bigger than a few objects: do NOT call tools one by one. Write a script that generates a JSON \
+file with all commands [{ \"tool\", \"params\", \"as\" }, ...] and run it with batch { \"file\": \"<absolute path>.json\" } \
+(hundreds of commands per second, nothing travels through the conversation). Inside a batch, label a command with \
+\"as\": \"name\" and use \"$name\" (its result's id), \"$name.field.0.id\", \"$<index>\" or \"$prev\" in the params of \
+later commands instead of copying ids. For big files run batch with validateOnly: true first; resultMode \"ids\" or \
+\"summary\" keeps the answer small; end the batch with view_screenshot to get a picture back. \
+Wherever a tool takes an object, group or material id you can also pass its name, or for objects a glob such as \
+\"Leg*\" (* and ?, case-sensitive); a single-object parameter must match exactly one. \
+The user can switch tabs at any time. To keep working on your model regardless of what the user looks at, take \
+your document's id once (from document_new, file_open, document_list or app_get_state) and pass it as documentId \
+on every call, including view_screenshot and batch: the call then runs against that open document without \
+switching the visible tab, view_screenshot renders it off-screen, and the view_* camera tools move its own \
+remembered camera, not the user's. Use activate: false when creating or opening a document (document_new, \
+file_open) so you do not pull the user away from what they are looking at. Calls without documentId act on \
+whatever tab is visible at that moment. Only view_set_tool and view_set_shading, which change what the user \
+sees, refuse a document in the background (view_screenshot has its own shading option). \
 Files (absolute paths): file_save / file_open for .tessel project files; file_export writes .glb, .gltf, .obj \
 (+ .mtl and textures), .stl, .ply or .usdz; file_import reads .glb, .gltf, .obj, .stl, .ply or .fbx models and \
-.png / .jpg / .webp images as textures. Prefer these file tools over export_file / import_file / texture_get, \
-which pass whole files through the conversation. Use batch to run several tool calls in one request.";
+.png / .jpg / .webp images as textures; scene_place_model puts a model file (also a .tessel project) into the \
+scene as one group at a position; material_import copies materials from another .tessel project. Prefer these \
+file tools over export_file / import_file / texture_get, which pass whole files through the conversation.";
 
 pub fn url() -> String {
   format!("http://127.0.0.1:{PORT}{PATH}")
@@ -240,29 +261,22 @@ impl ServerHandler for TesselServer {
     _context: RequestContext<RoleServer>,
   ) -> Result<CallToolResponse, ErrorData> {
     let args = Value::Object(request.arguments.unwrap_or_default());
-    let output = tools::call(&self.bridge, &request.name, args).await;
+    let output = tools::call(self.bridge.as_ref(), &request.name, args).await;
     Ok(to_result(output).into())
   }
 }
 
 /// Tool output → MCP content. `{ image: { mimeType, base64 }, ... }` becomes image content, with any
-/// remaining fields as text; inside a batch the image is replaced by a note so the JSON stays small.
+/// remaining fields as text; a batch brings the images of its calls along separately.
 fn to_result(output: ToolOutput) -> CallToolResult {
-  let ToolOutput { mut value, is_error } = output;
-  let mut images = Vec::new();
+  let ToolOutput { mut value, is_error, mut images } = output;
 
-  if let Some(image) = take_image(&mut value) {
+  if images.is_empty()
+    && let Some(image) = tools::take_image(&mut value)
+  {
     images.push(image);
     if value.as_object().is_some_and(|rest| rest.is_empty()) {
       value = Value::Null;
-    }
-  } else if let Some(results) = value.get_mut("results").and_then(Value::as_array_mut) {
-    for entry in results {
-      let Some(result) = entry.get_mut("result") else { continue };
-      if let Some(image) = take_image(result) {
-        images.push(image);
-        result["image"] = json!(format!("returned as image content #{}", images.len()));
-      }
     }
   }
 
@@ -280,19 +294,34 @@ fn to_result(output: ToolOutput) -> CallToolResult {
   if is_error { CallToolResult::error(content) } else { CallToolResult::success(content) }
 }
 
-/// Removes and returns `(base64, mimeType)` if `value` is an object with a well-formed `image` field.
-fn take_image(value: &mut Value) -> Option<(String, String)> {
-  let object = value.as_object_mut()?;
-  let image = object.get("image")?;
-  let base64 = image.get("base64")?.as_str()?.to_string();
-  let mime_type = image.get("mimeType")?.as_str()?.to_string();
-  object.remove("image");
-  Some((base64, mime_type))
-}
-
 #[cfg(test)]
 mod tests {
-  use super::is_local_origin;
+  use serde_json::json;
+
+  use super::{is_local_origin, to_result};
+  use crate::tools::ToolOutput;
+
+  #[test]
+  fn images_become_image_content() {
+    let image = |data: &str| (data.to_string(), "image/png".to_string());
+    // A single screenshot: only the image.
+    let single = ToolOutput { value: json!({ "image": { "mimeType": "image/png", "base64": "AAAA" } }), is_error: false, images: vec![] };
+    let result = serde_json::to_value(to_result(single)).unwrap();
+    assert_eq!(result["content"].as_array().unwrap().len(), 1);
+    assert_eq!(result["content"][0]["type"], "image");
+    assert_eq!(result["content"][0]["data"], "AAAA");
+    // A batch: its JSON as text, then the images in order.
+    let batch = ToolOutput { value: json!({ "completed": 2 }), is_error: true, images: vec![image("AAAA"), image("BBBB")] };
+    let result = serde_json::to_value(to_result(batch)).unwrap();
+    let content = result["content"].as_array().unwrap();
+    assert_eq!(content.len(), 3);
+    assert_eq!(content[0]["type"], "text");
+    assert_eq!(content[0]["text"], "{\"completed\":2}");
+    assert_eq!(content[2]["data"], "BBBB");
+    assert_eq!(result["isError"], true);
+    let nothing = serde_json::to_value(to_result(ToolOutput { value: json!(null), is_error: false, images: vec![] })).unwrap();
+    assert_eq!(nothing["content"][0]["text"], "null");
+  }
 
   #[test]
   fn origins() {

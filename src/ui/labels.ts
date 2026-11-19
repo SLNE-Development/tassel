@@ -21,6 +21,7 @@ import {
   Grid3x3,
   Hexagon,
   MousePointer2,
+  Rainbow,
   Move3d,
   Rotate3d,
   Scale3d,
@@ -42,6 +43,7 @@ export const primitiveIcons: Record<PrimitiveType, LucideIcon> = {
   cylinder: Cylinder,
   cone: Cone,
   torus: Torus,
+  arc: Rainbow,
 };
 
 export const toolIcons: Record<Tool, LucideIcon> = {

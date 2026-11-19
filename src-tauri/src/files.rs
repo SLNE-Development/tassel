@@ -53,22 +53,47 @@ pub const MAX_IMPORT_BYTES: u64 = 192 * 1024 * 1024;
 
 /// Reads a file for import, refusing files above the import limit before loading them.
 pub async fn read_bytes_limited(path: &str) -> Result<Vec<u8>, String> {
+  read_bytes_capped(path, MAX_IMPORT_BYTES, "import").await
+}
+
+/// Reads a file of at most `max` bytes; the size is checked before anything is loaded.
+pub async fn read_bytes_capped(path: &str, max: u64, purpose: &str) -> Result<Vec<u8>, String> {
   let meta = tokio::fs::metadata(path)
     .await
     .map_err(|e| format!("Could not read \"{path}\": {e}"))?;
   if !meta.is_file() {
     return Err(format!("\"{path}\" is not a file"));
   }
-  if meta.len() > MAX_IMPORT_BYTES {
+  if meta.len() > max {
+    const MB: f64 = 1024.0 * 1024.0;
     return Err(format!(
-      "\"{path}\" is too large to import: {} MB, the limit is {} MB.",
-      meta.len() / (1024 * 1024),
-      MAX_IMPORT_BYTES / (1024 * 1024)
+      "\"{path}\" is too large to {purpose}: {:.1} MB, the limit is {} MB.",
+      meta.len() as f64 / MB,
+      max / (1024 * 1024)
     ));
   }
   tokio::fs::read(path)
     .await
     .map_err(|e| format!("Could not read \"{path}\": {e}"))
+}
+
+/// Text of a file an AI client or a script wrote: UTF-8 with or without a byte order mark, or
+/// UTF-16 with one (what Windows PowerShell 5 writes by default).
+pub fn decode_text(bytes: &[u8]) -> Result<String, String> {
+  let utf16 = |bytes: &[u8], unit: fn([u8; 2]) -> u16| {
+    let (pairs, rest) = bytes.as_chunks::<2>();
+    if !rest.is_empty() {
+      return Err("it is not valid UTF-16 text".to_string());
+    }
+    let units: Vec<u16> = pairs.iter().map(|pair| unit(*pair)).collect();
+    String::from_utf16(&units).map_err(|_| "it is not valid UTF-16 text".to_string())
+  };
+  match bytes {
+    [0xef, 0xbb, 0xbf, rest @ ..] => std::str::from_utf8(rest).map(str::to_string).map_err(|_| "it is not valid UTF-8 text".into()),
+    [0xff, 0xfe, rest @ ..] => utf16(rest, u16::from_le_bytes),
+    [0xfe, 0xff, rest @ ..] => utf16(rest, u16::from_be_bytes),
+    _ => std::str::from_utf8(bytes).map(str::to_string).map_err(|_| "it is not valid UTF-8 text".into()),
+  }
 }
 
 /// A file name that came from the document (or from the webview) as a plain name inside one folder:

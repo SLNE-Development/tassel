@@ -218,9 +218,22 @@ label[for],
   animation: toast-in 160ms ease-out;
 }
 
+/* An AI client is working in this document (DocTabs): a slow breath, not a blink. */
+@keyframes agent-breathe {
+  50% {
+    opacity: 0.35;
+    transform: scale(0.7);
+  }
+}
+
+.anim-agent {
+  animation: agent-breathe 1.8s ease-in-out infinite;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .anim-pop,
-  .anim-toast {
+  .anim-toast,
+  .anim-agent {
     animation: none;
   }
 }

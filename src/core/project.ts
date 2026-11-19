@@ -1,9 +1,11 @@
 import { z } from 'zod';
+import { animationSchema, repairAnimation } from './animation';
 import { polyMeshSchema } from './mesh/polymesh';
 import { modifierSchema } from './modifiers/schema';
 import { repairGroups } from './groups';
 import { base64ImageSize } from './imageInfo';
 import { MAX_TEXTURE_SIZE, materialFields, repairMaterials, textureDataProblem, textureSizeProblem } from './materials';
+import { parseRenderSettings } from './render';
 import { newId } from './state';
 import { blendModes, textureMimeTypes, textureSlots } from './types';
 import type { Doc, DocState, Group, Material, SceneObject, Texture } from './types';
@@ -99,6 +101,10 @@ const projectSchema = z.object({
   // Files written before materials existed have neither.
   materials: z.array(materialSchema).default([]),
   textures: z.array(textureSchema).default([]),
+  // Render settings (core/render.ts), read leniently field by field. Files written before rendering existed have none.
+  render: z.unknown().optional(),
+  // Keyframe animation (core/animation.ts). Files written before animation existed, and documents without one, have none.
+  animation: animationSchema.optional(),
 });
 
 export const PROJECT_EXTENSION = 'tessel';
@@ -112,6 +118,9 @@ export function serializeProject(doc: Doc): string {
     groups: doc.state.groupOrder.map((id) => doc.state.groups[id]),
     materials: Object.values(doc.state.materials),
     textures: Object.values(doc.state.textures),
+    // Only documents whose render settings were changed carry them.
+    ...(doc.state.render ? { render: doc.state.render } : {}),
+    ...(doc.state.animation ? { animation: doc.state.animation } : {}),
   };
   return JSON.stringify(project);
 }
@@ -154,6 +163,13 @@ export function parseProject(json: string): { name: string; state: DocState } {
   // Broken references are repaired rather than rejected: the geometry is what matters.
   const grouped = repairGroups(objects, groups);
   const repaired = repairMaterials(grouped.objects, materials, textures);
+  // Animation keys are sorted and made unique per frame; tracks of objects that are not in the file are dropped.
+  let animation;
+  try {
+    animation = parsed.data.animation ? repairAnimation(parsed.data.animation, repaired.objects) : undefined;
+  } catch (error) {
+    throw new Error(`Not a valid Tessel file: ${error instanceof Error ? error.message : String(error)}`);
+  }
   return {
     name: parsed.data.name,
     state: {
@@ -166,6 +182,8 @@ export function parseProject(json: string): { name: string; state: DocState } {
       selection: [],
       activeId: null,
       edit: null,
+      ...(animation ? { animation } : {}),
+      ...(parsed.data.render !== undefined && parsed.data.render !== null ? { render: parseRenderSettings(parsed.data.render) } : {}),
     },
   };
 }

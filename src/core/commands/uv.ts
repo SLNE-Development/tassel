@@ -1,4 +1,5 @@
 // UV commands (uv.*): unwrap, pack, transform, clear and query the texture coordinates of an object.
+import { resolveObjectId } from '../refs';
 import { own } from '../state';
 import { z } from 'zod';
 import { selectedFaces } from '../mesh/selection';
@@ -6,7 +7,7 @@ import { clearUvs, packUvs, transformUvs, unwrap, unwrapMethods, uvCharts } from
 import type { DocState, PolyMesh, SceneObject } from '../types';
 import { defineCommand, docState, updateDocState, type CommandContext } from './registry';
 
-const objectId = z.string().optional().describe('Object id. Defaults to the active object.');
+const objectId = z.string().optional().describe('Object id or name (exact, or a glob matching exactly one object). Defaults to the active object.');
 const uv = z.tuple([z.number(), z.number()]);
 const margin = z
   .number()
@@ -21,7 +22,7 @@ const scope =
 
 /** The object to work on and the faces the command is limited to (null = all faces). */
 function target(state: DocState, id: string | undefined): { object: SceneObject; faces: number[] | null } {
-  const resolved = id ?? state.activeId;
+  const resolved = id === undefined ? state.activeId : resolveObjectId(state, id);
   if (!resolved) throw new Error('No objectId given and there is no active object');
   const object = own(state.objects, resolved);
   if (!object) throw new Error(`Object "${resolved}" does not exist`);

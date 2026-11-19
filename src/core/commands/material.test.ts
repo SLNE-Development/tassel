@@ -110,7 +110,9 @@ describe('registration', () => {
       'material.create',
       'material.delete',
       'material.duplicate',
+      'material.import',
       'material.list',
+      'material.replace',
       'material.update',
     ]);
     expect(ids.filter((id) => id.startsWith('texture.')).sort()).toEqual([

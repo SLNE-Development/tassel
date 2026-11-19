@@ -6,6 +6,7 @@ import { shortcutLabel } from './actions';
 import { LastOpPanel } from './LastOpPanel';
 import { ModeSwitch } from './ModeSwitch';
 import { PaintHint, PaintOptions } from './paint/PaintOptions';
+import { CameraViewBadge, TimelineDock } from './timeline/Timeline';
 import { SplitDivider } from './uv/SplitDivider';
 import { UvEditor } from './uv/UvEditor';
 import { UvOverlays } from './uv/UvMenu';
@@ -46,7 +47,8 @@ export function Centre() {
   const split = useUvUi((s) => s.split);
   const uv = workspace === 'uv';
   return (
-    <main className="relative min-h-0 min-w-0 overflow-hidden bg-ink">
+    <main className="flex min-h-0 min-w-0 flex-col overflow-hidden bg-ink">
+      <div className="relative min-h-0 min-w-0 flex-1 overflow-hidden">
       {uv && (
         <div className="absolute inset-y-0 left-0" style={{ width: `${split * 100}%` }}>
           <UvEditor />
@@ -56,6 +58,7 @@ export function Centre() {
       <div className="absolute inset-y-0 right-0 overflow-hidden" style={{ left: uv ? `${split * 100}%` : 0 }}>
         {/* The viewport stays mounted in every workspace so its camera and the screenshot service survive. */}
         <ViewportHost />
+        <CameraViewBadge />
         {workspace === 'modeling' && <EmptyHint />}
         {workspace === 'paint' ? (
           // The 3D view is the canvas; the brush options float over it.
@@ -72,6 +75,9 @@ export function Centre() {
       </div>
       {uv && <SplitDivider />}
       <UvOverlays />
+      </div>
+      {/* The timeline docks under the views and takes its height from them. */}
+      <TimelineDock />
     </main>
   );
 }

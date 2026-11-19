@@ -133,8 +133,8 @@ export class SurfaceMaterials {
   private checker: MeshStandardMaterial | null = null;
   private renderer: WebGPURenderer | null = null;
   private sweptDocs: AppState['docs'] | null = null;
-  /** Intensity of the hemisphere light without the environment. */
-  private ambientIntensity: number | null = null;
+  /** Texture images being decoded right now. */
+  private readonly decoding = new Set<Promise<void>>();
   /** Set by the engine: the paint workspace's live textures. */
   paint: PaintedTextures | null = null;
 
@@ -157,13 +157,21 @@ export class SurfaceMaterials {
    * Material shading is lit by the environment as well, so that metals have something to reflect
    * and roughness shows; it takes the place of the `ambient` hemisphere light. Every other look
    * (solid, wireframe, the UV checker) keeps the plain studio lights, exactly as without materials.
+   *
+   * The hemisphere light is hidden, not dimmed: three refreshes light colours and intensities once
+   * per animation frame, but which lights there are with every render. A screenshot renders another
+   * look and then the viewport again within one frame, and both must come out right.
    */
   applyLighting(app: AppState, scene: Scene, ambient: HemisphereLight): void {
-    this.ambientIntensity ??= ambient.intensity;
     const on = app.shading === 'material' && app.workspace !== 'uv';
     scene.environment = on ? this.environment : null;
     scene.environmentIntensity = ENVIRONMENT_INTENSITY;
-    ambient.intensity = on ? 0 : this.ambientIntensity;
+    ambient.visible = !on;
+  }
+
+  /** Resolves when the texture images asked for so far are decoded; null if none is being decoded. */
+  settled(): Promise<unknown> | null {
+    return this.decoding.size > 0 ? Promise.all(this.decoding) : null;
   }
 
   /** The material `obj` is drawn with, or null for the clay. `hasUvs` refers to the rendered (evaluated) mesh. */
@@ -233,7 +241,7 @@ export class SurfaceMaterials {
     if (!decoded) {
       const entry: Decoded = { bitmap: null, srgb: null, linear: null, disposed: false };
       this.textures.set(texture, (decoded = entry));
-      createImageBitmap(textureBlob(texture), { imageOrientation: 'flipY', premultiplyAlpha: 'none', colorSpaceConversion: 'none' }).then(
+      const decoding = createImageBitmap(textureBlob(texture), { imageOrientation: 'flipY', premultiplyAlpha: 'none', colorSpaceConversion: 'none' }).then(
         (bitmap) => {
           if (entry.disposed) return bitmap.close();
           entry.bitmap = bitmap;
@@ -241,6 +249,8 @@ export class SurfaceMaterials {
         },
         (error) => console.error(`Viewport: texture "${texture.name}" could not be decoded`, error),
       );
+      this.decoding.add(decoding);
+      void decoding.then(() => this.decoding.delete(decoding));
     }
     if (!decoded.bitmap) return this.paint?.standIn(texture, color) ?? null;
     const key = color ? 'srgb' : 'linear';

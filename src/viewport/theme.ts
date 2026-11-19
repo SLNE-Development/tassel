@@ -14,6 +14,8 @@ export interface ViewportPalette {
   editEdge: string;
   editVertex: string;
   editVertexRim: string;
+  /** Captions of screenshot sheets, on `background`. */
+  caption: string;
 }
 
 export const VIEWPORT_PALETTES: Record<'dark' | 'light', ViewportPalette> = {
@@ -30,6 +32,7 @@ export const VIEWPORT_PALETTES: Record<'dark' | 'light', ViewportPalette> = {
     editEdge: '#2c3336',
     editVertex: '#0d1011',
     editVertexRim: '#e6eaeb',
+    caption: '#dfe4e5',
   },
   // A stage a little deeper than the paper-grey panels, so the pale clay stands out against it.
   light: {
@@ -45,5 +48,6 @@ export const VIEWPORT_PALETTES: Record<'dark' | 'light', ViewportPalette> = {
     editEdge: '#3a4245',
     editVertex: '#14181a',
     editVertexRim: '#fbfaf6',
+    caption: '#1f2628',
   },
 };

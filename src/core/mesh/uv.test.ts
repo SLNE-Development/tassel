@@ -816,7 +816,7 @@ describe('modifiers and UVs', () => {
     it('a stack of mirror, array and subdivision carries the UVs through', () => {
       const stack: Modifier[] = [
         { id: 'm', enabled: true, type: 'mirror', axes: { x: true, y: false, z: false }, mergeDistance: 0.001 },
-        { id: 'a', enabled: true, type: 'array', count: 2, offset: [3, 0, 0] },
+        { id: 'a', enabled: true, type: 'array', count: 2, offset: [3, 0, 0], rotation: [0, 0, 0], pivot: [0, 0, 0], offsetSpace: 'local' },
         { id: 's', enabled: true, type: 'subdivision', levels: 2 },
       ];
       const { mesh, errors } = evaluateObject(scene(object('a', half, stack)), 'a');

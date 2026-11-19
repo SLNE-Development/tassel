@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { pruneAnimation } from '../animation';
 import { activeDoc, own, withDoc } from '../state';
 import type { AppState, DocState, Services } from '../types';
 
@@ -27,6 +28,12 @@ export interface CommandDef<P extends z.ZodObject = z.ZodObject> {
   description: string;
   params: P;
   history?: boolean;
+  /**
+   * For long-running commands that only read: other commands do not wait for this one to finish
+   * (it still starts after the commands queued before it). Such a command must take what it needs
+   * from the state when it starts, never write to the state, and have `history: false`.
+   */
+  concurrent?: boolean;
   run(ctx: CommandContext, params: z.infer<P>): unknown;
 }
 
@@ -43,7 +50,9 @@ export const vec3 = z.tuple([z.number(), z.number(), z.number()]);
 export function updateDocState(ctx: CommandContext, update: (state: DocState) => DocState): void {
   ctx.set((app) => {
     const doc = activeDoc(app);
-    const next = update(doc.state);
+    const updated = update(doc.state);
+    // Animation tracks cannot outlive their objects (whichever command deleted them).
+    const next = updated.animation && updated.objects !== doc.state.objects ? pruneAnimation(updated) : updated;
     // Edit mode cannot outlive its object (deleted, or removed by undoing its creation elsewhere).
     const state = next.edit && !own(next.objects, next.edit.objectId) ? { ...next, edit: null } : next;
     return withDoc(app, { ...doc, state });
