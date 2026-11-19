@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { parseProject, serializeProject } from '../project';
+import { writeLinkedTextures } from './library';
 import { docFormat } from '../formats';
 import { defaultJavaSettings, textureSizeSchema } from '../minecraft/schema';
 import { isJavaVersion, javaVersions } from '../minecraft/versions';
@@ -182,10 +183,13 @@ export const documentCommands = [
   defineCommand({
     id: 'document.mark_saved',
     title: 'Als gespeichert markieren',
-    description: 'Mark a document as saved and remember its file path. Called after the project file was written.',
+    description:
+      'Mark a document as saved and remember its file path. Called after the project file was written. Linked textures whose pixels changed are written back into their texture library files; the result lists them under library { written, failed }.',
     params: z.object({ id: docIdParam, filePath: z.string().optional(), name: z.string().min(1).optional() }),
-    run(ctx, p) {
+    async run(ctx, p) {
       const doc = requireDoc(ctx.get(), p.id);
+      // Saving a document also saves the library files of its linked textures (e.g. after painting).
+      const library = ctx.services.textureLibrary ? await writeLinkedTextures(ctx, doc) : null;
       ctx.set((app) => {
         const current = app.docs[doc.id];
         return withDoc(app, {
@@ -195,6 +199,7 @@ export const documentCommands = [
           name: p.name ?? current.name,
         });
       });
+      return library && (library.written.length > 0 || library.failed.length > 0) ? { ok: true, library } : { ok: true };
     },
   }),
 

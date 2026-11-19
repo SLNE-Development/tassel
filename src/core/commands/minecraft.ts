@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { textureLink } from '../textureLibrary';
 import { MISSING_TEXTURE_PNG, importJavaModel } from '../minecraft/javaImport';
 import { exportJavaModel, textureLocation } from '../minecraft/javaExport';
 import { pxVec3, textureSizeSchema } from '../minecraft/schema';
@@ -97,9 +98,15 @@ export const minecraftCommands = [
         folder: (p.folder ?? texture.java?.folder ?? 'block').replace(/^\/+|\/+$/g, ''),
         key: p.key ?? texture.java?.key ?? '0',
       };
-      updateDocState(ctx, (s) => ({ ...s, textures: { ...s.textures, [id]: { ...s.textures[id], java, ...(p.name ? { name: p.name } : {}) } } }));
+      updateDocState(ctx, (s) => {
+        const next = { ...s.textures[id], java, ...(p.name ? { name: p.name } : {}) };
+        // A linked texture follows its new location (the library may not have a file there yet: it then shows as missing).
+        const moved = next.link && (p.namespace !== undefined || p.folder !== undefined || p.name !== undefined);
+        const link = moved ? textureLink({ java: next.java, name: next.name }) : null;
+        return { ...s, textures: { ...s.textures, [id]: link ? { ...next, link } : next } };
+      });
       const updated = docState(ctx).textures[id];
-      return { id, name: updated.name, ...updated.java, location: textureLocation(updated) };
+      return { id, name: updated.name, ...updated.java, location: textureLocation(updated), linked: !!updated.link };
     },
   }),
 
