@@ -4,6 +4,7 @@ import { Type } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { selectActiveDoc, useApp } from '../app/store';
 import { primitiveTypes } from '../core/mesh/primitives';
+import { anglePresets } from '../core/preview';
 import { elementModes, shadings, viewPresets } from '../core/types';
 import { useT } from '../i18n';
 import { shortcutLabel } from './actions';
@@ -149,6 +150,12 @@ function ViewItems() {
           <ActionItem key={preset} id={`view.${preset}`} title={t.views[preset]} />
         ))}
       </Menu.Group>
+      <Submenu title={t.preview.anglesMenu}>
+        {anglePresets.map((preset) => (
+          <ActionItem key={preset} id={`preview.angle_${preset}`} title={t.preview.angles[preset]} />
+        ))}
+      </Submenu>
+      <ActionItem id="preview.toggle_projection" />
       <MenuSeparator />
       <ActionItem id="view.frame" />
       <MenuSeparator />

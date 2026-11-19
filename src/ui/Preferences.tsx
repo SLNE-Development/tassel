@@ -7,6 +7,7 @@ import { defaultPreferences, type Preferences as PreferenceValues } from '../cor
 import { useT } from '../i18n';
 import { dispatch } from './actions';
 import { Segmented, Switch } from './controls';
+import { MinecraftAssetsSection } from './preview/MinecraftAssetsSection';
 import { ScrubField } from './ScrubField';
 import { useUi } from './uiStore';
 
@@ -277,6 +278,8 @@ function PreferencesBody() {
             </div>
           </Row>
         </Section>
+
+        <MinecraftAssetsSection />
       </div>
 
       <footer className="flex shrink-0 items-center border-t border-line px-3 py-2.5">

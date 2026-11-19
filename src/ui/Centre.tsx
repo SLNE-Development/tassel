@@ -6,6 +6,7 @@ import { shortcutLabel } from './actions';
 import { LastOpPanel } from './LastOpPanel';
 import { ModeSwitch } from './ModeSwitch';
 import { PaintHint, PaintOptions } from './paint/PaintOptions';
+import { PreviewOptions } from './preview/PreviewOptions';
 import { CameraViewBadge, TimelineDock } from './timeline/Timeline';
 import { SplitDivider } from './uv/SplitDivider';
 import { UvEditor } from './uv/UvEditor';
@@ -69,6 +70,7 @@ export function Centre() {
         ) : (
           <>
             <ModeSwitch />
+            <PreviewOptions />
             <LastOpPanel />
           </>
         )}
