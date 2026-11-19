@@ -126,6 +126,8 @@ export const githubApi = {
   loginStart: () => invoke<DeviceCode>('github_login_start'),
   /** Resolves once the user confirmed the code on GitHub. */
   loginWait: () => invoke<GitHubUser>('github_login_wait'),
+  /** Signs in with a personal access token; it goes straight to the OS credential store. */
+  loginToken: (token: string) => invoke<GitHubUser>('github_login_token', { token }),
   loginCancel: () => invoke<void>('github_login_cancel'),
   logout: () => invoke<void>('github_logout'),
   repos: (query?: string) => invoke<GitHubRepo[]>('github_repos', { query }),

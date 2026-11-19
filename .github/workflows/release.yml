@@ -83,6 +83,8 @@ jobs:
       - uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          # Public client id of the GitHub OAuth App (device flow); empty keeps the default in github.rs.
+          TESSEL_GITHUB_CLIENT_ID: ${{ vars.TESSEL_GITHUB_CLIENT_ID }}
         with:
           releaseId: ${{ needs.prepare.outputs.release_id }}
           args: ${{ matrix.args }}

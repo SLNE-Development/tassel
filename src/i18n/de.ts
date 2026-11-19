@@ -943,7 +943,7 @@ export const de = {
     waitingForGitHub: 'Warte auf die Bestätigung bei GitHub…',
     signedIn: 'Bei GitHub angemeldet',
     signOut: 'Abmelden',
-    notConfigured: 'Die GitHub-Anmeldung ist in diesem Build nicht eingerichtet. Trage unten die Client-ID einer GitHub OAuth App mit aktiviertem Device Flow ein.',
+    notConfigured: 'Die GitHub-Anmeldung ist in diesem Build nicht eingerichtet. Melde dich mit einem persönlichen Zugriffstoken an oder trage unter „Einstellungen“ die Client-ID einer GitHub OAuth App mit aktiviertem Device Flow ein.',
     cloneTab: 'Klonen',
     createTab: 'Neues Repository',
     searchRepos: 'Repositorys durchsuchen',
@@ -966,6 +966,10 @@ export const de = {
     clientIdHint: 'Client-ID einer eigenen GitHub OAuth App (mit „Enable Device Flow“). Leer lassen für die eingebaute.',
     saveClientId: 'Speichern',
     clientIdSaved: 'Client-ID gespeichert',
+    tokenSignIn: 'Mit persönlichem Zugriffstoken anmelden',
+    tokenHint:
+      'Für Builds ohne GitHub-Anmeldung oder Organisationen, die OAuth Apps sperren: Erstelle auf GitHub unter Settings → Developer settings → Personal access tokens ein Token mit Zugriff auf deine Repositorys (klassisch: Scope „repo“; fein granular: Contents lesen und schreiben). Es wird nur im Schlüsselspeicher des Betriebssystems abgelegt.',
+    tokenButton: 'Anmelden',
   },
 
   mcp: {

@@ -71,6 +71,7 @@ pub fn run() {
       workspace::github_set_client_id,
       workspace::github_login_start,
       workspace::github_login_wait,
+      workspace::github_login_token,
       workspace::github_login_cancel,
       workspace::github_logout,
       workspace::github_repos,

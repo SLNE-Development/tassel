@@ -912,7 +912,7 @@ export const en: Dictionary = {
     waitingForGitHub: 'Waiting for the confirmation on GitHub…',
     signedIn: 'Signed in to GitHub',
     signOut: 'Sign out',
-    notConfigured: 'GitHub sign-in is not set up in this build. Enter the client id of a GitHub OAuth App with Device Flow enabled below.',
+    notConfigured: 'GitHub sign-in is not set up in this build. Sign in with a personal access token, or enter the client id of a GitHub OAuth App with Device Flow enabled under “Settings”.',
     cloneTab: 'Clone',
     createTab: 'New repository',
     searchRepos: 'Search repositories',
@@ -935,6 +935,10 @@ export const en: Dictionary = {
     clientIdHint: 'Client id of your own GitHub OAuth App (with “Enable Device Flow”). Leave empty for the built-in one.',
     saveClientId: 'Save',
     clientIdSaved: 'Client id saved',
+    tokenSignIn: 'Sign in with a personal access token',
+    tokenHint:
+      'For builds without GitHub sign-in or organisations that block OAuth Apps: create a token on GitHub under Settings → Developer settings → Personal access tokens with access to your repositories (classic: scope “repo”; fine-grained: Contents read and write). It is only kept in the operating system’s credential store.',
+    tokenButton: 'Sign in',
   },
 
   mcp: {

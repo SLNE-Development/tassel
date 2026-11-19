@@ -319,6 +319,12 @@ pub async fn github_login_wait(ws: Ws<'_>) -> Result<User, String> {
   ws.github.wait_login().await
 }
 
+/// Signs in with a personal access token typed by the user; it goes straight to the credential store.
+#[tauri::command]
+pub async fn github_login_token(ws: Ws<'_>, token: String) -> Result<User, String> {
+  ws.github.login_with_token(&token).await
+}
+
 #[tauri::command]
 pub fn github_login_cancel(ws: Ws<'_>) {
   ws.github.cancel_login();

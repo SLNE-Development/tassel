@@ -47,6 +47,52 @@ function ParentFolder({ value, onChange }: { value: string; onChange(path: strin
   );
 }
 
+/** Fallback sign-in with a personal access token (builds without a client id, organisations that block OAuth Apps). */
+function TokenSignIn({ open }: { open?: boolean }) {
+  const t = useT().projects;
+  const [token, setToken] = useState('');
+  const [working, setWorking] = useState(false);
+  const submit = async () => {
+    setWorking(true);
+    try {
+      const user = await githubApi.loginToken(token);
+      setToken('');
+      notifySuccess(t.signedIn, user.login);
+      await loadAccount();
+    } catch (error) {
+      notifyError(error);
+    } finally {
+      setWorking(false);
+    }
+  };
+  return (
+    <details open={open} className="text-[calc(12.5px*var(--font-scale))] text-dim">
+      <summary className="cursor-pointer select-none text-faint hover:text-dim">{t.tokenSignIn}</summary>
+      <div className="mt-2 flex flex-col gap-2">
+        <p className="leading-relaxed text-faint">{t.tokenHint}</p>
+        <div className="flex gap-2">
+          <input
+            type="password"
+            autoComplete="off"
+            spellCheck={false}
+            className={inputClass}
+            placeholder="ghp_… / github_pat_…"
+            aria-label={t.tokenSignIn}
+            value={token}
+            onChange={(e) => setToken(e.currentTarget.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && token.trim()) void submit();
+            }}
+          />
+          <button className={outlineButton} disabled={!token.trim() || working} onClick={() => void submit()}>
+            {working ? <LoaderCircle size={14} className="animate-spin" /> : t.tokenButton}
+          </button>
+        </div>
+      </div>
+    </details>
+  );
+}
+
 function SignIn() {
   const t = useT().projects;
   const [code, setCode] = useState<DeviceCode | null>(null);
@@ -82,6 +128,7 @@ function SignIn() {
         <button className={primaryButton} disabled={waiting} onClick={() => void start()}>
           {waiting ? <LoaderCircle size={14} className="animate-spin" /> : t.signIn}
         </button>
+        <TokenSignIn />
       </div>
     );
   }
@@ -317,8 +364,11 @@ export function GitHubDialog() {
           <LoaderCircle size={14} className="animate-spin" />
           {t.loading}
         </p>
-      ) : !account.configured ? (
-        <p className="text-[calc(13px*var(--font-scale))] leading-relaxed text-dim">{t.notConfigured}</p>
+      ) : !user && !account.configured ? (
+        <>
+          <p className="text-[calc(13px*var(--font-scale))] leading-relaxed text-dim">{t.notConfigured}</p>
+          <TokenSignIn open />
+        </>
       ) : !user ? (
         <SignIn />
       ) : (

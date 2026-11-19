@@ -12,12 +12,15 @@ use std::time::{Duration, Instant};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
-/// Client id of Tessel's GitHub OAuth App (device flow enabled; a client id is public, not a secret).
-/// A build can bring its own with `TESSEL_GITHUB_CLIENT_ID=... npm run tauri build`, and a client id
-/// set in the app (Projects panel → GitHub settings) wins over both.
+/// Client id of the maintainers' GitHub OAuth App (Device Flow enabled). A client id is public, not
+/// a secret, and there is no client secret anywhere: every user signs in with their own account.
+const DEFAULT_CLIENT_ID: &str = "Ov23liulC5lI5lRloweb";
+/// The client id compiled in: `TESSEL_GITHUB_CLIENT_ID` at build time (the release workflow sets it),
+/// otherwise the maintainers' default. A client id set in the app (GitHub dialog → Settings) wins
+/// over it; with none at all the dialog offers the personal-access-token sign-in only.
 pub const BUILT_IN_CLIENT_ID: Option<&str> = match option_env!("TESSEL_GITHUB_CLIENT_ID") {
-  Some(id) => Some(id),
-  None => Some("Ov23liulC5lI5lRloweb"),
+  Some(id) if !id.is_empty() => Some(id),
+  _ => Some(DEFAULT_CLIENT_ID),
 };
 /// `repo`: read and write access to the user's public and private repositories (incl. organisation ones).
 pub const SCOPES: &str = "repo";
@@ -334,9 +337,26 @@ impl GitHub {
     self.tokens.delete()
   }
 
-  /// A REST call with the token. A rejected token is removed, so the UI shows "signed out".
-  async fn api(&self, method: reqwest::Method, path: &str, body: Option<Value>) -> Result<Value, String> {
-    let token = self.tokens.get()?.ok_or("You are not signed in to GitHub")?;
+  /// Signs in with a personal access token instead of the device flow (builds without a client id,
+  /// organisations that block OAuth Apps). The token is checked against GitHub, then goes straight
+  /// to the credential store.
+  pub async fn login_with_token(&self, token: &str) -> Result<User, String> {
+    let token = token.trim();
+    if token.is_empty() || token.len() > 512 || token.chars().any(|c| c.is_whitespace() || c.is_control()) {
+      return Err("That does not look like a GitHub personal access token".into());
+    }
+    let value = self.request(token, reqwest::Method::GET, "/user", None).await.map_err(|(status, message)| {
+      if status == Some(401) { "GitHub did not accept this token (wrong, expired or revoked).".into() } else { message }
+    })?;
+    let user = parse_user(&value).ok_or("GitHub sent an unexpected answer for the account")?;
+    self.cancel_login();
+    self.tokens.set(token)?;
+    *self.user.lock().unwrap() = Some(user.clone());
+    Ok(user)
+  }
+
+  /// One REST call with an explicit token. Errors carry the HTTP status, if there was an answer.
+  async fn request(&self, token: &str, method: reqwest::Method, path: &str, body: Option<Value>) -> Result<Value, (Option<u16>, String)> {
     let mut request = self
       .http
       .request(method, format!("{API}{path}"))
@@ -346,18 +366,27 @@ impl GitHub {
     if let Some(body) = body {
       request = request.json(&body);
     }
-    let response = request.send().await.map_err(offline)?;
+    let response = request.send().await.map_err(|e| (None, offline(e)))?;
     let status = response.status();
     let value: Value = response.json().await.unwrap_or(Value::Null);
-    if status == reqwest::StatusCode::UNAUTHORIZED {
-      *self.user.lock().unwrap() = None;
-      let _ = self.tokens.delete();
-      return Err("The GitHub login is no longer valid. Sign in again.".into());
-    }
     if !status.is_success() {
-      return Err(api_error(status.as_u16(), &value));
+      return Err((Some(status.as_u16()), api_error(status.as_u16(), &value)));
     }
     Ok(value)
+  }
+
+  /// A REST call with the stored token. A rejected token is removed, so the UI shows "signed out".
+  async fn api(&self, method: reqwest::Method, path: &str, body: Option<Value>) -> Result<Value, String> {
+    let token = self.tokens.get()?.ok_or("You are not signed in to GitHub")?;
+    match self.request(&token, method, path, body).await {
+      Ok(value) => Ok(value),
+      Err((Some(401), _)) => {
+        *self.user.lock().unwrap() = None;
+        let _ = self.tokens.delete();
+        Err("The GitHub login is no longer valid. Sign in again.".into())
+      }
+      Err((_, message)) => Err(message),
+    }
   }
 
   /// Every repository the user can access: own, collaborator and organisation ones, most recently
@@ -582,6 +611,10 @@ mod tests {
     assert!(json.contains("steve") && !json.contains("gho_secret"), "{json}");
 
     github.logout().unwrap();
+    assert_eq!(github.token(), None);
+    // Obviously broken tokens are refused before anything is sent or stored.
+    assert!(block_on(github.login_with_token("  ")).unwrap_err().contains("personal access token"));
+    assert!(block_on(github.login_with_token("ghp_a b")).unwrap_err().contains("personal access token"));
     assert_eq!(github.token(), None);
     assert!(block_on(github.account()).unwrap().user.is_none());
     assert!(block_on(github.repos(None)).unwrap_err().contains("not signed in"));
