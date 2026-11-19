@@ -82,7 +82,9 @@ describe('imaging service', () => {
       b = withEdit(b, 'top', await roomy.stroke(b, 'top', { ...brush, opacity: 0.5 }, [[u, 0.5], [0.5, 0.5]]));
     }
     expect(a).toEqual(b);
-    expect(decodes.mock.calls.length).toBeGreaterThan(2);
+    // The roomy service decodes nothing; the small one decodes the base layer on every stroke. Whether the new top
+    // layer survives in the one-entry cache depends on which of the two parallel encodes finishes last.
+    expect(decodes.mock.calls.length).toBeGreaterThanOrEqual(2);
   });
 
   it('uses one string for the layer and the image when the layer is all there is to see', async () => {
