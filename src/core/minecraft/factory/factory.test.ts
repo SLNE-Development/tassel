@@ -1,10 +1,12 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { parseProject, serializeProject } from '../../project';
 import { activeDoc } from '../../state';
 import { exportJavaModel } from '../javaExport';
 import { testApp, type TestApp } from '../testing';
 import { facingMatrix, faceOf, portBlock, rotateBlock, rotateFace, rotatePoint, rotatedCells, footprintCells } from './rotation';
-import { exportFactorySidecar, parseFactorySidecar } from './sidecar';
+import { MACHINE_ID, PORT_ID, RESOURCE_ID } from './model';
+import { SIDECAR_SCHEMA_VERSION, exportFactorySidecar, parseFactorySidecar } from './sidecar';
 import { validateFactory } from './validate';
 
 const golden = (name: string) => new URL(`./golden/${name}`, import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1');
@@ -228,5 +230,29 @@ describe('factory project files', () => {
     const raw = JSON.parse(serializeProject(activeDoc(t.app())));
     delete raw.factory;
     expect(parseProject(JSON.stringify(raw)).state.factory).toMatchObject({ id: 'factory:machine', footprint: [1, 1, 1] });
+  });
+});
+
+describe('factory sidecar JSON Schema (docs/schemas/factory-model.schema.json)', () => {
+  const schemaPath = new URL('../../../../docs/schemas/factory-model.schema.json', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1');
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const schema = JSON.parse(readFileSync(schemaPath, 'utf8')) as any;
+
+  it('describes the version and every key the exporter writes', async () => {
+    expect(schema.properties.schema_version.const).toBe(SIDECAR_SCHEMA_VERSION);
+    const t = await fullMachine();
+    const sidecar = JSON.parse(exportFactorySidecar(t.state()));
+    const keys = (o: object) => Object.keys(o).sort();
+    expect(keys(sidecar)).toEqual(keys(schema.properties));
+    expect(keys(sidecar)).toEqual(expect.arrayContaining(schema.required));
+    for (const part of ['machine', 'footprint', 'rotation'] as const) expect(keys(sidecar[part]), part).toEqual([...schema.properties[part].required].sort());
+    for (const port of sidecar.ports) expect(keys(port)).toEqual([...schema.$defs.port.required].sort());
+    for (const placement of Object.values(sidecar.facings) as { ports: object[] }[]) {
+      expect(keys(placement)).toEqual([...schema.$defs.placement.required].sort());
+      for (const port of placement.ports) expect(keys(port)).toEqual([...schema.$defs.placement.properties.ports.items.required].sort());
+    }
+    expect(schema.$defs.port.properties.id.pattern).toBe(PORT_ID.source);
+    expect(schema.properties.machine.properties.id.pattern).toBe(MACHINE_ID.source);
+    expect(schema.$defs.id.pattern).toBe(RESOURCE_ID.source);
   });
 });
