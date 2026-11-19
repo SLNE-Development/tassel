@@ -17,6 +17,7 @@ import {
   type Rgba,
 } from './pixels';
 import { decodePng, encodePng } from './png';
+import { applyPixelOp, transformPixels } from './pixelArt';
 
 /** Largest image (in pixels) that is decoded: decoding allocates 4 bytes per pixel, whatever the file size. */
 export const MAX_DECODE_PIXELS = 8192 * 8192;
@@ -247,6 +248,49 @@ export function createImagingService(decodeOther?: DecodeOther, cacheBytes = 384
       const index = layerIndex(texture, layerId);
       const stack = await decodeLayers(width, height, texture.layers!, index);
       return new StrokePreview(width, height, stack, index, brush, compositeOf(texture, stack));
+    },
+
+    async pixelEdit(texture, layerId, op) {
+      const { width, height } = texture;
+      if (layerId === null) {
+        if (texture.layers?.length) throw new Error(`Texture "${texture.name}" has paint layers: name the layer to edit`);
+        const source = await decode(texture.data, texture.mimeType, width, height);
+        const { pixels, changed } = applyPixelOp(source, width, height, op);
+        if (!changed) return { layer: texture.data, flattened: texture.data, changed: false };
+        retire(texture.data);
+        const data = await encode(pixels, width, height);
+        return { layer: data, flattened: data, changed: true };
+      }
+      const index = layerIndex(texture, layerId);
+      const stack = await decodeLayers(width, height, texture.layers!, index);
+      const { pixels: layer, changed } = applyPixelOp(stack[index].pixels, width, height, op);
+      if (!changed) return { layer: texture.layers![index].data, flattened: texture.data, changed: false };
+      const edit = await encodeEdit(texture, index, layer, () =>
+        compositeLayers(
+          width,
+          height,
+          stack.map((entry, i) => (i === index ? { ...entry, pixels: layer } : entry)),
+        ),
+      );
+      return { ...edit, changed: true };
+    },
+
+    async transformTexture(texture, transform) {
+      const { width, height } = texture;
+      const apply = (pixels: Uint8ClampedArray) => transformPixels(pixels, width, height, transform);
+      if (!texture.layers?.length) {
+        const out = apply(await decode(texture.data, texture.mimeType, width, height));
+        return { data: await encode(out.pixels, out.width, out.height), width: out.width, height: out.height };
+      }
+      const layers = await Promise.all(
+        texture.layers.map(async (layer) => {
+          const out = apply(await decode(layer.data, 'image/png', width, height));
+          return { ...layer, data: await encode(out.pixels, out.width, out.height), size: out };
+        }),
+      );
+      const size = layers[0].size;
+      const data = await service.flatten(size.width, size.height, layers);
+      return { data, width: size.width, height: size.height, layers: layers.map((layer) => layer.data) };
     },
 
     async pixels(texture) {

@@ -1,0 +1,196 @@
+{
+  "model": {
+    "type": "minecraft:select",
+    "property": "minecraft:display_context",
+    "cases": [
+      {
+        "when": [
+          "gui",
+          "ground",
+          "fixed",
+          "on_shelf"
+        ],
+        "model": {
+          "type": "minecraft:range_dispatch",
+          "property": "minecraft:custom_model_data",
+          "index": 1,
+          "scale": 2.5,
+          "entries": [
+            {
+              "threshold": 0,
+              "model": {
+                "type": "minecraft:model",
+                "model": "mymod:item/ruby_sword_0"
+              }
+            },
+            {
+              "model": {
+                "type": "minecraft:model",
+                "model": "mymod:item/ruby_sword_1",
+                "tints": [
+                  {
+                    "type": "minecraft:constant",
+                    "value": -16711936
+                  },
+                  {
+                    "type": "minecraft:custom_model_data",
+                    "index": 2,
+                    "default": [
+                      1,
+                      0.5,
+                      0.25
+                    ]
+                  },
+                  {
+                    "type": "minecraft:dye",
+                    "default": -6265536
+                  },
+                  {
+                    "type": "minecraft:grass",
+                    "temperature": 0.5,
+                    "downfall": 1
+                  },
+                  {
+                    "type": "minecraft:map_color",
+                    "default": -12173266
+                  }
+                ]
+              },
+              "threshold": 1.5
+            }
+          ],
+          "fallback": {
+            "type": "minecraft:model",
+            "model": "mymod:item/ruby_sword"
+          }
+        }
+      },
+      {
+        "when": "head",
+        "model": {
+          "type": "minecraft:special",
+          "base": "minecraft:item/template_skull",
+          "model": {
+            "type": "minecraft:head",
+            "kind": "creeper",
+            "animation": 0.5
+          },
+          "transformation": {
+            "left_rotation": [
+              1,
+              0,
+              0,
+              0
+            ],
+            "right_rotation": [
+              0,
+              0,
+              0,
+              1
+            ],
+            "scale": [
+              1,
+              1,
+              1
+            ],
+            "translation": [
+              0.5,
+              0,
+              0.5
+            ]
+          }
+        }
+      },
+      {
+        "model": {
+          "type": "composite",
+          "models": [
+            {
+              "type": "minecraft:condition",
+              "property": "minecraft:using_item",
+              "on_true": {
+                "type": "minecraft:bundle/selected_item"
+              },
+              "on_false": {
+                "type": "minecraft:empty"
+              }
+            },
+            {
+              "type": "minecraft:condition",
+              "property": "minecraft:keybind_down",
+              "keybind": "key.use",
+              "on_false": {
+                "type": "minecraft:model",
+                "model": "item/stick"
+              },
+              "on_true": {
+                "type": "minecraft:model",
+                "model": "item/blaze_rod",
+                "tessel_note": "kept"
+              }
+            },
+            {
+              "type": "minecraft:condition",
+              "property": "minecraft:component",
+              "predicate": "minecraft:damage",
+              "value": {
+                "durability": {
+                  "min": 1
+                }
+              },
+              "on_true": {
+                "type": "minecraft:model",
+                "model": "item/stick"
+              },
+              "on_false": {
+                "type": "minecraft:model",
+                "model": "item/stick"
+              }
+            }
+          ]
+        },
+        "when": "firstperson_righthand",
+        "comment": "unknown case key"
+      }
+    ],
+    "fallback": {
+      "type": "minecraft:select",
+      "property": "minecraft:local_time",
+      "pattern": "MM-dd",
+      "locale": "",
+      "cases": [
+        {
+          "when": [
+            "12-24",
+            "12-25"
+          ],
+          "model": {
+            "type": "minecraft:special",
+            "base": "minecraft:item/chest",
+            "model": {
+              "type": "minecraft:chest",
+              "texture": "minecraft:christmas",
+              "openness": 0.25,
+              "chest_type": "left"
+            }
+          }
+        }
+      ],
+      "fallback": {
+        "type": "mymod:future_type",
+        "models": "not a list",
+        "anything": [
+          1,
+          2,
+          3
+        ]
+      }
+    }
+  },
+  "hand_animation_on_swap": false,
+  "oversized_in_gui": true,
+  "swap_animation_scale": 1.95,
+  "mymod:extra": {
+    "kept": true
+  }
+}

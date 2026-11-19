@@ -1,4 +1,7 @@
 import { z } from 'zod';
+import { looksLikeItemDefinition } from '../minecraft/items/codec';
+import { importItemDefinition } from './item';
+import { textureLink } from '../textureLibrary';
 import { MISSING_TEXTURE_PNG, importJavaModel } from '../minecraft/javaImport';
 import { exportJavaModel, textureLocation } from '../minecraft/javaExport';
 import { pxVec3, textureSizeSchema } from '../minecraft/schema';
@@ -97,9 +100,15 @@ export const minecraftCommands = [
         folder: (p.folder ?? texture.java?.folder ?? 'block').replace(/^\/+|\/+$/g, ''),
         key: p.key ?? texture.java?.key ?? '0',
       };
-      updateDocState(ctx, (s) => ({ ...s, textures: { ...s.textures, [id]: { ...s.textures[id], java, ...(p.name ? { name: p.name } : {}) } } }));
+      updateDocState(ctx, (s) => {
+        const next = { ...s.textures[id], java, ...(p.name ? { name: p.name } : {}) };
+        // A linked texture follows its new location (the library may not have a file there yet: it then shows as missing).
+        const moved = next.link && (p.namespace !== undefined || p.folder !== undefined || p.name !== undefined);
+        const link = moved ? textureLink({ java: next.java, name: next.name }) : null;
+        return { ...s, textures: { ...s.textures, [id]: link ? { ...next, link } : next } };
+      });
       const updated = docState(ctx).textures[id];
-      return { id, name: updated.name, ...updated.java, location: textureLocation(updated) };
+      return { id, name: updated.name, ...updated.java, location: textureLocation(updated), linked: !!updated.link };
     },
   }),
 
@@ -146,7 +155,7 @@ export const minecraftCommands = [
     id: 'document.import_java',
     title: 'Minecraft-Java-Modell öffnen',
     description:
-      'Open a Minecraft Java block/item model (.json text) as a NEW Minecraft Java document tab. Usually you want the file_open tool instead, which reads a .json file from disk together with its textures from the resource pack. images: texture PNGs by the resource location the model uses (e.g. "block/stone" or "mymod:item/gear"); textures without an image get a placeholder. Unknown root keys and "display" are kept and written back on export; the parent model is not resolved. Returns { id, name, active, warnings }.',
+      'Open a Minecraft Java block/item model (.json text) as a NEW Minecraft Java document tab. Usually you want the file_open tool instead, which reads a .json file from disk together with its textures from the resource pack. images: texture PNGs by the resource location the model uses (e.g. "block/stone" or "mymod:item/gear"); textures without an image get a placeholder. Unknown root keys and "display" are kept and written back on export; the parent model is not resolved. Returns { id, name, active, warnings }. An item model definition (assets/<ns>/items/<id>.json: a "model" object with a "type") opens as a "minecraft_item" document instead; filePath tells where it is.',
     params: z.object({
       json: z.string().min(1),
       name: z.string().min(1).default('model'),
@@ -156,8 +165,10 @@ export const minecraftCommands = [
         .record(z.string(), z.object({ data: z.string().min(1), width: z.number().int().min(1).max(8192), height: z.number().int().min(1).max(8192) }))
         .optional(),
       activate: z.boolean().default(true),
+      filePath: z.string().optional().describe('Where the file is on disk; item definitions are saved back to it.'),
     }),
     run(ctx, p) {
+      if (isItemDefinitionText(p.json)) return importItemDefinition(ctx, { json: p.json, filePath: p.filePath, name: p.name === 'model' ? undefined : p.name, version: p.version, activate: p.activate });
       const { state, warnings } = importJavaModel(p.json, { version: p.version, fileName: p.fileName ?? p.name, images: p.images });
       const names = Object.values(ctx.get().docs).map((d) => d.name);
       const doc = createDoc(uniqueName(names, p.name), state);
@@ -171,3 +182,11 @@ export const minecraftCommands = [
 ];
 
 export { MISSING_TEXTURE_PNG };
+
+function isItemDefinitionText(text: string): boolean {
+  try {
+    return looksLikeItemDefinition(JSON.parse(text.replace(/^﻿/, '')));
+  } catch {
+    return false;
+  }
+}

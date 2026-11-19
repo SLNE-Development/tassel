@@ -11,12 +11,15 @@ import { groupSelection, newEmptyGroup, ungroupSelection } from './groupActions'
 import { activeFormat } from './format';
 import { runOp } from './live';
 import { minecraftActions } from './minecraft/minecraftActions';
+import { itemActions, saveItemDefinition } from './items/itemActions';
 import { paintActions } from './paint/paintActions';
 import { previewActions } from './preview/previewActions';
 import { timelineActions } from './timeline/timelineActions';
 import { notifyError, notifyInfo, notifySuccess } from './toast';
 import { useUi } from './uiStore';
 import { uvActions } from './uv/uvActions';
+import { toggleLibraryPanel } from './library/libraryUi';
+import { pixelActionDefs } from './pixel/pixelActions';
 import { activeProject, pull, push, setPanelOpen, targetDir, togglePanel, useProjects } from './projects/projectsStore';
 
 /**
@@ -151,7 +154,9 @@ export function requestCloseDoc(id: string): unknown {
 }
 
 export async function saveActiveDoc(saveAs = false): Promise<boolean> {
-  const saved = await saveProject({ saveAs });
+  // An item definition is saved as its items/<id>.json file, not as a project.
+  const item = selectDocState(useApp.getState()).item !== undefined;
+  const saved = item ? await saveItemDefinition(saveAs) : await saveProject({ saveAs });
   if (saved) notifySuccess(getT().toasts.saved, useApp.getState().docs[useApp.getState().activeDocId]?.name);
   return saved;
 }
@@ -175,6 +180,9 @@ async function openJavaModelFile() {
 }
 
 export const actions: readonly Action[] = [
+  // Pixel-Malen (Minecraft): first, so that its keys win in the paint workspace of Minecraft documents.
+  ...pixelActionDefs(),
+
   // Datei
   action({ id: 'file.new', title: (t) => t.actions.new, group: 'file', keys: ['Ctrl+N'], inInputs: true, command: 'document.new', run: () => useUi.setState({ newDocOpen: true }) }),
   action({ id: 'file.open', title: (t) => t.actions.open, group: 'file', keys: ['Ctrl+O'], inInputs: true, run: () => openProject() }),
@@ -271,6 +279,7 @@ export const actions: readonly Action[] = [
 
   // Minecraft Java
   ...minecraftActions(action),
+  ...itemActions(action),
 
   // Ansicht
   ...shadings.map((shading) =>
@@ -323,13 +332,14 @@ export const actions: readonly Action[] = [
       id: `workspace.${workspace}`,
       title: (t) => t.actions.workspace(t.workspaces[workspace]),
       group: 'workspace',
-      formats: workspace === 'paint' ? FREE_ONLY : undefined,
+      formats: workspace === 'display' ? MINECRAFT_ONLY : undefined,
       run: () => execute('app.set_workspace', { workspace }),
     }),
   ),
 
   // Projekt
   action({ id: 'projects.toggle', title: (t) => t.projects.togglePanel, group: 'project', keys: ['Ctrl+Shift+E'], inInputs: true, run: togglePanel }),
+  action({ id: 'library.toggle', title: (t) => t.library.togglePanel, group: 'project', keys: ['Ctrl+Shift+L'], inInputs: true, run: toggleLibraryPanel }),
   action({
     id: 'projects.save_into',
     title: (t) => t.projects.saveInto,

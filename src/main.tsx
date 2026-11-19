@@ -11,6 +11,7 @@ import { imaging } from './imaging';
 import { createExporter, createImporter } from './io';
 import { initMinecraftAssets } from './mcassets';
 import { createRenderer } from './render';
+import { installTextureLibrary, startLibraryWatch } from './texlib';
 import { createVideoService } from './video';
 import { App } from './ui/App';
 import { installCloseGuard } from './ui/closeGuard';
@@ -27,6 +28,8 @@ services.renderer = createRenderer();
 services.video = createVideoService();
 services.fonts = createFontService();
 initMinecraftAssets();
+installTextureLibrary(services);
+if (services.textureLibrary) startLibraryWatch();
 startMcpBridge().catch(notifyError);
 installCloseGuard();
 // Boolean modifiers need their WASM kernel; everything else works without waiting for it.

@@ -17,6 +17,8 @@ import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { cuboidFaces, textureSlots } from '../core/types';
 import type { AppState, Cuboid, DocState, Material, SceneObject, Texture, TextureSlot } from '../core/types';
 import { textureBlob } from './textureImage';
+import { frameCount } from '../core/minecraft/paintRegions';
+import type { PixelTextures } from './pixelPaintView';
 
 /*
  * Texture orientation: document UVs have v pointing up, so v = 0 is the BOTTOM row of the image.
@@ -91,6 +93,20 @@ function configurePixels<T extends GpuTexture>(texture: T): T {
   return texture;
 }
 
+/**
+ * An animated (flipbook) texture shows one frame: the UVs of a face address one frame, so the texture is
+ * scaled to the frame's share of the image and moved to the frame (frame 0 is the top of the image).
+ */
+function showFrame(gpu: GpuTexture, texture: Texture, frame: number): void {
+  const frames = texture.animation ? frameCount(texture) : 1;
+  const repeat = 1 / frames;
+  const offset = (frames - 1 - frame) / frames;
+  if (gpu.repeat.y !== repeat || gpu.offset.y !== offset) {
+    gpu.repeat.set(1, repeat);
+    gpu.offset.set(0, offset);
+  }
+}
+
 /** Same surface options as the clay: double sided, and pushed back so edge overlays do not z-fight. */
 function surface(): MeshStandardMaterial {
   return new MeshStandardMaterial({ side: DoubleSide, fog: false, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 });
@@ -159,6 +175,8 @@ export class SurfaceMaterials {
   private readonly decoding = new Set<Promise<void>>();
   /** Set by the engine: the paint workspace's live textures. */
   paint: PaintedTextures | null = null;
+  /** Set by the engine: live pixel-art textures and animation frames of Minecraft faces. */
+  pixels: PixelTextures | null = null;
 
   /** `onLoad` is called when a texture has been decoded and the scene should be drawn again. */
   constructor(private readonly onLoad: () => void) {
@@ -244,7 +262,8 @@ export class SurfaceMaterials {
       material.alphaTest = 0.1;
       this.faceMaterials.set(texture, material);
     }
-    const next = this.gpuTexture(texture, true, true);
+    const next = this.pixels?.livePixels(texture) ?? this.gpuTexture(texture, true, true);
+    if (next) showFrame(configurePixels(next), texture, this.pixels?.frameOf(texture) ?? 0);
     if (material.map !== next) {
       if ((material.map === null) !== (next === null)) material.needsUpdate = true;
       material.map = next;

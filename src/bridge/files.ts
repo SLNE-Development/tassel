@@ -1,6 +1,6 @@
 import { invoke, isTauri } from '@tauri-apps/api/core';
 import { open, save } from '@tauri-apps/plugin-dialog';
-import { execute, selectActiveDoc, useApp } from '../app/store';
+import { execute, selectActiveDoc, services, useApp } from '../app/store';
 import { importFormats, type ExportFormat, type ExportResult, type ImportFormat } from '../core/types';
 import { documentName, getT } from '../i18n';
 
@@ -55,8 +55,16 @@ export async function openJavaModel(): Promise<{ warnings: string[] } | null> {
   );
   const stem = read.name || fileStem(path);
   const params = { json: read.json, images: read.images, name: stem, fileName: stem };
-  if (read.sidecar) return (await execute('document.import_factory', { ...params, sidecar: read.sidecar })) as { warnings: string[] };
-  return (await execute('document.import_java', params)) as { warnings: string[] };
+  // A model with a factory sidecar opens as a factory document; item definitions (items/<id>.json) open as item
+  // definition documents and are saved back to the file.
+  const result = (
+    read.sidecar
+      ? await execute('document.import_factory', { ...params, sidecar: read.sidecar })
+      : await execute('document.import_java', { ...params, filePath: path })
+  ) as { warnings: string[] };
+  // Textures that live in the texture library are linked to their files instead of staying copies.
+  if (services.textureLibrary) await execute('library.link_all', {}).catch(() => undefined);
+  return result;
 }
 
 /** Saves the active document; asks for a path if it has none or `saveAs` is set. Resolves false if cancelled. */

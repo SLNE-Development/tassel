@@ -1,5 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { commands } from '../../commands';
+import { commandAllowedIn } from '../../formats';
 import { parseProject, serializeProject } from '../../project';
 import { activeDoc } from '../../state';
 import { exportJavaModel } from '../javaExport';
@@ -80,6 +82,13 @@ describe('factory documents', () => {
     await t.run('cuboid.add', { from: [0, 0, 0], to: [16, 8, 16] });
     expect(exportJavaModel(t.state())).toContain('"elements"');
     await expect(t.run('minecraft.validate')).resolves.toMatchObject({ valid: true });
+  });
+
+  it('get every command a Java model gets (display, pixel painting, texture library)', () => {
+    const javaCommands = commands.filter((c) => commandAllowedIn(c.id, c.formats, 'minecraft_java')).map((c) => c.id);
+    const missing = javaCommands.filter((id) => !commandAllowedIn(id, commands.find((c) => c.id === id)?.formats, 'minecraft_factory'));
+    expect(missing).toEqual([]);
+    for (const id of ['display.set_slot', 'paint.pixel_stroke', 'library.link_all', 'cuboid.add']) expect(javaCommands, id).toContain(id);
   });
 
   it('keep factory tools out of other formats', async () => {

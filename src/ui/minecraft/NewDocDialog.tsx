@@ -1,5 +1,5 @@
 import { Dialog } from '@base-ui/react/dialog';
-import { Box, Factory, Shapes, X } from 'lucide-react';
+import { Box, Factory, FileJson, Shapes, X } from 'lucide-react';
 import { useState, type ReactNode } from 'react';
 import { execute } from '../../app/store';
 import { factoryTemplates, type FactoryTemplate } from '../../core/minecraft/factory/templates';
@@ -11,6 +11,7 @@ import { ScrubField } from '../ScrubField';
 import { notifyError } from '../toast';
 import { useUi } from '../uiStore';
 import { FieldRow } from './fields';
+import { openItemWizard } from '../items/itemActions';
 
 const parentSuggestions = ['block/block', 'block/cube', 'block/cube_all', 'block/cube_column', 'item/generated', 'item/handheld', 'builtin/entity'];
 
@@ -43,6 +44,7 @@ function FormatCard({ icon, title, description, selected, onSelect }: { icon: Re
 function NewDocBody({ close }: { close(): void }) {
   const t = useT().mc.newDoc;
   const tf = useT().factory.newDoc;
+  const items = useT().items;
   const [format, setFormat] = useState<DocFormat>('free');
   const [machineId, setMachineId] = useState('');
   const [template, setTemplate] = useState<FactoryTemplate>('machine');
@@ -73,7 +75,7 @@ function NewDocBody({ close }: { close(): void }) {
         create();
       }}
     >
-      <div role="radiogroup" aria-label={t.format} className="grid grid-cols-3 gap-2 px-5 pt-4">
+      <div role="radiogroup" aria-label={t.format} className="grid grid-cols-2 gap-2 px-5 pt-4">
         <FormatCard icon={<Shapes size={15} strokeWidth={1.75} />} title={t.free} description={t.freeText} selected={format === 'free'} onSelect={() => setFormat('free')} />
         <FormatCard
           icon={<Box size={15} strokeWidth={1.75} />}
@@ -88,6 +90,17 @@ function NewDocBody({ close }: { close(): void }) {
           description={tf.factoryText}
           selected={format === 'minecraft_factory'}
           onSelect={() => setFormat('minecraft_factory')}
+        />
+        {/* Item definitions have their own short wizard (id, base model, variants). */}
+        <FormatCard
+          icon={<FileJson size={15} strokeWidth={1.75} />}
+          title={items.newDocTitle}
+          description={items.newDocText}
+          selected={false}
+          onSelect={() => {
+            close();
+            openItemWizard();
+          }}
         />
       </div>
       {format !== 'free' && (

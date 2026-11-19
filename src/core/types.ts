@@ -2,9 +2,12 @@
 // All state is immutable: commands produce new objects, which makes undo a stack of DocStates.
 // Conventions: Y is up, units are meters, rotations are Euler XYZ in degrees.
 
+import type { ItemDocSettings } from './minecraft/items/types';
 import type { MinecraftAssetsService } from './minecraftAssets';
+import type { PixelOp, TextureTransform } from './pixelOps';
 import type { Preferences } from './preferences';
 import type { RenderService, RenderSettings } from './render';
+import type { TextureLibraryService, TextureLink } from './textureLibrary';
 import type { VideoService } from './video';
 
 export type Vec3 = [number, number, number];
@@ -38,6 +41,25 @@ export interface Texture {
   readonly layers?: readonly PaintLayer[];
   /** Minecraft documents: where the texture lives in a resource pack. `name` is its file name without .png. */
   readonly java?: JavaTextureRef;
+  /**
+   * Linked to a texture library file (core/textureLibrary.ts) instead of being only embedded: the image is
+   * loaded from the library on open and when the file changes, written back on save, and exported by
+   * this location. `data` stays a cached copy, so the document also opens without the library.
+   */
+  readonly link?: TextureLink;
+  /**
+   * An animated (flipbook) texture: the image is a vertical strip of square frames (frame height = width),
+   * played in order. Written as the texture's `.png.mcmeta` on export.
+   */
+  readonly animation?: TextureAnimation;
+}
+
+/** Playback of a flipbook texture, as Minecraft's `.mcmeta` "animation" section. */
+export interface TextureAnimation {
+  /** Game ticks (1/20 s) each frame is shown, >= 1. */
+  readonly frametime: number;
+  /** Blend between frames while one is shown. */
+  readonly interpolate: boolean;
 }
 
 export const blendModes = ['normal', 'multiply', 'screen', 'overlay', 'add'] as const;
@@ -294,11 +316,14 @@ export interface DocState {
   readonly java?: JavaModelSettings;
   /** Machine definition of a factory model (core/minecraft/factory); present exactly when `format` is 'minecraft_factory'. */
   readonly factory?: FactoryMachine;
+  /** The item definition of a Minecraft item definition document; present exactly when `format` is 'minecraft_item'. */
+  readonly item?: ItemDocSettings;
 }
 
-export const docFormats = ['free', 'minecraft_java', 'minecraft_factory'] as const;
+export const docFormats = ['free', 'minecraft_java', 'minecraft_item', 'minecraft_factory'] as const;
 /**
  * 'free': a general 3D model (polygon meshes). 'minecraft_java': a Minecraft Java block/item model (cuboids).
+ * 'minecraft_item': a Minecraft Java item model definition (assets/<ns>/items/<id>.json; no scene objects).
  * 'minecraft_factory': a Minecraft Java model plus a machine definition (ports, footprint, facings) for a server plugin.
  */
 export type DocFormat = (typeof docFormats)[number];
@@ -376,7 +401,10 @@ export interface JavaModelSettings {
   readonly credit: string;
   /** Texture id used as "particle", or null. */
   readonly particle: string | null;
-  /** The "display" object as read from a file (kept verbatim for the Display editor of a later project). */
+  /**
+   * Display transforms per slot ({ rotation, translation, scale }), as read from a file or set in the Display
+   * workspace (core/minecraft/display.ts). Unknown slots and fields are kept verbatim.
+   */
   readonly display?: Readonly<Record<string, unknown>>;
   /** Root keys of an imported model that Tessel does not understand, written back unchanged on export. */
   readonly extra?: Readonly<Record<string, unknown>>;
@@ -402,7 +430,7 @@ export interface Doc {
   readonly future: readonly DocState[];
 }
 
-export const workspaces = ['modeling', 'uv', 'paint'] as const;
+export const workspaces = ['modeling', 'uv', 'paint', 'display'] as const;
 export type Workspace = (typeof workspaces)[number];
 
 export const shadings = ['solid', 'wireframe', 'material'] as const;
@@ -645,6 +673,14 @@ export interface ImagingService {
   regionTransparent?(texture: Texture, rect: { x: number; y: number; width: number; height: number }): Promise<boolean>;
   /** Tangent-space normal map (OpenGL convention) from the image's luminance as height. */
   normalFromHeight(texture: Texture, strength: number, invert: boolean): Promise<string>;
+  /**
+   * A pixel-art edit (core/pixelOps.ts) of one layer, or with `layerId` null of the image of a texture without
+   * layers (then `layer` and `flattened` are the same new PNG). `changed` is false when no pixel changed (the
+   * strings are then the old ones).
+   */
+  pixelEdit(texture: Texture, layerId: string | null, op: PixelOp): Promise<{ layer: string; flattened: string; changed: boolean }>;
+  /** The same transform applied to the image and every layer; the size may change. `layers` follows texture.layers. */
+  transformTexture(texture: Texture, transform: TextureTransform): Promise<{ data: string; width: number; height: number; layers?: string[] }>;
 }
 
 /** What a bake computes; see the bake.* commands for the meaning of the fields. */
@@ -732,4 +768,6 @@ export interface Services {
   video?: VideoService | null;
   /** Vanilla Minecraft assets from the user's install (src/mcassets). */
   minecraftAssets?: MinecraftAssetsService | null;
+  /** Texture library files of projects, library folders and vanilla (src/texlib). */
+  textureLibrary?: TextureLibraryService | null;
 }

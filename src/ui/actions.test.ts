@@ -27,7 +27,7 @@ describe('actions per document format', () => {
   });
 
   it('offers the free-form tools only in free documents', () => {
-    for (const id of ['add.cube', 'add.text', 'mesh.extrude', 'mode.toggle', 'mode.edit', 'element.vertex', 'uv.pack', 'uv.rotate_right', 'paint.fill', 'bake.open', 'timeline.toggle', 'video.export', 'tool.scale', 'workspace.paint', 'file.import', 'file.export_obj', 'file.export_usdz']) {
+    for (const id of ['add.cube', 'add.text', 'mesh.extrude', 'mode.toggle', 'mode.edit', 'element.vertex', 'uv.pack', 'uv.rotate_right', 'paint.fill', 'bake.open', 'timeline.toggle', 'video.export', 'tool.scale', 'file.import', 'file.export_obj', 'file.export_usdz']) {
       expect(byId(id), id).toBeDefined();
       expect(free.has(id), `${id} in free`).toBe(true);
       expect(minecraft.has(id), `${id} in minecraft`).toBe(false);
@@ -43,7 +43,7 @@ describe('actions per document format', () => {
   });
 
   it('keeps everything else in both formats', () => {
-    for (const id of ['file.new', 'file.open', 'file.open_java', 'file.save', 'file.export_glb', 'edit.undo', 'edit.duplicate', 'edit.delete', 'add.menu', 'tool.move', 'tool.rotate', 'tool.select', 'workspace.uv', 'workspace.modeling', 'view.frame', 'palette.open', 'render.open']) {
+    for (const id of ['file.new', 'file.open', 'file.open_java', 'file.save', 'file.export_glb', 'edit.undo', 'edit.duplicate', 'edit.delete', 'add.menu', 'tool.move', 'tool.rotate', 'tool.select', 'workspace.uv', 'workspace.modeling', 'workspace.paint', 'view.frame', 'palette.open', 'render.open']) {
       expect(byId(id), id).toBeDefined();
       expect(free.has(id), `${id} in free`).toBe(true);
       expect(minecraft.has(id), `${id} in minecraft`).toBe(true);
@@ -52,7 +52,7 @@ describe('actions per document format', () => {
 
   it('never offers a free-only action in a Minecraft document', () => {
     // Every action that stands for a registry command follows the command's formats.
-    const leaked = actions.filter((a) => a.command && minecraft.has(a.id) && /^(mesh|edit|uv|modifier|material|paint|bake|anim)\./.test(a.command) && !a.command.startsWith('edit.undo'));
+    const leaked = actions.filter((a) => a.command && minecraft.has(a.id) && /^(mesh|edit|uv|modifier|material|bake|anim)\./.test(a.command) && !a.command.startsWith('edit.undo'));
     expect(leaked.map((a) => a.id)).toEqual([]);
   });
 
@@ -83,7 +83,8 @@ describe('the active document decides', () => {
 
 describe('format guards', () => {
   it('moves the app-wide tool and workspace off what a Minecraft document does not have', () => {
-    expect(fallbackFor({ tool: 'scale', workspace: 'paint' }, true)).toEqual({ tool: 'move', workspace: 'modeling' });
+    expect(fallbackFor({ tool: 'scale', workspace: 'paint' }, true)).toEqual({ tool: 'move' });
+    expect(fallbackFor({ tool: 'move', workspace: 'paint' }, true)).toBeNull();
     expect(fallbackFor({ tool: 'rotate', workspace: 'uv' }, true)).toBeNull();
     expect(fallbackFor({ tool: 'scale', workspace: 'paint' }, false)).toBeNull();
   });

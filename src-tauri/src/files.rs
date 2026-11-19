@@ -210,6 +210,9 @@ pub fn image_info(b: &[u8]) -> Option<(&'static str, u32, u32)> {
 
 /// The webview may only touch the file types the editor works with, whatever path it is handed
 /// (a document's file path can be set through MCP).
+/// Text files the save dialogs write: projects, glTF, Minecraft models and texture `.mcmeta` files.
+pub const TEXT_EXPORT_EXTENSIONS: [&str; 4] = ["tessel", "gltf", "json", "mcmeta"];
+
 fn require_extension(path: &str, allowed: &[&str]) -> Result<(), String> {
   if allowed.contains(&extension(path).as_str()) {
     Ok(())
@@ -354,7 +357,8 @@ pub async fn read_binary_file(path: String) -> Result<String, String> {
 
 #[tauri::command]
 pub async fn write_text_file(path: String, contents: String) -> Result<(), String> {
-  require_extension(&path, &["tessel", "gltf", "json"])?;
+  // .mcmeta: the animation file Minecraft reads next to an exported texture (`name.png.mcmeta`).
+  require_extension(&path, &TEXT_EXPORT_EXTENSIONS)?;
   write_bytes(&path, contents.as_bytes()).await
 }
 
@@ -402,6 +406,8 @@ mod tests {
     assert!(require_extension("C:\\a\\b.GLB", &IMPORT_EXTENSIONS).is_ok());
     assert!(require_extension("C:\\a\\b.exe", &IMPORT_EXTENSIONS).is_err());
     assert!(require_extension("C:\\a\\glb", &IMPORT_EXTENSIONS).is_err());
+    assert!(require_extension("C:\\pack\\fire.png.mcmeta", &TEXT_EXPORT_EXTENSIONS).is_ok());
+    assert!(require_extension("C:\\pack\\fire.png", &TEXT_EXPORT_EXTENSIONS).is_err());
     assert!(require_extension("C:\\a\\b.usdz", &EXPORT_EXTENSIONS).is_ok());
   }
 

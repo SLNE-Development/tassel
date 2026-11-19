@@ -86,9 +86,10 @@ pub fn native_tools() -> Vec<NativeTool> {
       description: "Open a Tessel project file (.tessel), or a Minecraft Java block/item model (.json), from disk \
         in a new document tab. A .json model becomes a Minecraft Java document; its textures are read from the \
         resource pack it is in (assets/<namespace>/textures/...) or from next to the file, and textures that are \
-        not found get a placeholder (listed in warnings). A model with a factory sidecar (<name>.factory.json) \
-        next to it - or the sidecar itself - opens as a factory document (model plus machine and ports). Returns \
-        { opened, path, id, name, active }: id is the new document's id, to be passed as documentId to other \
+        not found get a placeholder (listed in warnings). An item model definition (assets/<namespace>/items/<id>.json) \
+        opens as a Minecraft item definition document (item_* tools) instead. A model with a factory sidecar \
+        (<name>.factory.json) next to it - or the sidecar itself - opens as a factory document (model plus machine and \
+        ports). Returns { opened, path, id, name, active }: id is the new document's id, to be passed as documentId to other \
         tools. By default the visible tab switches to it; with activate: false it opens in the background and \
         the user keeps looking at their current tab, while you can still work in it and take screenshots of it \
         through its documentId. Other open documents are not affected. To add the content of a project to the \
@@ -115,10 +116,10 @@ pub fn native_tools() -> Vec<NativeTool> {
         embedded as base64), .obj (Wavefront OBJ: polygons stay polygons; the material library <name>.mtl and the \
         texture images <name>_<texture>.png are written into the same folder), .stl (binary, triangles only, for 3D \
         printing), .ply (binary, triangles with normals and UVs), .usdz (USD archive for AR viewers) or .json (a \
-        Minecraft Java block/item model; only from Minecraft Java documents, written for their target version with \
+        Minecraft Java block/item model; only from Minecraft Java and factory documents, written for their target version with \
         every element whose export flag is on; texture images are not written; a factory document also writes \
-        its sidecar <name>.factory.json for the server plugin next to it). Exported are \
-        the visible objects as they look after their modifiers; .obj, .stl and .ply have no transforms, so they are \
+        its sidecar <name>.factory.json for the server plugin next to it; from a Minecraft item definition document \
+        .json writes its items/<id>.json file, the only format there). Exported are the visible objects as they look after their modifiers; .obj, .stl and .ply have no transforms, so they are \
         written in world space. Set selectionOnly to export just the selected objects. Missing parent folders are \
         created; existing files are overwritten. Returns { exported, path, format, bytes, files, selectionOnly }; \
         files lists the absolute path of every file written (the main file first). This does not save the project \
@@ -872,7 +873,8 @@ pub(crate) async fn file_open<F: Frontend>(frontend: &F, args: &Value) -> Result
     // factory sidecar next to it (or when the sidecar itself is opened) it becomes a factory document.
     let read = files::read_model_bundle(path).await?;
     let stem = read["name"].clone();
-    let mut params = json!({ "json": read["json"], "images": read["images"], "name": stem, "fileName": stem });
+    // The path lets item definitions (items/<id>.json) know their namespace and id and be saved back to it.
+    let mut params = json!({ "json": read["json"], "images": read["images"], "name": stem, "fileName": stem, "filePath": path });
     let command = if read["sidecar"].is_string() {
       params["sidecar"] = read["sidecar"].clone();
       "document.import_factory"
