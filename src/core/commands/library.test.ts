@@ -194,6 +194,34 @@ describe('keeping linked textures in step', () => {
     expect((await t.run('library.save_textures', {})).written).toEqual([]);
   });
 
+  it('a save updates other open documents linked to the same file', async () => {
+    const t = await mcApp();
+    const first = t.app().activeDocId;
+    const a = (await t.run('texture.add_from_library', { location: 'surf_textures:block/rock' })).id;
+    await t.run('document.new', { name: 'Second', format: 'minecraft_java' });
+    const b = (await t.run('texture.add_from_library', { location: 'surf_textures:block/rock' })).id;
+    t.ctx.set((app) => {
+      const doc = app.docs[app.activeDocId];
+      return { ...app, docs: { ...app.docs, [doc.id]: { ...doc, state: { ...doc.state, textures: { ...doc.state.textures, [b]: { ...doc.state.textures[b], data: PAINTED } } } } } };
+    });
+    await t.run('document.mark_saved', {});
+    expect(t.app().docs[first].state.textures[a].data).toBe(PAINTED);
+    // So saving the first document does not write the old pixels back.
+    await t.run('document.switch', { id: first });
+    expect((await t.run('library.save_textures', {})).written).toEqual([]);
+  });
+
+  it('never replaces pixels painted onto a read-only vanilla texture on first sync', async () => {
+    const t = await mcApp();
+    const id = (await t.run('texture.add', { name: 'stone', mimeType: 'image/png', data: PAINTED, width: 16, height: 16 })).id;
+    t.ctx.set((app) => {
+      const doc = app.docs[app.activeDocId];
+      return { ...app, docs: { ...app.docs, [doc.id]: { ...doc, state: { ...doc.state, textures: { ...doc.state.textures, [id]: { ...doc.state.textures[id], link: { namespace: 'minecraft', path: 'block/stone' } } } } } } };
+    });
+    expect((await t.run('library.refresh', {})).unsaved).toHaveLength(1);
+    expect(t.state().textures[id].data).toBe(PAINTED);
+  });
+
   it('save_texture writes one texture (the paint session API)', async () => {
     const t = await mcApp();
     const id = (await t.run('texture.add_from_library', { location: 'surf_textures:block/rock' })).id;

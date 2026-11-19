@@ -106,6 +106,8 @@ interface SourceScan {
 
 let scans: SourceScan[] = [];
 let scannedKey = '';
+/** When the last full scan finished (ms), so that lookups of missing files do not rescan over and over. */
+let scannedAt = 0;
 let scanning: Promise<SourceScan[]> | null = null;
 let vanillaCache: { key: string; entries: LibraryEntry[] } | null = null;
 const baselines = new Map<string, string>();
@@ -203,6 +205,7 @@ async function scanAll(): Promise<SourceScan[]> {
     }),
   );
   scans = results;
+  scannedAt = Date.now();
   scannedKey = sources.map((s) => `${s.id}=${s.available}`).join('|');
   changed();
   return results;
@@ -299,8 +302,8 @@ export const textureLibrary: TextureLibraryService = {
   async read(link, opts) {
     await ensureScans();
     let entry = resolveLink(allEntries(), link, opts?.source);
-    // A file added since the last scan.
-    if (!entry) {
+    // A file added since the last scan (rescanned at most every few seconds).
+    if (!entry && Date.now() - scannedAt > 3000) {
       await ensureScans(true);
       entry = resolveLink(allEntries(), link, opts?.source);
     }

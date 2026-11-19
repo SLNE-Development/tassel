@@ -102,7 +102,7 @@ export async function syncLinkedTextures(ctx: CommandContext, opts: { documentId
   if (opts.rescan !== false) await lib.entries({ refresh: true });
   const report: SyncReport = { updated: [], missing: [], conflicts: [], unsaved: [] };
   const wanted = opts.locations ? new Set(opts.locations) : null;
-  const files = new Map<string, Promise<{ data: string; width: number; height: number } | null>>();
+  const files = new Map<string, Promise<{ data: string; width: number; height: number; readOnly: boolean } | null>>();
   const baselines = new Map<string, string | undefined>();
   const docs = Object.values(ctx.get().docs).filter((d) => !opts.documentIds || opts.documentIds.includes(d.id));
   for (const doc of docs) {
@@ -118,7 +118,7 @@ export async function syncLinkedTextures(ctx: CommandContext, opts: { documentId
           lib.read(link).then((file) => {
             if (!file) return null;
             const size = base64ImageSize(file.data) ?? { width: file.entry.width, height: file.entry.height };
-            return { data: file.data, ...size };
+            return { data: file.data, ...size, readOnly: file.entry.readOnly };
           }),
         );
       }
@@ -131,9 +131,12 @@ export async function syncLinkedTextures(ctx: CommandContext, opts: { documentId
       // Re-read: an earlier await may have let another change in.
       const current = own(ctx.get().docs[doc.id]?.state.textures ?? {}, texture.id);
       if (!current || !sameLink(current.link, texture.link)) continue;
-      const decision = syncDecision(current.data, file.data, baselines.get(location));
+      let decision = syncDecision(current.data, file.data, baselines.get(location));
+      // Pixels painted onto a read-only (vanilla) texture cannot be saved there: never replace them silently.
+      if (decision === 'update' && file.readOnly && baselines.get(location) === undefined) decision = 'local';
       if (decision === 'update') {
-        ctx.set((app) => replaceImage(app, doc.id, texture.id, current.data, file));
+        const image = { data: file.data, width: file.width, height: file.height };
+        ctx.set((app) => replaceImage(app, doc.id, texture.id, current.data, image));
         report.updated.push(item);
       } else if (decision === 'conflict') report.conflicts.push(item);
       else if (decision === 'local') report.unsaved.push(item);
@@ -157,8 +160,23 @@ export async function writeLinkedTextures(
     const location = linkLocation(texture.link);
     try {
       if (texture.mimeType !== 'image/png') throw new Error('Only PNG textures can be written to the library');
+      const before = lib.baseline(location);
       const entry = await lib.write(texture.link, texture.data);
       written.push({ textureId: texture.id, location, file: entry.file });
+      // Other open textures linked to the same file that showed it unchanged now show the new pixels,
+      // so that saving them later does not write the old image back.
+      if (before !== undefined) {
+        const image = { data: texture.data, width: texture.width, height: texture.height };
+        ctx.set((app) => {
+          let next = app;
+          for (const other of Object.values(app.docs)) {
+            for (const t of Object.values(other.state.textures)) {
+              if (sameLink(t.link, texture.link) && t.data === before && !(other.id === doc.id && t.id === texture.id)) next = replaceImage(next, other.id, t.id, before, image);
+            }
+          }
+          return next;
+        });
+      }
     } catch (error) {
       failed.push({ textureId: texture.id, location, error: error instanceof Error ? error.message : String(error) });
     }
