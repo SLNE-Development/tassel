@@ -1,0 +1,94 @@
+name: Release
+
+# Every push to master checks the app version (package.json, mirrored in src-tauri/Cargo.toml).
+# If there is no tag v<version> yet, the installers are built and published as a GitHub Release.
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      release_id: ${{ steps.draft.outputs.release_id }}
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: version
+        run: |
+          version=$(node scripts/version.mjs)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if git ls-remote --exit-code --tags origin "refs/tags/v$version" > /dev/null; then
+            echo "Tag v$version already exists, nothing to release."
+            echo "release=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "release=true" >> "$GITHUB_OUTPUT"
+          fi
+      - id: draft
+        if: steps.version.outputs.release == 'true'
+        run: |
+          tag="v${{ steps.version.outputs.version }}"
+          # Reuse the draft of an earlier failed run for the same version.
+          id=$(gh api "repos/${{ github.repository }}/releases" --jq ".[] | select(.draft and .tag_name == \"$tag\") | .id" | head -n1)
+          if [ -z "$id" ]; then
+            gh release create "$tag" --draft --target "$GITHUB_SHA" --title "Tessel $tag" --generate-notes
+            id=$(gh api "repos/${{ github.repository }}/releases" --jq ".[] | select(.draft and .tag_name == \"$tag\") | .id" | head -n1)
+          fi
+          echo "release_id=$id" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: prepare
+    if: needs.prepare.outputs.release_id != ''
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: windows-latest
+            args: ''
+          - platform: macos-latest
+            args: '--target universal-apple-darwin'
+          - platform: ubuntu-22.04
+            args: ''
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Tauri system dependencies
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - run: npm ci
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          releaseId: ${{ needs.prepare.outputs.release_id }}
+          args: ${{ matrix.args }}
+
+  publish:
+    needs: [prepare, build]
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - run: gh release edit "v${{ needs.prepare.outputs.version }}" --repo "${{ github.repository }}" --draft=false --latest

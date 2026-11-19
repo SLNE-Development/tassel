@@ -3,8 +3,8 @@ name = "tessel"
 version = "0.2.1"
 description = "Tessel - a modern 3D editor with first-class MCP integration"
 authors = ["Tessel"]
-license = ""
-repository = ""
+license = "MIT"
+repository = "https://github.com/slne-development/tassel"
 edition = "2024"
 rust-version = "1.90"
 
