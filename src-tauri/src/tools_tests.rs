@@ -454,6 +454,44 @@ fn file_import_and_open_forward_the_document() {
 }
 
 #[test]
+fn file_open_and_export_handle_factory_sidecars() {
+  let dir = TempDir::new("factory");
+  let model = dir.file("crusher.json", r#"{"elements":[]}"#);
+  let sidecar = dir.file("crusher.factory.json", r#"{"schema_version":1}"#);
+
+  // Opening the model or the sidecar opens both as a factory document, named after the model.
+  for path in [&model, &sidecar] {
+    let mock = Mock::new();
+    let output = call(&mock, "file_open", json!({ "path": path }));
+    assert!(!output.is_error, "{}", output.value);
+    let params = params_of(&mock, "document.import_factory");
+    assert_eq!(params["json"], r#"{"elements":[]}"#);
+    assert_eq!(params["sidecar"], r#"{"schema_version":1}"#);
+    assert_eq!(params["name"], "crusher");
+    assert_eq!(params["fileName"], "crusher");
+  }
+
+  // A sidecar without its model is refused; a model without a sidecar stays a plain Java model.
+  let lonely = dir.file("lonely.factory.json", "{}");
+  assert!(error_of(&call(&Mock::new(), "file_open", json!({ "path": lonely }))).contains("must be next to it"));
+  let plain = dir.file("plain.json", "{}");
+  let mock = Mock::new();
+  assert!(!call(&mock, "file_open", json!({ "path": plain })).is_error);
+  assert_eq!(params_of(&mock, "document.import_java")["name"], "plain");
+
+  // Exporting a factory document writes the sidecar next to the model, named after the chosen file.
+  let mock = Mock::new();
+  std::fs::create_dir_all(dir.0.join("out")).unwrap();
+  let target = dir.0.join("out").join("press.json").to_string_lossy().into_owned();
+  let output = call(&mock, "file_export", json!({ "path": target }));
+  assert!(!output.is_error, "{}", output.value);
+  let written = dir.0.join("out").join("press.factory.json").to_string_lossy().into_owned();
+  assert_eq!(output.value["files"], json!([target, written]));
+  assert_eq!(std::fs::read_to_string(&written).unwrap(), r#"{"schema_version":1}"#);
+  assert_eq!(std::fs::read_to_string(&target).unwrap(), r#"{"elements":[]}"#);
+}
+
+#[test]
 fn unknown_tools_and_frontend_tools() {
   let mock = Mock::new();
   assert!(error_of(&call(&mock, "scene_nope", json!({}))).contains("Unknown tool \"scene_nope\". Use tools/list"));

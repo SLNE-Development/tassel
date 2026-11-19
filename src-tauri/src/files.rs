@@ -286,11 +286,57 @@ pub async fn read_java_model(path: &str) -> Result<serde_json::Value, String> {
   Ok(serde_json::json!({ "json": json, "images": images, "missing": missing }))
 }
 
-/// Reads a Minecraft Java model (.json) with the texture images found in its resource pack.
+/// File name ending of a factory model's sidecar for the server plugin: `<model>.factory.json` next to
+/// `<model>.json` (docs/factory-model.md).
+pub const FACTORY_SUFFIX: &str = ".factory.json";
+
+/// Whether the path is a factory sidecar (`.factory.json`, any case).
+pub fn is_factory_sidecar(path: &str) -> bool {
+  path.to_ascii_lowercase().ends_with(FACTORY_SUFFIX)
+}
+
+/// The model and sidecar paths of a factory model, given either one: `gear.json` <-> `gear.factory.json`.
+/// `path` must end in `.json`.
+pub fn factory_pair(path: &str) -> (std::path::PathBuf, std::path::PathBuf) {
+  if is_factory_sidecar(path) {
+    let stem = &path[..path.len() - FACTORY_SUFFIX.len()];
+    (format!("{stem}.json").into(), path.into())
+  } else {
+    let stem = &path[..path.len() - ".json".len()];
+    (path.into(), format!("{stem}{FACTORY_SUFFIX}").into())
+  }
+}
+
+/// Reads a Minecraft Java model like `read_java_model`, plus its factory sidecar when there is one next to it.
+/// `path` may be the model or the sidecar (whose model must then exist). Adds `sidecar` (the sidecar text or
+/// null), `modelPath` and `name` (the model's file name without .json).
+pub async fn read_model_bundle(path: &str) -> Result<serde_json::Value, String> {
+  let (model, sidecar) = factory_pair(path);
+  let model_path = model.to_string_lossy().into_owned();
+  if is_factory_sidecar(path) && !model.is_file() {
+    return Err(format!("\"{path}\" is a factory sidecar; its model \"{model_path}\" must be next to it, but it does not exist"));
+  }
+  let mut read = read_java_model(&model_path).await?;
+  let sidecar_text = if sidecar.is_file() {
+    let sidecar_path = sidecar.to_string_lossy().into_owned();
+    let bytes = read_bytes_capped(&sidecar_path, MAX_JAVA_MODEL_BYTES, "open").await?;
+    Some(decode_text(&bytes).map_err(|e| format!("\"{sidecar_path}\" cannot be read: {e}"))?)
+  } else {
+    None
+  };
+  let name = model.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+  read["sidecar"] = serde_json::json!(sidecar_text);
+  read["modelPath"] = serde_json::json!(model_path);
+  read["name"] = serde_json::json!(name);
+  Ok(read)
+}
+
+/// Reads a Minecraft Java model (.json) with the texture images found in its resource pack, and its factory
+/// sidecar if there is one (the path may also be the `.factory.json` itself).
 #[tauri::command]
 pub async fn read_java_model_file(path: String) -> Result<serde_json::Value, String> {
   require_extension(&path, &["json"])?;
-  read_java_model(&path).await
+  read_model_bundle(&path).await
 }
 
 #[tauri::command]

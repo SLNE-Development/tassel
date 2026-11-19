@@ -47,10 +47,16 @@ export async function openJavaModel(): Promise<{ warnings: string[] } | null> {
   requireDesktop();
   const path = await open({ multiple: false, directory: false, filters: [{ name: getT().files.formats.json, extensions: ['json'] }] });
   if (!path) return null;
-  // The backend also reads the texture images it finds in the resource pack the model is in.
-  const read = await invoke<{ json: string; images: Record<string, { data: string; width: number; height: number }> }>('read_java_model_file', { path });
-  const stem = fileStem(path);
-  return (await execute('document.import_java', { json: read.json, images: read.images, name: stem, fileName: stem })) as { warnings: string[] };
+  // The backend also reads the texture images it finds in the resource pack the model is in, and the factory
+  // sidecar (<name>.factory.json) next to it; the path may also be the sidecar itself.
+  const read = await invoke<{ json: string; images: Record<string, { data: string; width: number; height: number }>; sidecar?: string | null; name?: string }>(
+    'read_java_model_file',
+    { path },
+  );
+  const stem = read.name || fileStem(path);
+  const params = { json: read.json, images: read.images, name: stem, fileName: stem };
+  if (read.sidecar) return (await execute('document.import_factory', { ...params, sidecar: read.sidecar })) as { warnings: string[] };
+  return (await execute('document.import_java', params)) as { warnings: string[] };
 }
 
 /** Saves the active document; asks for a path if it has none or `saveAs` is set. Resolves false if cancelled. */
@@ -104,6 +110,9 @@ export async function exportFile(format: ExportFormat, opts?: { selectionOnly?: 
     });
   } else if (exported.text !== undefined) {
     await invoke('write_text_file', { path, contents: exported.text });
+    // A factory model also writes its sidecar for the server plugin, named after the chosen model file.
+    const sidecar = (exported as { sidecar?: { text: string } }).sidecar;
+    if (sidecar) await invoke('write_text_file', { path: path.replace(/\.json$/i, '.factory.json'), contents: sidecar.text });
   } else {
     await invoke('write_binary_file', { path, base64: exported.base64 ?? '' });
   }
