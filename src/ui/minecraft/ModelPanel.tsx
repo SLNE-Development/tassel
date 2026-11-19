@@ -10,6 +10,7 @@ import { PickMenu, Segmented, Switch } from '../controls';
 import { ScrubField } from '../ScrubField';
 import { addTextureFromFile, textureAccept, useThumbnail } from '../textureFiles';
 import { notifyError } from '../toast';
+import { ParentSection } from '../modelImport/ParentSection';
 import { FieldRow, SectionTitle, smallButton, TextField } from './fields';
 
 const setSettings = (changes: Record<string, unknown>) => void dispatch('minecraft.set_settings', changes);
@@ -116,6 +117,7 @@ export function ModelSettings() {
           onChange={(version) => setSettings({ version })}
         />
       </FieldRow>
+      <ParentSection />
       <SectionTitle>{t.model.check}</SectionTitle>
       <Issues issues={issues} />
     </div>

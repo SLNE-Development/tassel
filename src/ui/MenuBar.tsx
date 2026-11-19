@@ -256,6 +256,7 @@ export function MenuBar() {
         <ActionItem id="file.new" />
         <ActionItem id="file.open" />
         <ActionItem id="file.open_java" />
+        <ActionItem id="file.import_folder" />
         <ActionItem id="file.import" />
         <MenuSeparator />
         <ActionItem id="file.save" />
