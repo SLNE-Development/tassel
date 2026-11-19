@@ -1,4 +1,7 @@
 import { z } from 'zod';
+import { looksLikeItemDefinition } from '../minecraft/items/codec';
+import { importItemDefinition } from './item';
+import { textureLink } from '../textureLibrary';
 import { MISSING_TEXTURE_PNG } from '../minecraft/javaImport';
 import { openJavaModelWithParents, parentModes } from '../minecraft/openModel';
 import { inheritedSummary } from '../minecraft/parents';
@@ -112,9 +115,15 @@ export const minecraftCommands = [
         folder: (p.folder ?? texture.java?.folder ?? 'block').replace(/^\/+|\/+$/g, ''),
         key: p.key ?? texture.java?.key ?? '0',
       };
-      updateDocState(ctx, (s) => ({ ...s, textures: { ...s.textures, [id]: { ...s.textures[id], java, ...(p.name ? { name: p.name } : {}) } } }));
+      updateDocState(ctx, (s) => {
+        const next = { ...s.textures[id], java, ...(p.name ? { name: p.name } : {}) };
+        // A linked texture follows its new location (the library may not have a file there yet: it then shows as missing).
+        const moved = next.link && (p.namespace !== undefined || p.folder !== undefined || p.name !== undefined);
+        const link = moved ? textureLink({ java: next.java, name: next.name }) : null;
+        return { ...s, textures: { ...s.textures, [id]: link ? { ...next, link } : next } };
+      });
       const updated = docState(ctx).textures[id];
-      return { id, name: updated.name, ...updated.java, location: textureLocation(updated) };
+      return { id, name: updated.name, ...updated.java, location: textureLocation(updated), linked: !!updated.link };
     },
   }),
 
@@ -161,7 +170,7 @@ export const minecraftCommands = [
     id: 'document.import_java',
     title: 'Minecraft-Java-Modell öffnen',
     description:
-      'Open a Minecraft Java block/item model (.json text) as a NEW Minecraft Java document tab. Usually you want the file_open tool instead, which reads a .json file from disk together with its textures from the resource pack. images: texture PNGs by the resource location the model uses (e.g. "block/stone" or "mymod:item/gear"); textures not given are looked up in the resource pack of sourcePath, the active project and the vanilla assets, else get a placeholder. Unknown root keys and "display" are kept and written back on export. parent: what to do with the parent model chain (looked up the same way): "show" (default) shows its elements and textures read-only (generated items as their flat extruded layers), "merge" turns them into elements and textures of the model itself, "reference" only keeps the "parent" text. Returns { id, name, active, warnings, parent }.',
+      'Open a Minecraft Java block/item model (.json text) as a NEW Minecraft Java document tab. Usually you want the file_open tool instead, which reads a .json file from disk together with its textures from the resource pack. images: texture PNGs by the resource location the model uses (e.g. "block/stone" or "mymod:item/gear"); textures not given are looked up in the resource pack of sourcePath, the active project and the vanilla assets, else get a placeholder. Unknown root keys and "display" are kept and written back on export. parent: what to do with the parent model chain (looked up the same way): "show" (default) shows its elements and textures read-only (generated items as their flat extruded layers), "merge" turns them into elements and textures of the model itself, "reference" only keeps the "parent" text. Returns { id, name, active, warnings, parent }. An item model definition (assets/<ns>/items/<id>.json: a "model" object with a "type") opens as a "minecraft_item" document instead; filePath tells where it is.',
     params: z.object({
       json: z.string().min(1),
       name: z.string().min(1).default('model'),
@@ -173,8 +182,10 @@ export const minecraftCommands = [
       sourcePath: z.string().optional().describe('The file the model was read from, for finding its parent models and textures.'),
       parent: z.enum(parentModes).default('show'),
       activate: z.boolean().default(true),
+      filePath: z.string().optional().describe('Where the file is on disk; item definitions are saved back to it.'),
     }),
     async run(ctx, p) {
+      if (isItemDefinitionText(p.json)) return importItemDefinition(ctx, { json: p.json, filePath: p.filePath, name: p.name === 'model' ? undefined : p.name, version: p.version, activate: p.activate });
       const source = ctx.services.modelFiles?.source(p.sourcePath ?? null) ?? null;
       const opened = await openJavaModelWithParents(p.json, { version: p.version, fileName: p.fileName ?? p.name, images: p.images, sourcePath: p.sourcePath, parent: p.parent }, source);
       const { state, warnings } = opened;
@@ -190,3 +201,11 @@ export const minecraftCommands = [
 ];
 
 export { MISSING_TEXTURE_PNG };
+
+function isItemDefinitionText(text: string): boolean {
+  try {
+    return looksLikeItemDefinition(JSON.parse(text.replace(/^﻿/, '')));
+  } catch {
+    return false;
+  }
+}

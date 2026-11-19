@@ -8,6 +8,7 @@ import { emptyDocState, newId, uniqueName } from '../state';
 import { cuboidFaces } from '../types';
 import type { Cuboid, CuboidFace, CuboidFaceName, DocState, Group, JavaModelSettings, SceneObject, Texture, Vec3 } from '../types';
 import { blankFace, createCuboid, syncCuboidObject } from './cuboid';
+import { displayIssues } from './display';
 import { defaultJavaSettings } from './schema';
 import { modelToWorld, subVec, tidy } from './space';
 import { DEFAULT_VERSION, inRange, isJavaVersion, type Ranged } from './versions';
@@ -316,6 +317,7 @@ export function importJavaModel(text: string, opts: JavaImportOptions = {}): Jav
   // A particle texture that is only used as particle keeps a readable variable.
   if (particle && textures[particle].java!.key.startsWith('particle_')) textures[particle] = { ...textures[particle], java: { ...textures[particle].java!, key: 'particle_texture' } };
 
+  warnings.push(...displayIssues(raw.display, version));
   const ctx: ReadContext = { version, warnings, textureSize, textureIds, inherited: opts.inheritedVariables };
   const { groups, elementGroup } = readGroups(raw.groups, warnings);
   const objects: Record<string, SceneObject> = {};
@@ -357,6 +359,7 @@ export function importJavaModel(text: string, opts: JavaImportOptions = {}): Jav
     textureSize,
     credit: typeof raw.credit === 'string' ? raw.credit : '',
     particle,
+    // Kept verbatim (unknown slots and fields go back out unchanged); problems are reported.
     ...(isObject(raw.display) ? { display: raw.display } : {}),
     ...(Object.keys(extra).length > 0 ? { extra } : {}),
     ...(Object.keys(textureRefs).length > 0 ? { textureRefs } : {}),

@@ -4,8 +4,10 @@
 // version that writes something differently adds a rule ending (`until`) at it and one starting (`since`) at
 // it; the rules of older versions stay as they are, and golden files pin their output.
 import { cuboidFaces } from '../types';
+import { shortLinkLocation } from '../textureLibrary';
 import type { Cuboid, CuboidFace, CuboidFaceName, DocState, Group, JavaModelSettings, SceneObject, Texture } from '../types';
 import { modelBox, uvSize } from './cuboid';
+import { exportDisplay } from './display';
 import { tidy } from './space';
 import { inRange, type Ranged } from './versions';
 
@@ -32,6 +34,8 @@ function textureVar(state: DocState, id: string | null): string {
 
 /** `namespace:folder/name`; the namespace is left out when it is `minecraft`. */
 export function textureLocation(texture: Texture): string {
+  // A linked texture is exported by the location of its library file.
+  if (texture.link) return shortLinkLocation(texture.link);
   const ref = texture.java ?? { namespace: 'minecraft', folder: 'block', key: '' };
   const path = ref.folder ? `${ref.folder.replace(/\/+$/, '')}/${texture.name}` : texture.name;
   return ref.namespace && ref.namespace !== 'minecraft' ? `${ref.namespace}:${path}` : path;
@@ -119,7 +123,8 @@ const rootRules: readonly Rule<RootInput>[] = [
   },
   { key: 'elements', since: '26.3', write: ({ elements }) => (elements.length > 0 ? elements : undefined) },
   { key: 'gui_light', since: '26.3', write: ({ java }) => java.guiLight ?? undefined },
-  { key: 'display', since: '26.3', write: ({ java }) => (java.display && Object.keys(java.display).length > 0 ? java.display : undefined) },
+  // Only slots and parts that differ from the default; unknown slots and fields as they were imported.
+  { key: 'display', since: '26.3', write: ({ java }) => exportDisplay(java) },
   { key: 'groups', since: '26.3', write: ({ groups }) => groups ?? undefined },
 ];
 

@@ -4,15 +4,25 @@ import { polyMeshSchema } from './mesh/polymesh';
 import { modifierSchema } from './modifiers/schema';
 import { syncCuboidObject, uvSize, withKnownFaceTextures } from './minecraft/cuboid';
 import { cuboidSchema, javaSettingsSchema, javaTextureRefSchema } from './minecraft/schema';
+import { itemSettingsFromJson, itemSettingsSchema, itemSettingsToJson } from './minecraft/items/document';
 import { repairGroups } from './groups';
 import { base64ImageSize } from './imageInfo';
 import { MAX_TEXTURE_SIZE, materialFields, repairMaterials, textureDataProblem, textureSizeProblem } from './materials';
 import { parseRenderSettings } from './render';
 import { newId } from './state';
+import { tryTextureLocation } from './textureLibrary';
 import { blendModes, docFormats, textureMimeTypes, textureSlots } from './types';
 import type { Doc, DocState, Group, Material, SceneObject, Texture } from './types';
 
 // Project file format (.tessel): JSON, validated on load because files are untrusted input.
+
+const textureLinkSchema = z
+  .object({ namespace: z.string(), path: z.string() })
+  .transform((link, ctx) => {
+    const parsed = tryTextureLocation(`${link.namespace}:${link.path}`);
+    if (!parsed) ctx.addIssue({ code: 'custom', message: `"${link.namespace}:${link.path}" is not a valid texture location` });
+    return parsed ?? link;
+  });
 
 const vec3 = z.tuple([z.number().finite(), z.number().finite(), z.number().finite()]);
 
@@ -39,6 +49,10 @@ const textureSchema = z
       .optional(),
     // Minecraft documents only: where the texture lives in a resource pack.
     java: javaTextureRefSchema.optional(),
+    // Linked to a texture library file (core/textureLibrary.ts); files written before the library have none.
+    link: textureLinkSchema.optional(),
+    // Flipbook animation (a vertical strip of square frames).
+    animation: z.object({ frametime: z.number().int().min(1).max(100000), interpolate: z.boolean() }).optional(),
   })
   .superRefine((texture, ctx) => {
     const fail = (message: string) => ctx.addIssue({ code: 'custom', message: `texture "${texture.name}": ${message}` });
@@ -58,6 +72,9 @@ const textureSchema = z
       if (header && header !== 'unreadable') {
         fail(`is ${header.width} x ${header.height} pixels according to its image data, not ${texture.width} x ${texture.height}`);
       }
+    }
+    if (texture.animation && texture.height % texture.width !== 0) {
+      fail(`is animated, so its height (${texture.height}) must be a whole number of square frames of its width (${texture.width})`);
     }
     if (!texture.layers) return;
     // Layers are PNGs of exactly the texture's size, and the texture's own image is then the flattened PNG.
@@ -88,6 +105,8 @@ const projectSchema = z.object({
   documentFormat: z.enum(docFormats).default('free'),
   // Minecraft Java model settings, present in minecraft_java documents.
   java: javaSettingsSchema.optional(),
+  // The item definition of a minecraft_item document.
+  item: itemSettingsSchema.optional(),
   objects: z.array(
     z.object({
       id: z.string().min(1),
@@ -134,6 +153,7 @@ export function serializeProject(doc: Doc): string {
     // Free documents leave the key out, so their files stay exactly as before formats existed.
     ...(doc.state.format && doc.state.format !== 'free' ? { documentFormat: doc.state.format } : {}),
     ...(doc.state.java ? { java: doc.state.java } : {}),
+    ...(doc.state.item ? { item: itemSettingsToJson(doc.state.item) } : {}),
     objects: doc.state.order.map((id) => doc.state.objects[id]),
     groups: doc.state.groupOrder.map((id) => doc.state.groups[id]),
     materials: Object.values(doc.state.materials),
@@ -158,6 +178,14 @@ export function parseProject(json: string): { name: string; state: DocState } {
   const format = parsed.data.documentFormat;
   const minecraft = format === 'minecraft_java';
   const java = minecraft ? (parsed.data.java ?? javaSettingsSchema.parse({})) : undefined;
+  let item;
+  if (format === 'minecraft_item') {
+    try {
+      item = itemSettingsFromJson(parsed.data.item ?? itemSettingsSchema.parse({ definition: { model: { type: 'minecraft:empty' } } }));
+    } catch (error) {
+      throw new Error(`Not a valid Tessel file: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
   const size = uvSize({ java });
   const objects: Record<string, SceneObject> = {};
   const order: string[] = [];
@@ -181,8 +209,8 @@ export function parseProject(json: string): { name: string; state: DocState } {
   const textures: Record<string, Texture> = {};
   for (const texture of parsed.data.textures) {
     const id = Object.hasOwn(textures, texture.id) ? newId() : texture.id;
-    const { java: ref, ...rest } = texture;
-    textures[id] = minecraft && ref ? { ...rest, id, java: ref } : { ...rest, id };
+    const { java: ref, link, ...rest } = texture;
+    textures[id] = { ...rest, id, ...(minecraft && ref ? { java: ref } : {}), ...(link ? { link } : {}) };
   }
   const materials: Record<string, Material> = {};
   for (const material of parsed.data.materials) {
@@ -214,6 +242,7 @@ export function parseProject(json: string): { name: string; state: DocState } {
       edit: null,
       ...(animation ? { animation } : {}),
       ...(minecraft ? { format, java: repairJavaSettings(java!, textures) } : {}),
+      ...(item ? { format, item } : {}),
       ...(parsed.data.render !== undefined && parsed.data.render !== null ? { render: parseRenderSettings(parsed.data.render) } : {}),
     },
   };

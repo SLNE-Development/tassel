@@ -9,6 +9,7 @@ mod model_files;
 mod projects;
 #[cfg(test)]
 mod testing;
+mod texlib;
 mod tools;
 mod workspace;
 mod workspace_tools;
@@ -34,6 +35,7 @@ pub fn run() {
         )?;
       }
       app.manage(workspace::init(&app.path().app_config_dir()?));
+      app.manage(texlib::init(&app.path().app_config_dir()?));
       let token = mcp::load_or_create_token(&app.path().app_config_dir()?.join("mcp-token"))?;
       let bridge = Arc::new(Bridge::new(app.handle().clone(), token.clone()));
       app.manage(bridge.clone());
@@ -93,6 +95,18 @@ pub fn run() {
       mcassets::mc_assets_read,
       mcassets::mc_assets_list,
       mcassets::mc_assets_read_skin,
+      texlib::texlib_folders,
+      texlib::texlib_add_folder,
+      texlib::texlib_remove_folder,
+      texlib::texlib_scan,
+      texlib::texlib_read,
+      texlib::texlib_read_text,
+      texlib::texlib_write,
+      texlib::texlib_trash,
+      texlib::texlib_move,
+      texlib::texlib_stat,
+      texlib::texlib_list_files,
+      texlib::texlib_reveal,
     ])
     .run(tauri::generate_context!())
     .expect("error while running Tessel");

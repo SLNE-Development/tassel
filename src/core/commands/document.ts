@@ -1,8 +1,11 @@
 import { z } from 'zod';
 import { parseProject, serializeProject } from '../project';
+import { writeLinkedTextures } from './library';
 import { docFormat } from '../formats';
 import { defaultJavaSettings, textureSizeSchema } from '../minecraft/schema';
 import { isJavaVersion, javaVersions } from '../minecraft/versions';
+import { itemDocState, newItemSettings } from '../minecraft/items/document';
+import { singleModelDefinition } from '../minecraft/items/templates';
 import { DEFAULT_DOC_NAME, activeDoc, addDoc, createDoc, emptyDocState, own, uniqueName, withDoc } from '../state';
 import { docFormats } from '../types';
 import type { AppState, Doc } from '../types';
@@ -71,7 +74,7 @@ export const documentCommands = [
         .enum(docFormats)
         .default('free')
         .describe(
-          'Kind of document. "free": a general 3D model (meshes, modifiers, materials, animation) - the default. "minecraft_java": a Minecraft Java block/item model made of cuboid elements (cuboid_* and minecraft_* tools; exported as model .json). The format cannot be changed later.',
+          'Kind of document. "free": a general 3D model (meshes, modifiers, materials, animation) - the default. "minecraft_java": a Minecraft Java block/item model made of cuboid elements (cuboid_* and minecraft_* tools; exported as model .json). "minecraft_item": a Minecraft item model definition (items/<id>.json; item_* tools; document_new_item sets its id and model directly). The format cannot be changed later.',
         ),
       fileName: z.string().min(1).optional().describe('minecraft_java only: model file name without .json. Default: the document name in lower case.'),
       parent: z.string().default('').describe('minecraft_java only: parent model, e.g. "block/block" or "item/generated". Default: none.'),
@@ -85,6 +88,11 @@ export const documentCommands = [
     run(ctx, p) {
       const name = uniqueName(docNames(ctx.get()), p.name);
       if (p.format === 'free') return { ...open(ctx, createDoc(name), p.activate), format: p.format };
+      if (p.format === 'minecraft_item') {
+        // An item definition that shows no model yet; document.new_item takes the item's id and model directly.
+        const item = newItemSettings(singleModelDefinition(''), { id: modelFileName(name), version: p.version });
+        return { ...open(ctx, createDoc(name, itemDocState(item)), p.activate), format: p.format };
+      }
       if (!isJavaVersion(p.version)) throw new Error(`Unknown Minecraft Java version "${p.version}". Known: ${javaVersions.map((v) => v.id).join(', ')}`);
       const java = defaultJavaSettings({
         version: p.version,
@@ -100,7 +108,7 @@ export const documentCommands = [
   defineCommand({
     id: 'document.list',
     title: 'Dokumente auflisten',
-    description: `List all open documents (tabs) in tab order: id, name, filePath (null if never saved), dirty (has unsaved changes), active (the visible tab), format ("free" or "minecraft_java": which tools work in it, see the tool descriptions) and objectCount (the number of scene objects in the document; groups, materials and textures are not counted). Use an id from here as "documentId" of other tools. ${DOCUMENT_ID_HINT}`,
+    description: `List all open documents (tabs) in tab order: id, name, filePath (null if never saved), dirty (has unsaved changes), active (the visible tab), format ("free", "minecraft_java" or "minecraft_item": which tools work in it, see the tool descriptions) and objectCount (the number of scene objects in the document; groups, materials and textures are not counted). Use an id from here as "documentId" of other tools. ${DOCUMENT_ID_HINT}`,
     params: z.object({}),
     run(ctx) {
       const app = ctx.get();
@@ -182,10 +190,13 @@ export const documentCommands = [
   defineCommand({
     id: 'document.mark_saved',
     title: 'Als gespeichert markieren',
-    description: 'Mark a document as saved and remember its file path. Called after the project file was written.',
+    description:
+      'Mark a document as saved and remember its file path. Called after the project file was written. Linked textures whose pixels changed are written back into their texture library files; the result lists them under library { written, failed }.',
     params: z.object({ id: docIdParam, filePath: z.string().optional(), name: z.string().min(1).optional() }),
-    run(ctx, p) {
+    async run(ctx, p) {
       const doc = requireDoc(ctx.get(), p.id);
+      // Saving a document also saves the library files of its linked textures (e.g. after painting).
+      const library = ctx.services.textureLibrary ? await writeLinkedTextures(ctx, doc) : null;
       ctx.set((app) => {
         const current = app.docs[doc.id];
         return withDoc(app, {
@@ -195,6 +206,7 @@ export const documentCommands = [
           name: p.name ?? current.name,
         });
       });
+      return library && (library.written.length > 0 || library.failed.length > 0) ? { ok: true, library } : { ok: true };
     },
   }),
 

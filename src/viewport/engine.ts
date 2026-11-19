@@ -43,6 +43,7 @@ import type {
   ViewportService,
   ViewPreset,
 } from '../core/types';
+import { itemPreviewScene, onItemPreviewChange } from './itemPreview';
 import { applyTransform, boxCorners, DocScene, selectionBox, Stage, type Entry, type SceneLooks } from './docScene';
 import { snapSteps, type SnapSteps } from './snapping';
 import { EditMaterials, EditView, selectedVertices } from './editMesh';
@@ -50,6 +51,7 @@ import { ElementPicker } from './editPick';
 import { DEFAULT_SPHERE, fitDistance, viewDirection } from './framing';
 import { GeometryStore } from './geometry';
 import { PaintView } from './paintView';
+import { PixelPaintView } from './pixelPaintView';
 import { PreviewController } from './preview/controller';
 import { rotateAbout, scaleAbout } from './groupTransform';
 import { SurfaceMaterials } from './surfaces';
@@ -118,6 +120,7 @@ export class ViewportEngine {
   private readonly unsubscribe: () => void;
   private readonly unsubscribeAppearance: () => void;
   private readonly unsubscribePlayback: () => void;
+  private readonly unsubscribeItemPreview: () => void;
   /**
    * "Kamera-Ansicht": while `previewing`, the viewport is drawn through this camera, posed from the
    * animated camera at the playhead. The user's own camera (`camera` with `orbit`) is not touched and
@@ -167,6 +170,7 @@ export class ViewportEngine {
   private readonly groupPivot = new Object3D();
   /** Painting on the active object in the paint workspace; it handles the left mouse button there. */
   private readonly paintView: PaintView;
+  private readonly pixelPaintView: PixelPaintView;
   /** Rectangle of a box selection in progress. */
   private readonly boxElement = document.createElement('div');
 
@@ -277,6 +281,24 @@ export class ViewportEngine {
       },
     });
     this.surfaces.paint = this.paintView;
+    this.pixelPaintView = new PixelPaintView({
+      canvas: this.canvas,
+      container,
+      camera: this.camera,
+      raycaster: this.raycaster,
+      sync: () => this.syncIfNeeded(),
+      target: () => null,
+      solids: () => [...this.entries.values()].filter((entry) => entry.obj.visible && !entry.edit).map((entry) => entry.solid),
+      objectIdOf: (solid) => {
+        for (const [id, entry] of this.entries) if (entry.solid === solid) return id;
+        return null;
+      },
+      refresh: () => {
+        this.needsSync = true;
+        this.invalidate();
+      },
+    });
+    this.surfaces.pixels = this.pixelPaintView;
 
     this.resizeObserver = new ResizeObserver(() => this.resize());
     this.resizeObserver.observe(container);
@@ -294,6 +316,10 @@ export class ViewportEngine {
     });
     // The playhead moved, or the camera preview was switched: show the document at that frame.
     this.unsubscribePlayback = usePlayback.subscribe(() => {
+      this.needsSync = true;
+      this.invalidate();
+    });
+    this.unsubscribeItemPreview = onItemPreviewChange(() => {
       this.needsSync = true;
       this.invalidate();
     });
@@ -329,6 +355,7 @@ export class ViewportEngine {
     this.unsubscribe();
     this.unsubscribeAppearance();
     this.unsubscribePlayback();
+    this.unsubscribeItemPreview();
     window.removeEventListener('resize', this.onWindowResize);
     window.removeEventListener('keydown', this.onModifierKey);
     window.removeEventListener('keyup', this.onModifierKey);
@@ -340,6 +367,7 @@ export class ViewportEngine {
     this.canvas.removeEventListener('mousedown', this.onMouseDown);
     this.canvas.removeEventListener('dblclick', this.onDoubleClick);
     this.paintView.dispose();
+    this.pixelPaintView.dispose();
     this.preview.dispose();
     this.gizmo.detach();
     this.gizmo.dispose();
@@ -421,6 +449,8 @@ export class ViewportEngine {
    * static pose (the mesh is edited where the object rests). Objects that do not move keep their identity.
    */
   private displayed(doc: { id: string; state: DocState }): DocState {
+    // Item definitions have no scene: they show the models picked for the editor's test inputs.
+    if (doc.state.format === 'minecraft_item') return itemPreviewScene(doc.id) ?? doc.state;
     const state = doc.state;
     return state.animation && !state.edit ? animatedState(state, frameOf(doc.id)) : state;
   }
@@ -831,6 +861,28 @@ export class ViewportEngine {
     const count = (params.indices ?? params.edges ?? []).length;
     if (count > 0) this.select('mesh.select', { ...params, action: event.shiftKey ? 'add' : 'replace' });
     else if (!event.shiftKey) this.selectNone(edit);
+  }
+
+  /**
+   * The frontmost visible object under the given client coordinates and, for a cuboid element, the
+   * index of the face hit (in `cuboidFaces` order). For dropping library textures onto faces.
+   */
+  pickFace(clientX: number, clientY: number): { id: string; face: number | null } | null {
+    const rect = this.canvas.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) return null;
+    const ndc = new Vector2(((clientX - rect.left) / rect.width) * 2 - 1, -((clientY - rect.top) / rect.height) * 2 + 1);
+    const targets: Mesh[] = [];
+    for (const entry of this.entries.values()) if (entry.obj.visible) targets.push(entry.solid);
+    this.scene.updateMatrixWorld();
+    this.viewCamera.updateMatrixWorld();
+    this.raycaster.setFromCamera(ndc, this.viewCamera);
+    const hit = this.raycaster.intersectObjects(targets, false)[0];
+    if (!hit) return null;
+    const id = hit.object.userData.id as string;
+    const cuboid = this.entries.get(id)?.obj.cuboid;
+    // A cuboid's six quads are two triangles each, in face order (and one geometry group per face).
+    const face = cuboid ? (hit.face?.materialIndex ?? (hit.faceIndex != null ? Math.floor(hit.faceIndex / 2) : null)) : null;
+    return { id, face: face !== null && face >= 0 && face < 6 ? face : null };
   }
 
   /** Id of the frontmost visible object under the given client coordinates. */

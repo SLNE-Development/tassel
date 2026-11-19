@@ -447,6 +447,7 @@ fn file_import_and_open_forward_the_document() {
   assert_eq!(params["json"], r#"{"textures":{"0":"mymod:item/gear"}}"#);
   assert_eq!(params["name"], "gear");
   assert_eq!(params["fileName"], "gear");
+  assert_eq!(params["filePath"], model.as_str());
   assert_eq!(params["activate"], false);
   assert_eq!(params["images"]["mymod:item/gear"]["width"], 16);
   assert_eq!(output.value["opened"], true);

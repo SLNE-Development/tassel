@@ -1,0 +1,76 @@
+{
+  "model": {
+    "type": "minecraft:range_dispatch",
+    "entries": [
+      {
+        "model": {
+          "type": "minecraft:model",
+          "model": "mymod:item/ruby_sword_flame"
+        },
+        "threshold": 1
+      },
+      {
+        "model": {
+          "type": "minecraft:model",
+          "model": "mymod:item/ruby_sword_frost"
+        },
+        "threshold": 2
+      }
+    ],
+    "fallback": {
+      "type": "minecraft:model",
+      "model": "mymod:item/ruby_sword"
+    },
+    "property": "minecraft:custom_model_data"
+  }
+}
+{
+  "model": {
+    "type": "minecraft:select",
+    "cases": [
+      {
+        "model": {
+          "type": "minecraft:model",
+          "model": "mymod:item/ruby_sword_flame"
+        },
+        "when": "flame"
+      },
+      {
+        "model": {
+          "type": "minecraft:model",
+          "model": "mymod:item/ruby_sword_frost"
+        },
+        "when": "frost"
+      }
+    ],
+    "fallback": {
+      "type": "minecraft:model",
+      "model": "mymod:item/ruby_sword"
+    },
+    "property": "minecraft:custom_model_data"
+  }
+}
+{
+  "model": {
+    "type": "minecraft:condition",
+    "index": 1,
+    "on_false": {
+      "type": "minecraft:condition",
+      "index": 2,
+      "on_false": {
+        "type": "minecraft:model",
+        "model": "mymod:item/ruby_sword"
+      },
+      "on_true": {
+        "type": "minecraft:model",
+        "model": "mymod:item/ruby_sword_frost"
+      },
+      "property": "minecraft:custom_model_data"
+    },
+    "on_true": {
+      "type": "minecraft:model",
+      "model": "mymod:item/ruby_sword_flame"
+    },
+    "property": "minecraft:custom_model_data"
+  }
+}

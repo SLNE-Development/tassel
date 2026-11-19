@@ -1,6 +1,7 @@
 import { AlertDialog } from '@base-ui/react/alert-dialog';
 import { Menu } from '@base-ui/react/menu';
-import { Check, ChevronsUpDown, Copy, ImagePlus, Plus, Trash2, Unlink, X } from 'lucide-react';
+import { isTauri } from '@tauri-apps/api/core';
+import { Check, ChevronsUpDown, Copy, ImagePlus, Link2, Plus, Trash2, Unlink, X } from 'lucide-react';
 import { useMemo, useRef, useState, type DragEvent, type ReactNode } from 'react';
 import { execute, selectDocState, useApp } from '../app/store';
 import { textureSlots, type Material, type Texture, type TextureSlot } from '../core/types';
@@ -11,6 +12,8 @@ import { itemClass, MenuSeparator, popupClass } from './menu';
 import { ScrubField } from './ScrubField';
 import { loadImageIntoSlot, setSlot, textureAccept, useThumbnail } from './textureFiles';
 import { Tip } from './Tip';
+import { addLibraryTexture, droppedTexture, isTextureDrag, startRelink } from './library/libraryUi';
+import { LinkBadge } from './library/TextureLinkBar';
 import { notifyError } from './toast';
 
 const iconButton =
@@ -205,8 +208,9 @@ function NameField({ material }: { material: Material }) {
 function Thumbnail({ texture }: { texture: Texture | undefined }) {
   const url = useThumbnail(texture);
   return (
-    <span aria-hidden className="flex size-7 shrink-0 items-center justify-center overflow-hidden rounded-[5px] bg-ink ring-1 ring-line ring-inset">
+    <span className="relative flex size-7 shrink-0 items-center justify-center overflow-hidden rounded-[5px] bg-ink ring-1 ring-line ring-inset">
       {url && <img src={url} alt="" draggable={false} className="size-full object-cover" />}
+      {texture && <LinkBadge texture={texture} />}
     </span>
   );
 }
@@ -216,6 +220,7 @@ function SlotRow({ material, slot }: { material: Material; slot: TextureSlot }) 
   const textures = useApp((s) => selectDocState(s).textures);
   const materials = useApp((s) => selectDocState(s).materials);
   const t = useT().materials;
+  const tl = useT().library;
   const input = useRef<HTMLInputElement>(null);
   const [dropping, setDropping] = useState(false);
   const title = t.slots[slot];
@@ -234,7 +239,7 @@ function SlotRow({ material, slot }: { material: Material; slot: TextureSlot }) 
   const removeUnused = async () => {
     for (const id of unused) await dispatch('texture.remove', { id });
   };
-  const hasFiles = (e: DragEvent) => e.dataTransfer.types.includes('Files');
+  const hasFiles = (e: DragEvent) => e.dataTransfer.types.includes('Files') || isTextureDrag(e);
 
   return (
     <li
@@ -251,7 +256,10 @@ function SlotRow({ material, slot }: { material: Material; slot: TextureSlot }) 
         if (!hasFiles(e)) return;
         e.preventDefault();
         setDropping(false);
-        load(e.dataTransfer.files[0]);
+        // A texture from the library panel is added linked; an image file is embedded.
+        const dragged = droppedTexture(e);
+        if (dragged) void addLibraryTexture(dragged, { materialId: material.id, slot });
+        else load(e.dataTransfer.files[0]);
       }}
     >
       <Menu.Root>
@@ -302,6 +310,22 @@ function SlotRow({ material, slot }: { material: Material; slot: TextureSlot }) 
                 </span>
                 {t.clearSlot}
               </Menu.Item>
+              {texture && isTauri() && (
+                <Menu.Item className={itemClass} onClick={() => startRelink(texture)}>
+                  <span className="flex w-4 shrink-0 justify-center">
+                    <Link2 size={15} strokeWidth={1.75} />
+                  </span>
+                  {texture.link ? tl.relink : tl.linkToLibrary}
+                </Menu.Item>
+              )}
+              {texture?.link && (
+                <Menu.Item className={itemClass} onClick={() => void execute('texture.unlink', { id: texture.id }).catch(notifyError)}>
+                  <span className="flex w-4 shrink-0 justify-center">
+                    <Unlink size={15} strokeWidth={1.75} />
+                  </span>
+                  {tl.unlink}
+                </Menu.Item>
+              )}
               {unused.length > 0 && (
                 <Menu.Item className={itemClass} onClick={() => void removeUnused()}>
                   <span className="flex w-4 shrink-0 justify-center">

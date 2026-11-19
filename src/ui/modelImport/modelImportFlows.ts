@@ -3,7 +3,7 @@
 import { invoke, isTauri } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
 import { create } from 'zustand';
-import { execute } from '../../app/store';
+import { execute, services } from '../../app/store';
 import type { ParentMode } from '../../core/minecraft/openModel';
 import { modelFileKind } from '../../core/modelFiles';
 import { getT } from '../../i18n';
@@ -46,6 +46,11 @@ interface OpenedResult {
   parent?: { chain: string[]; elements: number; elementsOverridden: boolean } | null;
 }
 
+/** Textures that live in the texture library are linked to their files instead of staying copies. */
+async function linkLibrary(): Promise<void> {
+  if (services.textureLibrary) await execute('library.link_all', {}).catch(() => undefined);
+}
+
 /** Notes, and for Java models with inherited elements the parent question. */
 function afterOpen(result: OpenedResult, asked: boolean): void {
   const t = getT();
@@ -75,6 +80,7 @@ export async function openModelPaths(paths: readonly string[]): Promise<void> {
         continue;
       }
       const result = (await execute('document.open_model_file', { path, parent: mode ?? 'show' })) as OpenedResult;
+      await linkLibrary();
       afterOpen(result, mode === null && paths.length === 1);
     } catch (error) {
       notifyError(error);
@@ -112,6 +118,7 @@ export async function openDroppedFiles(files: readonly File[]): Promise<void> {
           ? await execute('document.import_bbmodel', { text, name: stem })
           : await execute('document.import_java', { json: text, name: stem, fileName: stem, parent: mode ?? 'show' })
       ) as OpenedResult;
+      await linkLibrary();
       afterOpen(result, mode === null && files.length === 1);
     } catch (error) {
       notifyError(error);

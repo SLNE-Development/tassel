@@ -7,7 +7,17 @@ import { joinPath, modelFileKind, relativePath, splitPath, type ModelFileService
 import { serializeProject } from '../project';
 import { addDoc, createDoc, uniqueName } from '../state';
 import type { DocState, JavaImage } from '../types';
+import { importItemDefinition } from './item';
+import { looksLikeItemDefinition } from '../minecraft/items/codec';
 import { defineCommand, type CommandContext } from './registry';
+
+function isItemDefinitionJson(text: string): boolean {
+  try {
+    return looksLikeItemDefinition(JSON.parse(text.replace(/^﻿/, '')));
+  } catch {
+    return false;
+  }
+}
 
 const imageSchema = z.object({ data: z.string().min(1), width: z.number().int().min(1).max(8192), height: z.number().int().min(1).max(8192) });
 
@@ -58,6 +68,7 @@ async function readModel(service: ModelFileService, path: string, parent: Parent
     return { state, warnings: bbmodelNotes(report) };
   }
   const read = await service.readJava(path);
+  if (isItemDefinitionJson(read.json)) return { skipped: 'an item model definition (items/*.json), not a model' };
   if (!looksLikeJavaModel(read.json)) return { skipped: 'not a block or item model' };
   const opened = await openJavaModelWithParents(read.json, { fileName: stem, images: read.images, sourcePath: path, parent }, service.source(path));
   return { state: opened.state, warnings: opened.warnings };
@@ -113,6 +124,8 @@ export const modelImportCommands = [
         return { id: doc.id, name: doc.name, active: p.activate, format: report.format, elements: report.elements, dropped: report.dropped, warnings: report.warnings };
       }
       const read = await service.readJava(p.path);
+      // Item model definitions (assets/<ns>/items/<id>.json) open as item definition documents, saved back to the file.
+      if (isItemDefinitionJson(read.json)) return importItemDefinition(ctx, { json: read.json, filePath: p.path, activate: p.activate });
       const opened = await openJavaModelWithParents(read.json, { fileName: stem, images: read.images, sourcePath: p.path, parent: p.parent }, service.source(p.path));
       const doc = openDoc(ctx, stem, opened.state, p.activate);
       return { id: doc.id, name: doc.name, active: p.activate, format: 'minecraft_java', elements: opened.state.order.length, warnings: opened.warnings, parent: opened.parent };
