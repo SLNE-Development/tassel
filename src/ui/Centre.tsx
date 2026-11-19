@@ -7,6 +7,8 @@ import { useIsMinecraft } from './format';
 import { LastOpPanel } from './LastOpPanel';
 import { ModeSwitch } from './ModeSwitch';
 import { PaintHint, PaintOptions } from './paint/PaintOptions';
+import { PixelEditor } from './pixel/PixelEditor';
+import { PixelOptions } from './pixel/PixelOptions';
 import { PreviewOptions } from './preview/PreviewOptions';
 import { CameraViewBadge, TimelineDock } from './timeline/Timeline';
 import { SplitDivider } from './uv/SplitDivider';
@@ -48,14 +50,16 @@ function EmptyHint() {
 export function Centre() {
   const workspace = useApp((s) => s.workspace);
   const split = useUvUi((s) => s.split);
-  const uv = workspace === 'uv';
   const minecraft = useIsMinecraft();
+  // Minecraft documents paint pixel art: the 2D texture editor sits beside the 3D view, like the UV editor.
+  const pixelPaint = minecraft && workspace === 'paint';
+  const uv = workspace === 'uv' || pixelPaint;
   return (
     <main className="flex min-h-0 min-w-0 flex-col overflow-hidden bg-ink">
       <div className="relative min-h-0 min-w-0 flex-1 overflow-hidden">
       {uv && (
         <div className="absolute inset-y-0 left-0" style={{ width: `${split * 100}%` }}>
-          {minecraft ? <CuboidUvEditor /> : <UvEditor />}
+          {pixelPaint ? <PixelEditor /> : minecraft ? <CuboidUvEditor /> : <UvEditor />}
         </div>
       )}
       {/* The 3D view: everything in modelling, the right part next to the UV editor. Its overlays stay inside it. */}
@@ -64,7 +68,9 @@ export function Centre() {
         <ViewportHost />
         <CameraViewBadge />
         {workspace === 'modeling' && <EmptyHint />}
-        {workspace === 'paint' ? (
+        {pixelPaint ? (
+          <PixelOptions />
+        ) : workspace === 'paint' ? (
           // The 3D view is the canvas; the brush options float over it.
           <>
             <PaintOptions />

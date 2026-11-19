@@ -12,6 +12,7 @@ import { MinecraftProperties } from './minecraft/MinecraftProperties';
 import { Materials } from './Materials';
 import { Modifiers } from './Modifiers';
 import { PaintPanel } from './paint/PaintPanel';
+import { PixelPanel } from './pixel/PixelPanel';
 import { ScrubField } from './ScrubField';
 import { elementCounts } from './StatusBar';
 
@@ -197,7 +198,7 @@ export function Properties() {
   const minecraft = useIsMinecraft();
   const t = useT();
   // The paint workspace shows what is painted on and its layers instead of the object's properties.
-  if (painting && !minecraft) return <PaintPanel />;
+  if (painting) return minecraft ? <PixelPanel /> : <PaintPanel />;
   return (
     <section aria-label={t.properties.title} className="flex min-h-0 min-w-0 flex-col border-t border-line">
       <header className="flex h-8 shrink-0 items-center justify-between px-3">

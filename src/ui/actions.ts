@@ -17,6 +17,7 @@ import { timelineActions } from './timeline/timelineActions';
 import { notifyError, notifyInfo, notifySuccess } from './toast';
 import { useUi } from './uiStore';
 import { uvActions } from './uv/uvActions';
+import { pixelActionDefs } from './pixel/pixelActions';
 import { activeProject, pull, push, setPanelOpen, targetDir, togglePanel, useProjects } from './projects/projectsStore';
 
 /**
@@ -175,6 +176,9 @@ async function openJavaModelFile() {
 }
 
 export const actions: readonly Action[] = [
+  // Pixel-Malen (Minecraft): first, so that its keys win in the paint workspace of Minecraft documents.
+  ...pixelActionDefs(),
+
   // Datei
   action({ id: 'file.new', title: (t) => t.actions.new, group: 'file', keys: ['Ctrl+N'], inInputs: true, command: 'document.new', run: () => useUi.setState({ newDocOpen: true }) }),
   action({ id: 'file.open', title: (t) => t.actions.open, group: 'file', keys: ['Ctrl+O'], inInputs: true, run: () => openProject() }),
