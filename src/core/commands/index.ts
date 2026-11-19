@@ -8,6 +8,8 @@ import { fontCommands } from './font';
 import { groupCommands } from './group';
 import { materialCommands } from './material';
 import { minecraftCommands } from './minecraft';
+import { minecraftParentCommands } from './minecraftParents';
+import { modelImportCommands } from './modelImport';
 import { meshCommands } from './mesh';
 import { modifierCommands } from './modifier';
 import { paintCommands } from './paint';
@@ -34,6 +36,8 @@ export const commands: readonly AnyCommand[] = [
   ...shapeCommands,
   ...cuboidCommands,
   ...minecraftCommands,
+  ...minecraftParentCommands,
+  ...modelImportCommands,
   ...fontCommands,
   ...groupCommands,
   ...materialCommands,
