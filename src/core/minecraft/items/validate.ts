@@ -6,6 +6,7 @@ import {
   findSelectProperty,
   findSpecialModel,
   findTintSource,
+  normalizeId,
   rootFields,
   shortId,
   type FieldSpec,
@@ -149,7 +150,9 @@ export function validateItemDefinition(def: ItemDefinition, version: string): It
             if (seen.has(e.threshold)) add('warning', 'duplicateThreshold', joinPath(path, 'entries', i), `Entry ${i} of ${where(path)} repeats the threshold ${e.threshold}`, String(e.threshold));
             seen.add(e.threshold);
           });
-          if (!node.fallback) add('warning', 'noFallback', path, `The range dispatch ${where(path)} has no fallback: values below the lowest threshold show the missing model`);
+          // Only custom_model_data can be negative; for the other properties a threshold of 0 or less catches everything.
+          const coversAll = normalizeId(node.property) !== 'minecraft:custom_model_data' && node.entries.some((e) => e.threshold <= 0);
+          if (!node.fallback && !coversAll) add('warning', 'noFallback', path, `The range dispatch ${where(path)} has no fallback: values below the lowest threshold show the missing model`);
         }
         break;
       }
