@@ -323,7 +323,6 @@ export const actions: readonly Action[] = [
       id: `workspace.${workspace}`,
       title: (t) => t.actions.workspace(t.workspaces[workspace]),
       group: 'workspace',
-      formats: workspace === 'paint' ? FREE_ONLY : undefined,
       run: () => execute('app.set_workspace', { workspace }),
     }),
   ),

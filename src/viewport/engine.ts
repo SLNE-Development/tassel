@@ -49,6 +49,7 @@ import { ElementPicker } from './editPick';
 import { DEFAULT_SPHERE, fitDistance, viewDirection } from './framing';
 import { GeometryStore } from './geometry';
 import { PaintView } from './paintView';
+import { PixelPaintView } from './pixelPaintView';
 import { PreviewController } from './preview/controller';
 import { rotateAbout, scaleAbout } from './groupTransform';
 import { SurfaceMaterials } from './surfaces';
@@ -164,6 +165,7 @@ export class ViewportEngine {
   private readonly groupPivot = new Object3D();
   /** Painting on the active object in the paint workspace; it handles the left mouse button there. */
   private readonly paintView: PaintView;
+  private readonly pixelPaintView: PixelPaintView;
   /** Rectangle of a box selection in progress. */
   private readonly boxElement = document.createElement('div');
 
@@ -269,6 +271,24 @@ export class ViewportEngine {
       },
     });
     this.surfaces.paint = this.paintView;
+    this.pixelPaintView = new PixelPaintView({
+      canvas: this.canvas,
+      container,
+      camera: this.camera,
+      raycaster: this.raycaster,
+      sync: () => this.syncIfNeeded(),
+      target: () => null,
+      solids: () => [...this.entries.values()].filter((entry) => entry.obj.visible && !entry.edit).map((entry) => entry.solid),
+      objectIdOf: (solid) => {
+        for (const [id, entry] of this.entries) if (entry.solid === solid) return id;
+        return null;
+      },
+      refresh: () => {
+        this.needsSync = true;
+        this.invalidate();
+      },
+    });
+    this.surfaces.pixels = this.pixelPaintView;
 
     this.resizeObserver = new ResizeObserver(() => this.resize());
     this.resizeObserver.observe(container);
@@ -332,6 +352,7 @@ export class ViewportEngine {
     this.canvas.removeEventListener('mousedown', this.onMouseDown);
     this.canvas.removeEventListener('dblclick', this.onDoubleClick);
     this.paintView.dispose();
+    this.pixelPaintView.dispose();
     this.preview.dispose();
     this.gizmo.detach();
     this.gizmo.dispose();

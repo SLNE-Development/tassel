@@ -213,7 +213,9 @@ export class PaintView {
   // ---------------------------------------------------------------- picking
 
   private active(): boolean {
-    return useApp.getState().workspace === 'paint';
+    const app = useApp.getState();
+    // Minecraft documents paint pixel art instead (pixelPaintView.ts).
+    return app.workspace === 'paint' && selectDocState(app).format !== 'minecraft_java';
   }
 
   /** The point of the paint target under the given client position; null if something else (or nothing) is there. */
