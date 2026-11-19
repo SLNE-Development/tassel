@@ -41,9 +41,11 @@ jobs:
           # Reuse the draft of an earlier failed run for the same version.
           id=$(gh api "repos/${{ github.repository }}/releases" --jq ".[] | select(.draft and .tag_name == \"$tag\") | .id" | head -n1)
           if [ -z "$id" ]; then
-            gh release create "$tag" --draft --target "$GITHUB_SHA" --title "Tessel $tag" --generate-notes
-            id=$(gh api "repos/${{ github.repository }}/releases" --jq ".[] | select(.draft and .tag_name == \"$tag\") | .id" | head -n1)
+            id=$(gh api -X POST "repos/${{ github.repository }}/releases" \
+              -f tag_name="$tag" -f target_commitish="$GITHUB_SHA" -f name="Tessel $tag" \
+              -F draft=true -F generate_release_notes=true --jq .id)
           fi
+          test -n "$id"
           echo "release_id=$id" >> "$GITHUB_OUTPUT"
 
   build:
