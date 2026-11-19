@@ -121,13 +121,15 @@ function MeshTools() {
 export function ToolRail() {
   const editing = useApp((s) => selectDocState(s).edit !== null);
   const painting = useApp((s) => s.workspace === 'paint');
+  // The display workspace poses the model with its own gizmo; nothing here applies to it.
+  const displaying = useApp((s) => s.workspace === 'display');
   const t = useT();
   return (
     <nav aria-label={t.toolRail.tools} className="no-scrollbar flex flex-col items-center gap-2 overflow-y-auto border-r border-line bg-panel py-2">
       {painting ? (
         // The paint workspace has its own tools; transforming and adding belong to modelling.
         <PaintRail />
-      ) : (
+      ) : displaying ? null : (
         <>
           <Tools />
           <div aria-hidden className="h-px w-5 shrink-0 bg-line-strong" />

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { displayPreferenceFields } from './minecraft/display';
 import { previewPreferenceFields } from './preview';
 
 // App-wide preferences: not part of any document, not undoable, persisted between launches.
@@ -28,6 +29,8 @@ export const preferencesSchema = z.object({
   undoSteps: z.number().int().min(10).max(1000).default(200).describe('Undo steps kept per document.'),
   // Viewport preview options and the Minecraft assets source (src/core/preview.ts).
   ...previewPreferenceFields,
+  // Display workspace view options and display presets (src/core/minecraft/display.ts).
+  ...displayPreferenceFields,
 });
 
 export type Preferences = z.infer<typeof preferencesSchema>;

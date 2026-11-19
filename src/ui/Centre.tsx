@@ -8,6 +8,7 @@ import { LastOpPanel } from './LastOpPanel';
 import { ModeSwitch } from './ModeSwitch';
 import { PaintHint, PaintOptions } from './paint/PaintOptions';
 import { PreviewOptions } from './preview/PreviewOptions';
+import { DisplayViewport } from './display/DisplayViewport';
 import { CameraViewBadge, TimelineDock } from './timeline/Timeline';
 import { SplitDivider } from './uv/SplitDivider';
 import { CuboidUvEditor } from './uv/CuboidUvEditor';
@@ -64,7 +65,10 @@ export function Centre() {
         <ViewportHost />
         <CameraViewBadge />
         {workspace === 'modeling' && <EmptyHint />}
-        {workspace === 'paint' ? (
+        {workspace === 'display' && minecraft ? (
+          // The display workspace draws its own reference scenes over the (still mounted) modelling view.
+          <DisplayViewport />
+        ) : workspace === 'paint' ? (
           // The 3D view is the canvas; the brush options float over it.
           <>
             <PaintOptions />

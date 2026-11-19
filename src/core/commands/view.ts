@@ -68,9 +68,14 @@ export const viewCommands = [
   defineCommand({
     id: 'app.set_workspace',
     title: 'Arbeitsbereich wechseln',
-    description: 'Switch the workspace tab: modeling, uv or paint.',
+    description:
+      'Switch the workspace tab: modeling, uv, paint or display. "display" (Minecraft Java models only) shows the model where the game shows it (hands, head, ground, GUI, item frame, shelf) to edit its display transforms (see display_get).',
     params: z.object({ workspace: z.enum(workspaces) }),
     run(ctx, p) {
+      const doc = activeDoc(ctx.get());
+      if (p.workspace === 'display' && doc && docFormat(doc.state) !== 'minecraft_java') {
+        throw new Error('The display workspace is only available in Minecraft Java documents');
+      }
       ctx.set((app) => ({ ...app, workspace: p.workspace }));
     },
   }),

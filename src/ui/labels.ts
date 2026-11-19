@@ -17,6 +17,7 @@ import {
   CircleDot,
   Cone,
   Cylinder,
+  Frame,
   Globe,
   Grid3x3,
   Hexagon,
@@ -63,6 +64,7 @@ export const workspaceIcons: Record<Workspace, LucideIcon> = {
   modeling: Shapes,
   uv: Grid3x3,
   paint: Brush,
+  display: Frame,
 };
 
 /** Icons of the edit-mode tools, by action id. */

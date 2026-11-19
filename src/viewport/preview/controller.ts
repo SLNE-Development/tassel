@@ -355,7 +355,7 @@ export class PreviewController {
 }
 
 /** The skin for the reference player: the picked file, else the default from the assets, else a made-up one. */
-async function loadSkin(path: string, assets: MinecraftAssets | null): Promise<DecodedImage> {
+export async function loadSkin(path: string, assets: MinecraftAssets | null): Promise<DecodedImage> {
   if (path) {
     try {
       const image = await defaultDecoder(await readSkinFile(path));

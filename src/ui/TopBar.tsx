@@ -21,9 +21,9 @@ function Mark() {
 function WorkspaceSwitch() {
   const workspace = useApp((s) => s.workspace);
   const t = useT();
-  // Minecraft documents have no paint workspace (yet).
+  // Minecraft documents have no paint workspace (yet); only they have the display workspace.
   const minecraft = useIsMinecraft();
-  const shown = minecraft ? workspaces.filter((w) => w !== 'paint') : workspaces;
+  const shown = workspaces.filter((w) => (minecraft ? w !== 'paint' : w !== 'display'));
   return (
     <div role="radiogroup" aria-label={t.topBar.workspace} className="flex shrink-0 items-center rounded-lg bg-ink p-0.5">
       {shown.map((w) => {
