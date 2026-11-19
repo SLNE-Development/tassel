@@ -77,11 +77,6 @@ pub fn open(path: &Path) -> Result<Repository, String> {
   Repository::open(path).map_err(|_| format!("\"{}\" is not a git repository", path.display()))
 }
 
-/// Whether the folder is the root of a git repository.
-pub fn is_repo(path: &Path) -> bool {
-  Repository::open(path).is_ok()
-}
-
 /// URL of the `origin` remote.
 pub fn origin_url(path: &Path) -> Option<String> {
   let repo = Repository::open(path).ok()?;
@@ -370,6 +365,15 @@ pub fn clone(url: &str, destination: &Path, token: Option<&str>) -> Result<(), S
     .clone(url, destination)
     .map(drop)
     .map_err(|e| remote_error(e, "clone"))
+}
+
+/// Fetches every branch of `origin` (so other branches can be switched to), without changing files.
+pub fn fetch_all(path: &Path, token: Option<&str>) -> Result<(), String> {
+  let repo = open(path)?;
+  let mut remote = repo.find_remote("origin").map_err(|_| "The project has no remote called \"origin\"".to_string())?;
+  remote
+    .fetch(&["+refs/heads/*:refs/remotes/origin/*"], Some(&mut fetch_options(token)), None)
+    .map_err(|e| remote_error(e, "fetch"))
 }
 
 /// Fetches the current branch from `origin` and brings it up to date: fast-forward when possible,

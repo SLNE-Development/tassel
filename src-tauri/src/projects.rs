@@ -131,18 +131,6 @@ impl Registry {
     Ok(project)
   }
 
-  /// Updates the stored remote URL (after a clone or when git reports a different one).
-  pub fn set_remote(&self, id: &str, remote: Option<String>) -> Result<(), String> {
-    let mut projects = self.projects.lock().unwrap();
-    if let Some(project) = projects.iter_mut().find(|p| p.id == id)
-      && project.remote != remote
-    {
-      project.remote = remote;
-      self.save(&projects)?;
-    }
-    Ok(())
-  }
-
   /// A project by id, by name (case-insensitive) or by its folder.
   pub fn find(&self, key: &str) -> Result<Project, String> {
     let key = key.trim();
@@ -345,7 +333,7 @@ pub fn list_files(root: &Path, relative: &str) -> Result<(Vec<Entry>, bool), Str
       }
     }
   }
-  files.sort_by(|a, b| a.path.to_lowercase().cmp(&b.path.to_lowercase()));
+  files.sort_by_key(|entry| entry.path.to_lowercase());
   Ok((files, false))
 }
 

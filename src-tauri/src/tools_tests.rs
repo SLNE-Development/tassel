@@ -451,11 +451,13 @@ fn unknown_tools_and_frontend_tools() {
 #[test]
 fn every_native_tool_is_listed_with_document_id() {
   let listed = native_tools();
-  assert_eq!(listed.len(), NATIVE_NAMES.len());
+  assert_eq!(listed.len(), NATIVE_NAMES.len() + workspace_tools::NAMES.len());
   for tool in &listed {
     assert!(is_native(tool.name), "{}", tool.name);
     assert_eq!(tool.input_schema["type"], "object");
-    assert!(tool.input_schema["properties"]["documentId"].is_object(), "{}", tool.name);
+    // Project and git tools work on a project, not a document (project_save excepted).
+    let on_document = NATIVE_NAMES.contains(&tool.name) || tool.name == "project_save";
+    assert_eq!(tool.input_schema["properties"]["documentId"].is_object(), on_document, "{}", tool.name);
     assert!(!tool.description.contains("  "), "{}: the description has a run of spaces", tool.name);
   }
 }
