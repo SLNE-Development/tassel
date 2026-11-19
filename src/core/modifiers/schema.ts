@@ -48,7 +48,7 @@ export const modifierCommandParams = {
   offset: fields.offset
     .optional()
     .describe(
-      'array: translation from one copy to the next (default [2, 0, 0]). In the space given by offsetSpace: the object\'s local axes and units by default (the object\'s own rotation and scale apply to it), or world meters. Use [0, 0, 0] for a purely radial array.',
+      'array: translation from one copy to the next (default [2, 0, 0]). In the space given by offsetSpace: the object\'s local axes and units by default (the object\'s own rotation and scale apply to it), or world meters along the world axes (which then turn and scale with the object when it is transformed later, see offsetSpace). Use [0, 0, 0] for a purely radial array.',
     ),
   rotation: vec3
     .optional()
@@ -64,7 +64,7 @@ export const modifierCommandParams = {
     .enum(['local', 'world'])
     .optional()
     .describe(
-      'array: space of offset. "local" (default): along the object\'s own axes in its local units. "world": in meters along the world axes, regardless of the object\'s rotation and scale, so copy i lands exactly i * offset away in the scene.',
+      'array: space of offset. "local" (default): along the object\'s own axes in its local units. "world": in meters along the world axes for the object as it stands when the offset is set, regardless of its rotation and scale, so copy i lands exactly i * offset away in the scene. From then on the copies belong to the object and move rigidly with it: every command that rotates or scales the object (scene.set_transform, scene.transform_objects, the gizmo, placing a model, animation) rewrites offset for the new rotation / scale, so a row of legs stays under its turned machine; read the current value with scene.get_object.',
     ),
   operation: fields.operation.optional().describe('boolean: union, difference (this minus target) or intersect (default difference).'),
   targetId: fields.targetId.optional().describe('boolean: id of the other object. Its mesh after its own modifiers is used.'),

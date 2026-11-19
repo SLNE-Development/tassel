@@ -19,6 +19,7 @@
 // `visible` has no in-between: it is the value of the last key at or before the frame.
 // Before the first key the first value holds, after the last key the last value.
 import { z } from 'zod';
+import { localizeWorldOffsets } from './modifiers/worldOffsets';
 import { own } from './state';
 import { keyInterpolations } from './types';
 import type { Animation, CameraKey, DocState, Key, KeyInterpolation, ObjectTrack, SceneObject, Transform, Vec3 } from './types';
@@ -211,6 +212,18 @@ export function evaluateTrack(track: ObjectTrack, transform: Transform, visible:
   return { transform: transformAt(track, transform, frame), visible: track.visible && track.visible.length > 0 ? visibleAt(track.visible, frame) : visible };
 }
 
+/**
+ * The object as it is shown with an animated transform. A world-space array offset is given for the static
+ * transform, and the row of copies belongs to the object: when the animated rotation or scale differs from
+ * the static one, the offset is replaced by its local form for the STATIC transform, so the copies turn and
+ * scale rigidly with the object instead of staying along the world axes. The converted list is cached per
+ * static modifier list, so it is the same on every frame and evaluateObject does not recompute during playback.
+ */
+function turned(obj: SceneObject, transform: Transform, visible: boolean): SceneObject {
+  if (obj.modifiers.length === 0 || (transform.rotation === obj.transform.rotation && transform.scale === obj.transform.scale)) return { ...obj, transform, visible };
+  return { ...obj, transform, visible, modifiers: localizeWorldOffsets(obj.modifiers, obj.transform) };
+}
+
 // What `animatedState` last returned per document state. Its objects are reused for objects whose values
 // have not changed since (they rest), and the whole result when the same frame is asked for again.
 const lastResult = new WeakMap<DocState, { frame: number; result: DocState }>();
@@ -219,7 +232,8 @@ const trackIds = new WeakMap<object, string[]>();
 
 /**
  * The document as it looks at a frame (may be fractional): objects with tracks get their evaluated
- * `transform` and `visible`, everything else is untouched.
+ * `transform` and `visible`, everything else is untouched - except that world-space array offsets of an
+ * object shown with another rotation or scale than its static one are given in local form (see `turned`).
  *
  * Identity guarantees (caches in the viewport and in evaluateObject rely on them):
  * - no animation, no tracks, or no object differs from its static values at this frame: returns `state` itself;
@@ -259,7 +273,7 @@ export function animatedState(state: DocState, frame: number): DocState {
       same3(previous.transform.rotation, transform.rotation) &&
       same3(previous.transform.scale, transform.scale)
         ? previous
-        : { ...obj, transform, visible };
+        : turned(obj, transform, visible);
   }
   const result = objects ? { ...state, objects } : state;
   lastResult.set(state, { frame, result });

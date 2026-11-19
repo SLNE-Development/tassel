@@ -48,6 +48,8 @@ pub const IMPORT_EXTENSIONS: [&str; 6] = ["glb", "gltf", "obj", "stl", "ply", "f
 pub const EXPORT_EXTENSIONS: [&str; 6] = ["glb", "gltf", "obj", "stl", "ply", "usdz"];
 /// Images that can become textures.
 pub const IMAGE_EXTENSIONS: [&str; 4] = ["png", "jpg", "jpeg", "webp"];
+/// Containers `render.video` writes.
+pub const VIDEO_EXTENSIONS: [&str; 2] = ["mp4", "webm"];
 /// Largest file that is read for import: 192 MB, which is 256 MB as base64 (the limit of `import.file`).
 pub const MAX_IMPORT_BYTES: u64 = 192 * 1024 * 1024;
 
@@ -236,7 +238,8 @@ pub async fn write_text_file(path: String, contents: String) -> Result<(), Strin
 
 #[tauri::command]
 pub async fn write_binary_file(path: String, base64: String) -> Result<(), String> {
-  require_extension(&path, &["glb", "stl", "ply", "usdz"])?;
+  // 3D exports, rendered images and exported videos (the save dialogs of `src/bridge/files.ts`).
+  require_extension(&path, &["glb", "stl", "ply", "usdz", "png", "jpg", "jpeg", "webp", "mp4", "webm"])?;
   write_bytes(&path, &decode_base64(&base64)?).await
 }
 

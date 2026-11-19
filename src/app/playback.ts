@@ -51,9 +51,6 @@ export function frameOf(docId: string, playback: PlaybackState = usePlayback.get
   return frame === undefined ? 0 : clampFrame(frame, animationRange(docId).frameCount);
 }
 
-/** Selector for React: the current frame of the visible document. */
-export const selectFrame = (playback: PlaybackState) => frameOf(useApp.getState().activeDocId, playback);
-
 let request = 0;
 /** Where and when the running playback started. */
 let origin = { frame: 0, time: 0 };

@@ -40,8 +40,8 @@ const PLACE_FORMATS: &str = ".tessel (a Tessel project), .glb, .gltf, .obj, .stl
 /// Parsing or writing a large file in the editor can take a while.
 pub const FILE_TIMEOUT: Duration = Duration::from_secs(180);
 
-const NATIVE_NAMES: [&str; 8] =
-  ["file_save", "file_open", "file_export", "file_import", "scene_place_model", "material_import", "render_image", "batch"];
+const NATIVE_NAMES: [&str; 9] =
+  ["file_save", "file_open", "file_export", "file_import", "scene_place_model", "material_import", "render_image", "render_video", "batch"];
 
 pub fn is_native(tool: &str) -> bool {
   NATIVE_NAMES.contains(&tool)
@@ -223,6 +223,60 @@ pub fn native_tools() -> Vec<NativeTool> {
       }),
     },
     NativeTool {
+      name: "render_video",
+      description: "Export the animation of a document as a video file on disk: one picture per animation frame from \
+        fromFrame to toFrame (default: the whole animation, frames 0 .. frameCount - 1) at the animation's frame rate, \
+        so the video lasts (toFrame - fromFrame + 1) / fps seconds. Workflow: animate with the anim_* tools, check the \
+        timing with anim_evaluate and single pictures with view_screenshot { frame }, then call this. The file \
+        extension chooses the container: .mp4 (H.264, plays everywhere; on a system without an H.264 encoder VP9 or \
+        AV1 in MP4 - the result says which codec was used) or .webm (VP9). Missing folders are created, an existing \
+        file is overwritten. quality \"viewport\" (default) is the editor look of view_screenshot (studio light, \
+        grid, the chosen shading) and fast: typically dozens of frames per second at 1280 x 720. quality \"render\" \
+        path traces every frame like render_image with the render settings of the document; each frame gets samples \
+        samples per pixel but at most maxSecondsPerFrame seconds, so the export takes about frames x \
+        maxSecondsPerFrame seconds and is refused above one hour of that budget. With camera keys in the document \
+        (anim_set_camera_key, anim_camera_orbit) the video looks through the animated camera; otherwise, or when \
+        view or camera is given, one fixed camera is used for the whole video (view \"current\" = the camera of that \
+        document's viewport; a preset frames the scene once on the first frame). Pictures show no selection \
+        highlight, gizmo or edit-mode overlay. Width and height are rounded to even numbers. Limits: at most 10 \
+        minutes of 3840 x 2160 at 30 fps (frames x pixels) and at most 256 MB by bitrate x length; beyond that the \
+        call fails and says what fits. Nothing in the document or in what the user sees changes, other tool calls \
+        are not blocked while it runs, and documentId exports a document in the background. Returns { exported, \
+        path, bytes, frames, fps, seconds (length of the video), width, height, codec, codecName, format, bitrate, \
+        quality, camera (\"animated\" or \"fixed\"), fromFrame, toFrame, elapsedSeconds, framesPerSecond, warnings? }.",
+      input_schema: json!({
+        "type": "object",
+        "properties": {
+          "path": { "type": "string", "description": "Absolute path of the video file, ending in .mp4 or .webm." },
+          "fromFrame": { "type": "integer", "minimum": 0, "description": "First frame. Default 0." },
+          "toFrame": { "type": "integer", "minimum": 0, "description": "Last frame (included). Default: the last frame of the animation, frameCount - 1 (see anim_get)." },
+          "width": { "type": "integer", "minimum": 64, "maximum": 4096, "default": 1280, "description": "Width in pixels (rounded to an even number)." },
+          "height": { "type": "integer", "minimum": 64, "maximum": 4096, "default": 720, "description": "Height in pixels (rounded to an even number)." },
+          "quality": { "type": "string", "enum": ["viewport", "render"], "default": "viewport", "description": "viewport: editor look, fast. render: path traced, each frame takes up to maxSecondsPerFrame." },
+          "format": { "type": "string", "enum": ["mp4", "webm"], "description": "Follows from the file extension; if given it must agree with it." },
+          "bitrate": { "type": "number", "minimum": 100000, "maximum": 200000000, "description": "Bits per second. Default: about 0.12 bits per pixel and frame (3.3 Mbit/s for 1280 x 720 at 30 fps)." },
+          "samples": { "type": "integer", "minimum": 1, "maximum": 100000, "description": "Render quality only: samples per pixel and frame. Default 24." },
+          "maxSecondsPerFrame": { "type": "number", "minimum": 1, "maximum": 600, "description": "Render quality only: time budget per frame in seconds. Default 3." },
+          "view": {
+            "type": "string",
+            "enum": ["current", "front", "back", "left", "right", "top", "bottom", "iso"],
+            "description": "A fixed view for the whole video instead of the animated camera: \"current\" = the camera of that document's viewport; a preset names the side the camera is on (front = on +Z, right = on +X, top = on +Y) and frames the scene."
+          },
+          "camera": {
+            "type": "object",
+            "description": "A fixed camera for the whole video instead of the animated one: { position: [x, y, z], target: [x, y, z], fov?: vertical degrees }. World coordinates, Y up.",
+            "properties": { "position": vec3("Where the camera is."), "target": vec3("The point it looks at."), "fov": { "type": "number", "minimum": 5, "maximum": 120 } },
+            "required": ["position", "target"]
+          },
+          "shading": { "type": "string", "enum": ["solid", "wireframe", "material"], "description": "Viewport quality only: solid (neutral clay), wireframe or material (PBR materials and textures). Default: the current viewport shading." },
+          "hideIds": { "type": "array", "items": { "type": "string" }, "description": "Objects (ids or names, * and ? globs) left out of the video." },
+          "documentId": document_id_schema()
+        },
+        "required": ["path"],
+        "additionalProperties": false
+      }),
+    },
+    NativeTool {
       name: "batch",
       description: "Run many tool calls in order with ONE request - the fast way to build anything bigger than a \
         few objects. Recommended workflow: write a script that generates a JSON file with the commands, then call \
@@ -347,6 +401,8 @@ pub fn native_tools() -> Vec<NativeTool> {
           },
           "hideIds": { "type": "array", "items": { "type": "string" }, "description": "Objects (ids or names, * and ? globs) left out of this picture only." },
           "focusOn": { "type": "string", "description": "For depth of field: the object (id or name) that is in focus." },
+          "frame": { "type": "number", "minimum": 0, "description": "Animation frame to render (fractional allowed; time = frame / fps): the document as its animation shows it at that frame, and - if it has camera keys and neither view nor camera is given - through its animated camera. Default: the static pose." },
+          "useAnimationCamera": { "type": "boolean", "description": "With frame: false keeps the normal camera although there are camera keys; true insists on the animated camera." },
           "format": { "type": "string", "enum": ["png", "jpeg", "webp"], "description": "Image format; with path it follows from the file extension. Default: the setting of the document (png)." },
           "environment": { "type": "object", "description": "{ preset?: outdoor | studio | sunset | night | neutral, intensity?, rotation? (degrees) } - the surroundings that light the scene." },
           "sun": { "type": "object", "description": "{ enabled?, azimuth? (degrees: 0 = towards +Z, 90 = towards +X), elevation? (degrees above the horizon), intensity? (4 = sunny day), softness? (degrees, 0.5 = hard shadows, 10 = very soft) }. Shadows fall away from the sun." },
@@ -385,6 +441,7 @@ pub async fn call_single<F: Frontend>(frontend: &F, tool: &str, args: Value) -> 
     "scene_place_model" => scene_place_model(frontend, &args).await,
     "material_import" => material_import(frontend, &args).await,
     "render_image" => render_image(frontend, &args).await,
+    "render_video" => render_video(frontend, &args).await,
     "batch" => Err(NESTED_BATCH.into()),
     _ => match frontend.command_id(tool) {
       Some(command) => frontend.call(&command, args, CALL_TIMEOUT).await,
@@ -418,6 +475,7 @@ pub fn check_native(tool: &str, args: &Value) -> Result<(), String> {
     "scene_place_model" => PlaceArgs::parse(args).map(drop),
     "material_import" => MaterialImportArgs::parse(args).map(drop),
     "render_image" => RenderArgs::parse(args).map(drop),
+    "render_video" => VideoArgs::parse(args).map(drop),
     _ => Ok(()),
   }
 }
@@ -926,9 +984,10 @@ async fn material_import<F: Frontend>(frontend: &F, args: &Value) -> Result<Valu
   Ok(merged(result, &imported))
 }
 
-const RENDER_PARAMS: [&str; 19] = [
+const RENDER_PARAMS: [&str; 21] = [
   "path", "returnImage", "width", "height", "samples", "maxSeconds", "view", "camera", "fit", "hideIds", "focusOn",
   "format", "environment", "sun", "background", "ground", "depthOfField", "output", "documentId",
+  "frame", "useAnimationCamera",
 ];
 /// Longest sampling time `render.image` accepts, in seconds.
 const RENDER_MAX_SECONDS: f64 = 600.0;
@@ -1015,6 +1074,72 @@ async fn render_image<F: Frontend>(frontend: &F, args: &Value) -> Result<Value, 
     }
   }
   Ok(merged(result, &rendered))
+}
+
+const VIDEO_PARAMS: [&str; 15] = [
+  "path", "fromFrame", "toFrame", "width", "height", "quality", "format", "bitrate", "samples", "maxSecondsPerFrame",
+  "view", "camera", "shading", "hideIds", "documentId",
+];
+/// How long to wait for a video in viewport quality: the largest one allowed (10 minutes of 4K) at a few frames per second.
+const VIDEO_TIMEOUT: Duration = Duration::from_secs(3600);
+/// In render quality the editor refuses more than one hour of sampling budget; scene preparation per frame comes on top.
+const VIDEO_RENDER_TIMEOUT: Duration = Duration::from_secs(4 * 3600);
+
+struct VideoArgs<'a> {
+  path: &'a str,
+  /// The arguments for `render.video`: everything but `path`, with `format` set from the path.
+  params: Value,
+  timeout: Duration,
+}
+
+impl<'a> VideoArgs<'a> {
+  fn parse(args: &'a Value) -> Result<Self, String> {
+    let map = object(args, "render_video", &VIDEO_PARAMS)?;
+    let path = req_str(map, "path")?;
+    require_absolute(path)?;
+    let extension = files::extension(path);
+    if !files::VIDEO_EXTENSIONS.contains(&extension.as_str()) {
+      return Err(if extension.is_empty() {
+        format!("\"{path}\" has no file extension. A video is written as .mp4 or .webm.")
+      } else {
+        format!("Cannot write a video as .{extension}. Use .mp4 (H.264) or .webm (VP9).")
+      });
+    }
+    if let Some(format) = opt_str(map, "format")? {
+      if !files::VIDEO_EXTENSIONS.contains(&format) {
+        return Err(format!("\"format\" must be mp4 or webm, not \"{}\"", short(format)));
+      }
+      if format != extension {
+        return Err(format!("\"format\" is {format} but the path ends in .{extension}: leave format out or make them agree."));
+      }
+    }
+    let render = match opt_str(map, "quality")? {
+      None | Some("viewport") => false,
+      Some("render") => true,
+      Some(other) => return Err(format!("\"quality\" must be viewport or render, not \"{}\"", short(other))),
+    };
+    let mut params = map.clone();
+    params.remove("path");
+    params.insert("format".into(), json!(extension));
+    Ok(Self { path, params: Value::Object(params), timeout: if render { VIDEO_RENDER_TIMEOUT } else { VIDEO_TIMEOUT } })
+  }
+}
+
+async fn render_video<F: Frontend>(frontend: &F, args: &Value) -> Result<Value, String> {
+  let VideoArgs { path, params, timeout } = VideoArgs::parse(args)?;
+  let mut exported = frontend.call("render.video", params, timeout).await?;
+  let video = exported.get("video").ok_or("The editor returned no video from render.video")?;
+  let bytes = files::decode_base64(field(video, "base64", "render.video")?)?;
+  if bytes.is_empty() {
+    return Err("The editor returned an empty video from render.video".into());
+  }
+  files::write_bytes(path, &bytes).await?;
+  // The file is on disk; the answer carries the numbers only.
+  if let Some(map) = exported.as_object_mut() {
+    map.remove("video");
+    map.remove("bytes");
+  }
+  Ok(merged(json!({ "exported": true, "path": path, "bytes": bytes.len() }), &exported))
 }
 
 #[cfg(test)]

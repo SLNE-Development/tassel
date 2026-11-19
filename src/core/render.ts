@@ -262,7 +262,7 @@ export interface RenderOutput {
   height: number;
   /** Samples per pixel the image was made of. */
   samples: number;
-  /** Time the render took, scene preparation included. */
+  /** Time the whole render took: preparing the scene, compiling the renderer if needed, sampling. */
   seconds: number;
   /** True if the asked-for sample count was reached within the time budget. */
   converged: boolean;

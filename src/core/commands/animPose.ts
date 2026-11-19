@@ -2,7 +2,8 @@
 // channel is animated, the static transform where it is not) and moving single keys in time.
 import { z } from 'zod';
 import { MAX_KEYS, MAX_KEY_FRAME, animatedState, animationChannels, countKeys, defaultAnimation, withKey, withTracks, type AnimationChannel } from '../animation';
-import { hasKeyAt, lowerBound, splitPose, transformChannels } from '../playhead';
+import { withTransform } from '../modifiers/worldOffsets';
+import { hasKeyAt, lowerBound, splitPose } from '../playhead';
 import { resolveObjectId, resolveObjectIds } from '../refs';
 import { own } from '../state';
 import { keyInterpolations } from '../types';
@@ -102,7 +103,7 @@ export const animPoseCommands = [
           let objects = s.objects;
           if (statics.size > 0) {
             const copy = { ...s.objects };
-            for (const [id, transform] of statics) copy[id] = { ...copy[id], transform };
+            for (const [id, transform] of statics) copy[id] = withTransform(copy[id], transform);
             objects = copy;
           }
           return { ...s, objects, ...(tracks.size > 0 ? { animation: next } : {}) };

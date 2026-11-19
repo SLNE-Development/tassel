@@ -456,7 +456,6 @@ export class RenderSession {
       const complete = Math.floor(tracer.samples + 1e-6);
       if (complete === done) continue;
       done = complete;
-      ((globalThis as { __renderDebug?: unknown[] }).__renderDebug ??= []).push([done, Math.round(seconds() * 1000), tracer.tiles.x, tracer.tiles.y, Math.round(tileCount ? tileTime / tileCount : 0), Math.round(previewCost)]);
       if (done === 1 && gl.getError() === gl.OUT_OF_MEMORY) {
         throw new Error(`Rendering failed: not enough graphics memory for a ${width} x ${height} image. Try a smaller size.`);
       }

@@ -5,6 +5,7 @@ import { evaluateObject, initModifiers } from '../modifiers/evaluate';
 import { createPrimitive, primitiveShape, primitiveTypes } from '../mesh/primitives';
 import { groupWithDescendants } from '../groups';
 import { transformMatrix } from '../modifiers/boolean';
+import { withTransform } from '../modifiers/worldOffsets';
 import { REFS_HINT, globMatcher, resolveGroupId, resolveMaterialId, resolveObjectId, resolveObjectIds } from '../refs';
 import { newId, uniqueName } from '../state';
 import type { DocState, SceneObject, Vec3 } from '../types';
@@ -292,7 +293,7 @@ export const sceneCommands = [
     id: 'scene.set_transform',
     title: 'Transformation setzen',
     description:
-      'Set position, rotation (Euler XYZ in degrees) and/or scale of one or more objects. Omitted fields stay unchanged. All items form a single undo step. This is the STATIC transform: on an animated object, channels that have animation keys keep following their keys (the result then carries `warnings`).',
+      'Set position, rotation (Euler XYZ in degrees) and/or scale of one or more objects. Omitted fields stay unchanged. Everything that belongs to the object turns and scales with it, including the copies of an array modifier with a world-space offset (its `offset` is rewritten for the new rotation / scale). All items form a single undo step. This is the STATIC transform: on an animated object, channels that have animation keys keep following their keys (the result then carries `warnings`).',
     params: z.object({
       items: z
         .array(z.object({ id: objectRef, position: vec3.optional(), rotation: vec3.optional(), scale: vec3.optional() }))
@@ -305,10 +306,8 @@ export const sceneCommands = [
         const objects = { ...s.objects };
         for (const { id, position, rotation, scale } of items) {
           const t = objects[id].transform;
-          objects[id] = {
-            ...objects[id],
-            transform: { position: position ?? t.position, rotation: rotation ?? t.rotation, scale: scale ?? t.scale },
-          };
+          // World-space array offsets turn and scale with the object.
+          objects[id] = withTransform(objects[id], { position: position ?? t.position, rotation: rotation ?? t.rotation, scale: scale ?? t.scale });
         }
         return { ...s, objects };
       });

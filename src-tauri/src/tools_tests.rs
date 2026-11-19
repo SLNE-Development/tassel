@@ -246,6 +246,86 @@ fn file_export_returns_absolute_paths() {
 }
 
 #[test]
+fn render_video_checks_the_path_and_writes_the_file() {
+  let dir = TempDir::new("render-video");
+  let reply = |command: &str, params: &Value| {
+    (command == "render.video").then(|| {
+      let format = params.get("format").and_then(Value::as_str).unwrap_or("mp4");
+      Ok(json!({
+        "video": { "mimeType": format!("video/{format}"), "base64": "AQIDBAU=" },
+        "frames": 72, "fps": 24, "seconds": 3.0, "width": 640, "height": 360, "codec": "avc1.64001e",
+        "codecName": "H.264", "format": format, "bytes": 5, "camera": "animated"
+      }))
+    })
+  };
+
+  // The file is written (folders created), the format follows the extension and the video itself is not returned.
+  let mock = Mock::with(reply);
+  let mp4 = dir.0.join("out").join("factory.MP4").to_string_lossy().into_owned();
+  let output = call(&mock, "render_video", json!({ "path": mp4, "width": 640, "height": 360, "toFrame": 71, "documentId": "doc2" }));
+  assert!(!output.is_error, "{}", output.value);
+  assert_eq!(std::fs::read(&mp4).unwrap(), [1, 2, 3, 4, 5]);
+  assert_eq!(
+    output.value,
+    json!({
+      "exported": true, "path": mp4, "bytes": 5, "frames": 72, "fps": 24, "seconds": 3.0, "width": 640, "height": 360,
+      "codec": "avc1.64001e", "codecName": "H.264", "format": "mp4", "camera": "animated"
+    })
+  );
+  assert!(output.images.is_empty());
+  assert_eq!(
+    params_of(&mock, "render.video"),
+    json!({ "width": 640, "height": 360, "toFrame": 71, "documentId": "doc2", "format": "mp4" })
+  );
+
+  let mock = Mock::with(reply);
+  let webm = dir.path("a.webm");
+  let output = call(&mock, "render_video", json!({ "path": webm, "format": "webm", "quality": "render", "samples": 8, "maxSecondsPerFrame": 2 }));
+  assert!(!output.is_error, "{}", output.value);
+  assert_eq!(output.value["format"], "webm");
+  assert_eq!(params_of(&mock, "render.video"), json!({ "format": "webm", "quality": "render", "samples": 8, "maxSecondsPerFrame": 2 }));
+  assert!(std::path::Path::new(&webm).is_file());
+
+  // Everything is checked before the editor is asked to export.
+  let mock = Mock::with(reply);
+  let run = |args: Value| error_of(&call(&mock, "render_video", args));
+  assert!(run(json!({})).contains("\"path\" is required"));
+  assert!(run(json!({ "path": "clip.mp4" })).contains("not an absolute path"));
+  assert!(run(json!({ "path": "..\\clip.mp4" })).contains("not an absolute path"));
+  assert!(run(json!({ "path": dir.path("clip") })).contains("has no file extension"));
+  assert!(run(json!({ "path": dir.path("clip.gif") })).contains("Cannot write a video as .gif"));
+  assert!(run(json!({ "path": dir.path("clip.exe") })).contains("Cannot write a video as .exe"));
+  assert!(run(json!({ "path": dir.path("clip.mp4.png") })).contains("Cannot write a video as .png"));
+  assert!(run(json!({ "path": dir.path("b.mp4"), "format": "webm" })).contains("make them agree"));
+  assert!(run(json!({ "path": dir.path("b.mp4"), "format": "avi" })).contains("must be mp4 or webm"));
+  assert!(run(json!({ "path": dir.path("b.mp4"), "quality": "best" })).contains("\"quality\" must be viewport or render"));
+  assert!(run(json!({ "path": dir.path("b.mp4"), "frames": 10 })).contains("Unknown parameter \"frames\""));
+  assert!(run(json!({ "path": "" })).contains("\"path\" must be a non-empty string"));
+  assert!(run(json!({ "path": 7 })).contains("\"path\" must be a non-empty string"));
+  assert!(mock.calls_of("render.video").is_empty());
+  assert!(!std::path::Path::new(&dir.path("b.mp4")).exists());
+  assert!(check_native("render_video", &json!({ "path": "x.mp4" })).is_err());
+  assert!(check_native("render_video", &json!({ "path": dir.path("ok.webm") })).is_ok());
+
+  // A failed or cancelled export writes nothing and passes the message of the editor on; so does a broken answer.
+  let failing = Mock::with(|command, _| (command == "render.video").then(|| Err("Nothing is animated in this document: it has no keys.".into())));
+  let none = dir.path("none.mp4");
+  assert!(error_of(&call(&failing, "render_video", json!({ "path": none }))).contains("Nothing is animated"));
+  assert!(!std::path::Path::new(&none).exists());
+  let empty = Mock::with(|command, _| (command == "render.video").then(|| Ok(json!({ "video": { "mimeType": "video/mp4", "base64": "" } }))));
+  assert!(error_of(&call(&empty, "render_video", json!({ "path": none }))).contains("empty video"));
+  let broken = Mock::with(|command, _| (command == "render.video").then(|| Ok(json!({ "frames": 3 }))));
+  assert!(error_of(&call(&broken, "render_video", json!({ "path": none }))).contains("no video"));
+  assert!(!std::path::Path::new(&none).exists());
+
+  // render_image passes the animation frame on.
+  let mock = Mock::with(|command, _| (command == "render.image").then(|| Ok(json!({ "image": { "mimeType": "image/png", "base64": "AQID" }, "frame": 12.5 }))));
+  let output = call(&mock, "render_image", json!({ "frame": 12.5, "useAnimationCamera": false }));
+  assert!(!output.is_error, "{}", output.value);
+  assert_eq!(params_of(&mock, "render.image"), json!({ "frame": 12.5, "useAnimationCamera": false }));
+}
+
+#[test]
 fn render_image_checks_the_path_and_forwards_the_rest() {
   let dir = TempDir::new("render-image");
   let reply = |command: &str, params: &Value| {

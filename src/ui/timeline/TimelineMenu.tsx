@@ -10,7 +10,7 @@ function ToggleItem({ id, checked }: { id: string; checked: boolean }) {
   useT(); // The action's title and shortcut label follow the UI language.
   const label = shortcutLabel(id);
   return (
-    <Menu.CheckboxItem className={itemClass} checked={checked} onClick={() => void runAction(id)}>
+    <Menu.CheckboxItem className={itemClass} checked={checked} closeOnClick onClick={() => void runAction(id)}>
       <span className="flex w-4 shrink-0 justify-center">
         <Menu.CheckboxItemIndicator>
           <Check size={14} strokeWidth={2.25} />

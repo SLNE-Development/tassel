@@ -34,6 +34,9 @@ the camera stands: front = camera on +Z looking towards -Z, back = on -Z, right 
 looking down, bottom = on -Y. Call view_screenshot to see the result of your work. \
 Use render_image for presentation-quality pictures (path traced, takes seconds to minutes) and view_screenshot \
 for quick checks. \
+To show a process as a video: animate with the anim_* tools (anim_add_motion, anim_follow_path, anim_camera_orbit, \
+anim_set_key), check the timing with anim_evaluate and view_screenshot { frame }, then write the file with \
+render_video { path }. \
 Building anything bigger than a few objects: do NOT call tools one by one. Write a script that generates a JSON \
 file with all commands [{ \"tool\", \"params\", \"as\" }, ...] and run it with batch { \"file\": \"<absolute path>.json\" } \
 (hundreds of commands per second, nothing travels through the conversation). Inside a batch, label a command with \

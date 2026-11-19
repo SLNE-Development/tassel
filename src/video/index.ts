@@ -6,6 +6,7 @@ import { create } from 'zustand';
 import { VIDEO_CANCELLED, type VideoPicture, type VideoQuality, type VideoRecording, type VideoService, type VideoSpec } from '../core/video';
 import { cancelRender } from '../render';
 import { codecCandidates, fallbackNote, type CodecChoice } from './codecs';
+import { fixWebmDuration } from './webmDuration';
 
 export interface VideoProgress {
   /** Pictures encoded so far, and how many there will be. */
@@ -219,6 +220,8 @@ async function begin(spec: VideoSpec): Promise<VideoRecording> {
           if (failure) throw failure;
           muxer.finalize();
           const buffer = muxer.target.buffer;
+          // (MP4 gets its length from the frame durations; the WebM muxer needs help.)
+          if (spec.format === 'webm') fixWebmDuration(buffer, (count * 1000) / spec.fps, 1000 / spec.fps);
           return { base64: await toBase64(buffer), bytes: buffer.byteLength };
         } finally {
           close();

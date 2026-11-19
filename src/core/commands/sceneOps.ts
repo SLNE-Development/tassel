@@ -11,6 +11,7 @@ import { meshStats, polyMeshSchema } from '../mesh/polymesh';
 import { createPrimitive, primitiveShape, primitiveTypes } from '../mesh/primitives';
 import { relativeMatrix } from '../modifiers/boolean';
 import { applyModifier, evaluateObject, initModifiers } from '../modifiers/evaluate';
+import { withTransform } from '../modifiers/worldOffsets';
 import { raycast } from '../raycast';
 import { resolveGroupId, resolveMaterialId, resolveObjectId, resolveObjectIds } from '../refs';
 import { newId, own, uniqueName } from '../state';
@@ -104,6 +105,8 @@ function mirrorObject(obj: SceneObject, axis: number, pivot: Vec3): Pick<SceneOb
   const positions = obj.mesh.positions.map((v, i) => (i % 3 === l ? -v + 0 : v));
   // The array modifier's step is mirrored with the mesh: offset and pivot along the mirrored local axis (a
   // world-space offset along the world axis instead), and the turn about the two other axes runs the other way.
+  // Not withTransform: the mesh is mirrored as well, so the local offset must flip with it - which is exactly
+  // what flipping the world offset along the world axis gives (S^-1 * (F R L)^T * F w = L * S^-1 * R^T w).
   const modifiers = obj.modifiers.map((m): Modifier => {
     if (m.type !== 'array') return m;
     const flip = m.offsetSpace === 'world' ? axis : l;
@@ -143,6 +146,7 @@ export const sceneOpsCommands = [
       '`translate` is a world-space offset in meters. Example: rotate [0, 90, 0] turns a row of objects standing along X into a row along Z. ' +
       'Each object keeps a plain position / rotation / scale: rotation and a uniform scale are exact; a non-uniform scale of an object that is rotated ' +
       'against the world axes would need a shear, so its own scale is approximated per local axis (the position is still exact) - the same as the viewport gizmo does. ' +
+      'Everything that belongs to an object moves rigidly with it: the copies of an array modifier with a world-space offset turn and scale too (its `offset` is rewritten for the new rotation / scale). ' +
       'Scale factors must not be 0; a negative factor mirrors (prefer scene.mirror_objects). The selection does not change. ' +
       'Returns `ids`, the new `transform` of every object, the `pivot` used and the new combined world `bounds` { min, max, center, size }. One undo step.',
     params: z.object({
@@ -171,7 +175,8 @@ export const sceneOpsCommands = [
         if (scale && scale.some((s) => s !== 1)) t = scaleAbout(t, pivot, scale);
         if (rotation) t = rotateAbout(t, pivot, rotation);
         if (p.translate) t = { ...t, position: roundVec3(t.position.map((v, i) => v + p.translate![i])) };
-        return { ...obj, transform: t };
+        // World-space array offsets turn and scale with the object, so its copies stay where they belong.
+        return withTransform(obj, t);
       });
       updateDocState(ctx, (s) => stateWithObjects(s, changed));
       return {
@@ -197,7 +202,8 @@ export const sceneOpsCommands = [
       'The mesh vertices are moved accordingly (world-space positions stay identical; faces are re-wound if a negative scale is baked, so normals keep pointing outwards). ' +
       'Typical use: after a non-uniform scale, so that mesh edits, bevel widths and array offsets are in real meters again. ' +
       'Targets default to the current selection. Fails for an object that is in edit mode (call edit.exit first) and if a part that is kept has a scale of 0. ' +
-      'Modifiers stay on the object unchanged; they work in LOCAL space, so an array offset or a mirror plane now means something different (e.g. after baking scale 2 an array offset of 1 is 1 m in the world instead of 2 m) - adjust them, or apply the modifiers first. ' +
+      'Modifiers stay on the object unchanged; they work in LOCAL space, so a local array offset, an array pivot / per-copy rotation or a mirror plane now means something different (e.g. after baking scale 2 a local array offset of 1 is 1 m in the world instead of 2 m) - adjust them, or apply the modifiers first. ' +
+      'Exception: an array offset with offsetSpace "world" is in world meters and stays exactly right, since the object does not move in the world. ' +
       'Returns the objects with their new transform, and the (unchanged) world bounds. One undo step.',
     params: z.object({
       ids: idsParam('Default: the current selection.'),
@@ -233,6 +239,8 @@ export const sceneOpsCommands = [
           positions[i + 2] = tidy(v[2]);
         }
         const mesh: PolyMesh = { ...obj.mesh, positions };
+        // Not withTransform: the object does not turn in the world, the mesh takes over what the transform loses,
+        // so a world-space array offset is still the same world vector (its local form changes exactly like the mesh).
         changed.push({ ...obj, transform: kept, mesh: determinant(m) < 0 ? flipAll(mesh) : mesh });
       }
       if (changed.length > 0) updateDocState(ctx, (s) => stateWithObjects(s, changed));

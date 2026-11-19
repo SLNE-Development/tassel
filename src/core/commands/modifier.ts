@@ -73,7 +73,7 @@ export const modifierCommands = [
     id: 'modifier.add',
     title: 'Modifikator hinzufügen',
     description:
-      'Add a non-destructive modifier to the end of an object\'s modifier stack. Modifiers are evaluated top to bottom on the base mesh in local space; the base mesh stays editable. Types: mirror (across local planes through the origin, welds the seam), subdivision (Catmull-Clark smoothing), array (count copies, each moved by offset and/or turned by rotation about pivot relative to the previous one: a row, a radial array with rotation [0, 360 / count, 0] and offset [0, 0, 0], or a spiral with both; offsetSpace "world" gives the offset in world meters instead of local units. By default the array offset is in the LOCAL units of the object, i.e. before its scale and rotation: world offset = offset x object scale, turned with the object - an offset of 2 on an object with scale 0.5 moves each copy 1 m), boolean (union / difference / intersect with another object; both meshes must be closed manifolds). Pass only the parameters of the chosen type. Returns the modifier id, the objectId it was added to, and "error" if the modifier currently cannot be evaluated (it is then skipped).',
+      'Add a non-destructive modifier to the end of an object\'s modifier stack. Modifiers are evaluated top to bottom on the base mesh in local space; the base mesh stays editable. Types: mirror (across local planes through the origin, welds the seam), subdivision (Catmull-Clark smoothing), array (count copies, each moved by offset and/or turned by rotation about pivot relative to the previous one: a row, a radial array with rotation [0, 360 / count, 0] and offset [0, 0, 0], or a spiral with both; offsetSpace "world" gives the offset in world meters along the world axes instead of local units, as the object stands at that moment - afterwards the copies move rigidly with the object, i.e. rotating or scaling it with any command turns / scales the row too and rewrites the stored offset. By default the array offset is in the LOCAL units of the object, i.e. before its scale and rotation: world offset = offset x object scale, turned with the object - an offset of 2 on an object with scale 0.5 moves each copy 1 m), boolean (union / difference / intersect with another object; both meshes must be closed manifolds). Pass only the parameters of the chosen type. Returns the modifier id, the objectId it was added to, and "error" if the modifier currently cannot be evaluated (it is then skipped).',
     params: z.object({ objectId: objectIdParam, type: z.enum(modifierTypes), ...modifierCommandParams }),
     async run(ctx, p) {
       const { objectId, type, ...given } = p;
@@ -91,7 +91,7 @@ export const modifierCommands = [
     id: 'modifier.update',
     title: 'Modifikator ändern',
     description:
-      'Change parameters of a modifier and/or enable or disable it. Omitted parameters stay unchanged. Returns "error" if the modifier currently cannot be evaluated.',
+      'Change parameters of a modifier and/or enable or disable it. Omitted parameters stay unchanged. An array offset with offsetSpace "world" is in world meters along the world axes for the object as it stands now; when the object is rotated or scaled later, the copies move rigidly with it and the stored offset is rewritten accordingly. Returns "error" if the modifier currently cannot be evaluated.',
     params: z.object({
       objectId: objectIdParam,
       modifierId: z.string(),

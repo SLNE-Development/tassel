@@ -110,7 +110,10 @@ export type Modifier =
       readonly rotation: Vec3;
       /** Local point the per-copy rotation turns about. */
       readonly pivot: Vec3;
-      /** 'world': `offset` is along the world axes in meters, whatever the object's rotation and scale. */
+      /**
+       * 'world': `offset` is along the world axes in meters for the object's current rotation and scale. It
+       * moves rigidly with the object: commands that change rotation or scale re-express it (modifiers/worldOffsets.ts).
+       */
       readonly offsetSpace: 'local' | 'world';
     })
   | (ModifierBase & {

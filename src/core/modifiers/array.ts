@@ -6,14 +6,17 @@ export interface ArrayOptions {
   rotation?: Vec3;
   /** Local point the rotation turns about. Default: the object's origin. */
   pivot?: Vec3;
-  /** 'world': `offset` is in world meters along the world axes, which needs `transform`. Default: 'local'. */
+  /**
+   * 'world': `offset` is in world meters along the world axes for an object with `transform`. Commands that
+   * change the transform re-express the offset (see worldOffsets.ts), so the copies turn with the object. Default: 'local'.
+   */
   offsetSpace?: 'local' | 'world';
   /** The object's transform (only its rotation and scale matter). */
   transform?: Transform;
 }
 
 /** `offset` given along the world axes, expressed in the local space of an object with that transform. */
-function worldToLocalOffset(offset: Vec3, transform: Transform): Vec3 {
+export function worldToLocalOffset(offset: Vec3, transform: Transform): Vec3 {
   // World = R * S * local for directions, so local = S^-1 * R^T * world.
   const m = transformMatrix({ ...transform, scale: [1, 1, 1] });
   if (transform.scale.some((s) => Math.abs(s) < 1e-12)) throw new Error('The object has a scale of zero');

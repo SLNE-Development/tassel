@@ -3,6 +3,7 @@
 // and the whole model placed as a unit. Pure functions, so a command gets one undo step out of them.
 import { MAX_TEXTURE_BASE64, MAX_TEXTURE_SIZE, materialFields, textureDataProblem } from '../materials';
 import { worldBounds } from '../bounds';
+import { bakeWorldOffsets, carryWorldOffsets } from '../modifiers/worldOffsets';
 import { placeObject, placementMatrix, type Placement } from '../placement';
 import { globMatcher } from '../refs';
 import { newId, own, uniqueName } from '../state';
@@ -208,7 +209,12 @@ export function addImported(state: DocState, scene: ImportedScene, fallbackName:
       visible: source.visible ?? true,
       transform: placed.transform,
       mesh: placed.mesh,
-      modifiers: source.modifiers ?? [],
+      // World-space array offsets of the model turn and scale with the placement, like the model itself.
+      modifiers: !placement || !source.modifiers
+        ? (source.modifiers ?? [])
+        : placed.baked
+          ? bakeWorldOffsets(source.modifiers, placement)
+          : carryWorldOffsets(source.modifiers, source.transform, placed.transform),
       smooth: source.smooth,
       groupId: (source.group !== null && groupIds.get(source.group)) || top,
       materialId: (source.material !== null && assets.materialIds[source.material]) || null,

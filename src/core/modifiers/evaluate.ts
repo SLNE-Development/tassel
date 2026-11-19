@@ -74,7 +74,11 @@ interface CacheEntry {
   ready: boolean;
   /** One per enabled boolean modifier, in stack order. Empty: the result depends on mesh + modifiers only. */
   targets: Target[];
-  /** An enabled array modifier offsets in world space, so the result depends on the object's rotation and scale. */
+  /**
+   * An enabled array modifier offsets in world space, so the result depends on the object's rotation and scale.
+   * (Commands that change those rewrite the offset - worldOffsets.ts -, which gives a new modifier list anyway;
+   * animated poses come with the offsets in local form, so playback does not get here.)
+   */
   worldArray: boolean;
   result: Evaluated;
 }
