@@ -49,6 +49,7 @@ import {
   shelfAnchor,
   shelfLift,
   thirdPersonHand,
+  closestAngles,
   yRange,
   type ShelfSlot,
 } from './slotMath';
@@ -193,7 +194,11 @@ export class DisplayView {
     const clay = new MeshStandardMaterial({ color: '#b9b2a6', roughness: 0.9, side: DoubleSide });
     this.looks = {
       geometries: new GeometryStore(),
-      surfaces: new SurfaceMaterials(() => this.invalidate()),
+      // A texture finished decoding: the next sync binds it.
+      surfaces: new SurfaceMaterials(() => {
+        this.docState = null;
+        this.update();
+      }),
       clay: [clay, clay, clay],
       clayDim: clay,
       wireMaterials: [0, 1, 2].map(() => new LineBasicMaterial()),
@@ -465,8 +470,9 @@ export class DisplayView {
     if (this.mode === 'translate') this.proxy.position.copy(this.moveHandle.position);
     const r = new Euler().setFromQuaternion(this.proxy.quaternion, 'XYZ');
     const round = (n: number, k: number) => Math.round(n * k) / k;
+    const previous = appliedTransform(this.transform(), isLeftHand(this.slot)).rotation;
     const applied: DisplayTransform = {
-      rotation: [r.x, r.y, r.z].map((a) => round((a * 180) / Math.PI, 100)) as Vec3,
+      rotation: closestAngles([r.x, r.y, r.z].map((a) => (a * 180) / Math.PI) as Vec3, previous).map((a) => round(a, 100)) as Vec3,
       translation: this.proxy.position.toArray().map((v) => round(v * 16, 100)) as Vec3,
       scale: this.proxy.scale.toArray().map((v) => round(v, 1000)) as Vec3,
     };

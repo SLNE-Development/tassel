@@ -1,5 +1,6 @@
 import { Euler, Matrix4, Vector3 } from 'three/webgpu';
 import { appliedTransform, type DisplayTransform } from '../../core/minecraft/display';
+import type { Vec3 as V3 } from '../../core/types';
 
 // Where the game draws an item for each display slot, as matrices in the Display workspace's world:
 // 1 unit = 1 block, y up, entities stand at the origin facing +Z (their right hand is on -X).
@@ -190,4 +191,19 @@ export function yRange(matrix: Matrix4, min: Vector3, max: Vector3): [number, nu
     hi = Math.max(hi, y);
   }
   return [lo, hi];
+}
+
+const wrap180 = (a: number) => ((((a + 180) % 360) + 360) % 360) - 180;
+
+/**
+ * An X-Y-Z rotation has two sets of angles; this picks the one nearer to `previous`, so that dragging the
+ * gizmo a little changes the numbers a little.
+ */
+export function closestAngles([x, y, z]: V3, previous: Readonly<V3>): V3 {
+  const candidates: V3[] = [
+    [x, y, z],
+    [x + 180, 180 - y, z + 180],
+  ].map((c) => c.map(wrap180) as V3);
+  const distance = (c: V3) => c.reduce((sum, a, i) => sum + Math.abs(wrap180(a - previous[i])), 0);
+  return distance(candidates[0]) <= distance(candidates[1]) ? candidates[0] : candidates[1];
 }

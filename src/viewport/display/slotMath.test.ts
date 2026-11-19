@@ -1,7 +1,7 @@
 import { Matrix4, Vector3 } from 'three/webgpu';
 import { describe, expect, it } from 'vitest';
 import { builtInPresets, IDENTITY, type DisplayTransform } from '../../core/minecraft/display';
-import { MODEL_OFFSET, displayMatrix, firstPersonAnchor, frameAnchor, groundLift, headAnchor, mul, shelfLift, thirdPersonHand } from './slotMath';
+import { MODEL_OFFSET, closestAngles, displayMatrix, firstPersonAnchor, frameAnchor, groundLift, headAnchor, mul, shelfLift, thirdPersonHand } from './slotMath';
 
 const MIRROR = new Matrix4().makeScale(-1, 1, 1);
 const at = (m: Matrix4, p = new Vector3()) => p.clone().applyMatrix4(m);
@@ -61,5 +61,13 @@ describe('display slot math', () => {
     expect(groundLift(-0.25, 0.1)).toBeCloseTo(0.4125, 6);
     expect(shelfLift(-0.1, 0.1, 'bottom')).toBeCloseTo(0.35, 6);
     expect(shelfLift(-0.1, 0.1, 'top')).toBeCloseTo(0.65, 6);
+  });
+});
+
+describe('gizmo angles', () => {
+  it('picks the set of X-Y-Z angles nearest to the previous one', () => {
+    const a = closestAngles([-179.72, -63.78, -149.61], [0, -90, 55]);
+    a.forEach((v, i) => expect(v).toBeCloseTo([0.28, -116.22, 30.39][i], 6));
+    expect(closestAngles([10, 20, 30], [0, 0, 0])).toEqual([10, 20, 30]);
   });
 });
