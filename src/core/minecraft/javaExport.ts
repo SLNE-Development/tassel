@@ -4,6 +4,7 @@
 // version that writes something differently adds a rule ending (`until`) at it and one starting (`since`) at
 // it; the rules of older versions stay as they are, and golden files pin their output.
 import { cuboidFaces } from '../types';
+import { shortLinkLocation } from '../textureLibrary';
 import type { Cuboid, CuboidFace, CuboidFaceName, DocState, Group, JavaModelSettings, SceneObject, Texture } from '../types';
 import { modelBox, uvSize } from './cuboid';
 import { exportDisplay } from './display';
@@ -33,6 +34,8 @@ function textureVar(state: DocState, id: string | null): string {
 
 /** `namespace:folder/name`; the namespace is left out when it is `minecraft`. */
 export function textureLocation(texture: Texture): string {
+  // A linked texture is exported by the location of its library file.
+  if (texture.link) return shortLinkLocation(texture.link);
   const ref = texture.java ?? { namespace: 'minecraft', folder: 'block', key: '' };
   const path = ref.folder ? `${ref.folder.replace(/\/+$/, '')}/${texture.name}` : texture.name;
   return ref.namespace && ref.namespace !== 'minecraft' ? `${ref.namespace}:${path}` : path;

@@ -117,11 +117,14 @@ describe('registration', () => {
     ]);
     expect(ids.filter((id) => id.startsWith('texture.')).sort()).toEqual([
       'texture.add',
+      'texture.add_from_library',
       'texture.get',
+      'texture.link',
       'texture.list',
       'texture.normal_from_height',
       'texture.remove',
       'texture.rename',
+      'texture.unlink',
     ]);
   });
 

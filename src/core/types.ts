@@ -6,6 +6,7 @@ import type { ItemDocSettings } from './minecraft/items/types';
 import type { MinecraftAssetsService } from './minecraftAssets';
 import type { Preferences } from './preferences';
 import type { RenderService, RenderSettings } from './render';
+import type { TextureLibraryService, TextureLink } from './textureLibrary';
 import type { VideoService } from './video';
 
 export type Vec3 = [number, number, number];
@@ -39,6 +40,12 @@ export interface Texture {
   readonly layers?: readonly PaintLayer[];
   /** Minecraft documents: where the texture lives in a resource pack. `name` is its file name without .png. */
   readonly java?: JavaTextureRef;
+  /**
+   * Linked to a texture library file (core/textureLibrary.ts) instead of being only embedded: the image is
+   * loaded from the library on open and when the file changes, written back on save, and exported by
+   * this location. `data` stays a cached copy, so the document also opens without the library.
+   */
+  readonly link?: TextureLink;
 }
 
 export const blendModes = ['normal', 'multiply', 'screen', 'overlay', 'add'] as const;
@@ -681,4 +688,6 @@ export interface Services {
   video?: VideoService | null;
   /** Vanilla Minecraft assets from the user's install (src/mcassets). */
   minecraftAssets?: MinecraftAssetsService | null;
+  /** Texture library files of projects, library folders and vanilla (src/texlib). */
+  textureLibrary?: TextureLibraryService | null;
 }

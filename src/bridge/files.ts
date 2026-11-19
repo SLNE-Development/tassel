@@ -1,6 +1,6 @@
 import { invoke, isTauri } from '@tauri-apps/api/core';
 import { open, save } from '@tauri-apps/plugin-dialog';
-import { execute, selectActiveDoc, useApp } from '../app/store';
+import { execute, selectActiveDoc, services, useApp } from '../app/store';
 import { importFormats, type ExportFormat, type ExportResult, type ImportFormat } from '../core/types';
 import { documentName, getT } from '../i18n';
 
@@ -51,7 +51,10 @@ export async function openJavaModel(): Promise<{ warnings: string[] } | null> {
   const read = await invoke<{ json: string; images: Record<string, { data: string; width: number; height: number }> }>('read_java_model_file', { path });
   const stem = fileStem(path);
   // Item definitions (items/<id>.json) open as item definition documents and are saved back to the file.
-  return (await execute('document.import_java', { json: read.json, images: read.images, name: stem, fileName: stem, filePath: path })) as { warnings: string[] };
+  const result = (await execute('document.import_java', { json: read.json, images: read.images, name: stem, fileName: stem, filePath: path })) as { warnings: string[] };
+  // Textures that live in the texture library are linked to their files instead of staying copies.
+  if (services.textureLibrary) await execute('library.link_all', {}).catch(() => undefined);
+  return result;
 }
 
 /** Saves the active document; asks for a path if it has none or `saveAs` is set. Resolves false if cancelled. */

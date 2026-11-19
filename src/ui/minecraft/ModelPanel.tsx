@@ -1,4 +1,5 @@
-import { ImagePlus, Trash2, TriangleAlert } from 'lucide-react';
+import { isTauri } from '@tauri-apps/api/core';
+import { ImagePlus, Library, Link2, Trash2, TriangleAlert } from 'lucide-react';
 import { useMemo, useRef } from 'react';
 import { selectDocState, useApp } from '../../app/store';
 import { validateJavaModel, type JavaIssue } from '../../core/minecraft/validate';
@@ -9,6 +10,8 @@ import { dispatch } from '../actions';
 import { PickMenu, Segmented, Switch } from '../controls';
 import { ScrubField } from '../ScrubField';
 import { addTextureFromFile, textureAccept, useThumbnail } from '../textureFiles';
+import { addLibraryTexture, setLibraryPanelOpen } from '../library/libraryUi';
+import { LinkBadge, TextureLinkBar, useTextureDrop } from '../library/TextureLinkBar';
 import { notifyError } from '../toast';
 import { FieldRow, SectionTitle, smallButton, TextField } from './fields';
 
@@ -130,8 +133,9 @@ function TextureRow({ texture }: { texture: Texture }) {
   return (
     <li className="flex flex-col gap-1.5 rounded-lg border border-line p-2">
       <div className="flex items-center gap-2">
-        <span className="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded bg-ink ring-1 ring-line ring-inset">
+        <span className="relative flex size-10 shrink-0 items-center justify-center overflow-hidden rounded bg-ink ring-1 ring-line ring-inset">
           {thumbnail && <img src={thumbnail} alt="" className="size-full object-contain" style={{ imageRendering: 'pixelated' }} />}
+          <LinkBadge texture={texture} />
         </span>
         <div className="min-w-0 flex-1">
           <TextField label={t.name} value={texture.name} mono onCommit={(name) => name && set({ name })} />
@@ -158,6 +162,7 @@ function TextureRow({ texture }: { texture: Texture }) {
         <span>{t.folder}</span>
         <span>{t.key}</span>
       </div>
+      <TextureLinkBar texture={texture} />
       <button className={smallButton} onClick={() => void dispatch('cuboid.set_face', { texture: texture.id })}>
         {t.useOnSelection}
       </button>
@@ -171,6 +176,9 @@ export function TexturesPanel() {
   const t = useT().mc.textures;
   const input = useRef<HTMLInputElement>(null);
   const list = useMemo(() => Object.values(textures), [textures]);
+  const tl = useT().library;
+  const drop = useTextureDrop((dragged) => addLibraryTexture(dragged));
+  const unlinked = list.some((tex) => !tex.link);
   const add = async (files: FileList | null) => {
     for (const file of Array.from(files ?? [])) {
       try {
@@ -182,12 +190,25 @@ export function TexturesPanel() {
     if (input.current) input.current.value = '';
   };
   return (
-    <div className="flex flex-col gap-2">
+    <div className={`flex flex-col gap-2 rounded-lg ${drop.over ? 'bg-raised ring-1 ring-accent ring-inset' : ''}`} {...drop.props}>
       <input ref={input} type="file" multiple hidden accept={textureAccept} onChange={(e) => void add(e.currentTarget.files)} />
-      <button className={smallButton} onClick={() => input.current?.click()}>
-        <ImagePlus size={14} strokeWidth={1.75} />
-        {t.add}
-      </button>
+      <div className="grid grid-cols-2 gap-1">
+        <button className={smallButton} onClick={() => input.current?.click()}>
+          <ImagePlus size={14} strokeWidth={1.75} />
+          {t.add}
+        </button>
+        <button className={smallButton} onClick={() => setLibraryPanelOpen(true)}>
+          <Library size={14} strokeWidth={1.75} />
+          {tl.fromLibrary}
+        </button>
+      </div>
+      {unlinked && isTauri() && (
+        <button className={smallButton} onClick={() => void dispatch('library.link_all', {})}>
+          <Link2 size={14} strokeWidth={1.75} />
+          {tl.linkAll}
+        </button>
+      )}
+      <p className="text-[calc(11.5px*var(--font-scale))] leading-relaxed text-faint">{tl.dropHint}</p>
       {list.length === 0 && <p className="text-[calc(12.5px*var(--font-scale))] leading-relaxed text-faint">{t.empty}</p>}
       <ul className="flex flex-col gap-2">
         {list.map((texture) => (

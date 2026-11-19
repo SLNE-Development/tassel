@@ -833,6 +833,28 @@ export class ViewportEngine {
     else if (!event.shiftKey) this.selectNone(edit);
   }
 
+  /**
+   * The frontmost visible object under the given client coordinates and, for a cuboid element, the
+   * index of the face hit (in `cuboidFaces` order). For dropping library textures onto faces.
+   */
+  pickFace(clientX: number, clientY: number): { id: string; face: number | null } | null {
+    const rect = this.canvas.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) return null;
+    const ndc = new Vector2(((clientX - rect.left) / rect.width) * 2 - 1, -((clientY - rect.top) / rect.height) * 2 + 1);
+    const targets: Mesh[] = [];
+    for (const entry of this.entries.values()) if (entry.obj.visible) targets.push(entry.solid);
+    this.scene.updateMatrixWorld();
+    this.viewCamera.updateMatrixWorld();
+    this.raycaster.setFromCamera(ndc, this.viewCamera);
+    const hit = this.raycaster.intersectObjects(targets, false)[0];
+    if (!hit) return null;
+    const id = hit.object.userData.id as string;
+    const cuboid = this.entries.get(id)?.obj.cuboid;
+    // A cuboid's six quads are two triangles each, in face order (and one geometry group per face).
+    const face = cuboid ? (hit.face?.materialIndex ?? (hit.faceIndex != null ? Math.floor(hit.faceIndex / 2) : null)) : null;
+    return { id, face: face !== null && face >= 0 && face < 6 ? face : null };
+  }
+
   /** Id of the frontmost visible object under the given client coordinates. */
   private pick(clientX: number, clientY: number): string | null {
     const rect = this.canvas.getBoundingClientRect();

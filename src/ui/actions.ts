@@ -18,6 +18,7 @@ import { timelineActions } from './timeline/timelineActions';
 import { notifyError, notifyInfo, notifySuccess } from './toast';
 import { useUi } from './uiStore';
 import { uvActions } from './uv/uvActions';
+import { toggleLibraryPanel } from './library/libraryUi';
 import { activeProject, pull, push, setPanelOpen, targetDir, togglePanel, useProjects } from './projects/projectsStore';
 
 /**
@@ -334,6 +335,7 @@ export const actions: readonly Action[] = [
 
   // Projekt
   action({ id: 'projects.toggle', title: (t) => t.projects.togglePanel, group: 'project', keys: ['Ctrl+Shift+E'], inInputs: true, run: togglePanel }),
+  action({ id: 'library.toggle', title: (t) => t.library.togglePanel, group: 'project', keys: ['Ctrl+Shift+L'], inInputs: true, run: toggleLibraryPanel }),
   action({
     id: 'projects.save_into',
     title: (t) => t.projects.saveInto,

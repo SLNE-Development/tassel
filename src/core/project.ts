@@ -10,10 +10,19 @@ import { base64ImageSize } from './imageInfo';
 import { MAX_TEXTURE_SIZE, materialFields, repairMaterials, textureDataProblem, textureSizeProblem } from './materials';
 import { parseRenderSettings } from './render';
 import { newId } from './state';
+import { tryTextureLocation } from './textureLibrary';
 import { blendModes, docFormats, textureMimeTypes, textureSlots } from './types';
 import type { Doc, DocState, Group, Material, SceneObject, Texture } from './types';
 
 // Project file format (.tessel): JSON, validated on load because files are untrusted input.
+
+const textureLinkSchema = z
+  .object({ namespace: z.string(), path: z.string() })
+  .transform((link, ctx) => {
+    const parsed = tryTextureLocation(`${link.namespace}:${link.path}`);
+    if (!parsed) ctx.addIssue({ code: 'custom', message: `"${link.namespace}:${link.path}" is not a valid texture location` });
+    return parsed ?? link;
+  });
 
 const vec3 = z.tuple([z.number().finite(), z.number().finite(), z.number().finite()]);
 
@@ -40,6 +49,8 @@ const textureSchema = z
       .optional(),
     // Minecraft documents only: where the texture lives in a resource pack.
     java: javaTextureRefSchema.optional(),
+    // Linked to a texture library file (core/textureLibrary.ts); files written before the library have none.
+    link: textureLinkSchema.optional(),
   })
   .superRefine((texture, ctx) => {
     const fail = (message: string) => ctx.addIssue({ code: 'custom', message: `texture "${texture.name}": ${message}` });
@@ -193,8 +204,8 @@ export function parseProject(json: string): { name: string; state: DocState } {
   const textures: Record<string, Texture> = {};
   for (const texture of parsed.data.textures) {
     const id = Object.hasOwn(textures, texture.id) ? newId() : texture.id;
-    const { java: ref, ...rest } = texture;
-    textures[id] = minecraft && ref ? { ...rest, id, java: ref } : { ...rest, id };
+    const { java: ref, link, ...rest } = texture;
+    textures[id] = { ...rest, id, ...(minecraft && ref ? { java: ref } : {}), ...(link ? { link } : {}) };
   }
   const materials: Record<string, Material> = {};
   for (const material of parsed.data.materials) {
