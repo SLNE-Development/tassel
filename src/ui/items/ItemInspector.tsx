@@ -455,13 +455,3 @@ export function ItemInspector() {
     </section>
   );
 }
-
-/** The sidebar of an item definition document. */
-export function ItemSidebar() {
-  return (
-    <>
-      <TestInputs />
-      <ItemInspector />
-    </>
-  );
-}

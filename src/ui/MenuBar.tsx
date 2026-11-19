@@ -15,6 +15,7 @@ import { uvOps } from './minecraft/minecraftActions';
 import { TimelineItems } from './timeline/TimelineMenu';
 import { UvMenuItems } from './uv/UvMenu';
 import { useProjects } from './projects/projectsStore';
+import { LayoutMenuItems } from './layout/LayoutMenu';
 import { ActionItem, MenuLabel, MenuPopup, MenuSeparator, RadioActionItem, Submenu } from './menu';
 
 function TopMenu({ title, disabled, children }: { title: string; disabled?: boolean; children: ReactNode }) {
@@ -174,8 +175,7 @@ function ViewItems() {
       <MenuSeparator />
       <ActionItem id="view.frame" />
       <MenuSeparator />
-      <ActionItem id="projects.toggle" />
-      <ActionItem id="library.toggle" />
+      <LayoutMenuItems />
       <MenuSeparator />
       {!minecraft && (
         <>

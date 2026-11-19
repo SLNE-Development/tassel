@@ -67,7 +67,7 @@ export function Centre() {
   const left = uv || item;
   useItemPreviewController();
   return (
-    <main className="flex min-h-0 min-w-0 flex-col overflow-hidden bg-ink">
+    <main data-dock-centre className="flex min-h-0 min-w-0 flex-col overflow-hidden bg-ink">
       <div className="relative min-h-0 min-w-0 flex-1 overflow-hidden">
       {uv && (
         <div className="absolute inset-y-0 left-0" style={{ width: `${split * 100}%` }}>

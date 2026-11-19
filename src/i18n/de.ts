@@ -193,8 +193,33 @@ export const de = {
 
   elements,
 
-  app: {
-    sidebar: 'Szene und Eigenschaften',
+  layout: {
+    leftSidebar: 'Linke Seitenleiste',
+    rightSidebar: 'Rechte Seitenleiste',
+    panels: 'Bedienfelder',
+    layouts: 'Layouts',
+    manage: 'Layout speichern…',
+    manageTitle: 'Layouts',
+    reset: 'Layout zurücksetzen',
+    saveCurrent: 'Aktuelles Layout speichern als',
+    namePlaceholder: 'Name des Layouts',
+    save: 'Speichern',
+    replace: 'Ersetzen',
+    savedLayouts: 'Gespeicherte Layouts',
+    noneSaved: 'Noch keine Layouts gespeichert.',
+    active: 'aktiv',
+    apply: 'Anwenden',
+    deleteNamed: (name: string) => `Layout „${name}“ löschen`,
+    collapse: 'Einklappen',
+    expand: 'Ausklappen',
+    moveLeft: 'In die linke Seitenleiste',
+    moveRight: 'In die rechte Seitenleiste',
+    closePanel: 'Bedienfeld schließen',
+    closeNamed: (title: string) => `${title} schließen`,
+    tabs: 'Bedienfelder dieser Gruppe',
+    resizeColumn: 'Breite der Seitenleiste',
+    resizeGroups: 'Höhe der Bedienfelder',
+    resizeHint: 'Ziehen zum Anpassen, Doppelklick setzt zurück',
   },
 
   documents: {

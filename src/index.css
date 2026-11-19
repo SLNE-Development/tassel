@@ -237,3 +237,45 @@ label[for],
     animation: none;
   }
 }
+
+/* Outside the layers on purpose: these override the utility classes of the panels inside the dock. */
+/* ---- Dock (src/ui/layout) ---------------------------------------------------------------- */
+
+/* A docked panel fills its group; the dock draws the borders between panels, so a panel's own outer borders go. */
+.dock-panel > * {
+  flex: 1 1 0;
+  min-height: 0;
+  min-width: 0;
+  border-width: 0;
+}
+
+/* The header of a docked panel is its drag handle. */
+.dock-panel > * > header,
+.dock-panel > * > h2 {
+  cursor: grab;
+}
+
+/* A collapsed group keeps only its panel's header. */
+.dock-collapsed .dock-panel > * > :not(header, h2) {
+  display: none;
+}
+.dock-collapsed .dock-panel > * {
+  flex: 0 0 auto;
+}
+
+/* While a divider or a panel is dragged, its cursor holds everywhere and nothing gets selected. */
+html.dock-resizing-x,
+html.dock-resizing-x * {
+  cursor: col-resize !important;
+  user-select: none !important;
+}
+html.dock-resizing-y,
+html.dock-resizing-y * {
+  cursor: row-resize !important;
+  user-select: none !important;
+}
+html.dock-dragging,
+html.dock-dragging * {
+  cursor: grabbing !important;
+  user-select: none !important;
+}

@@ -21,6 +21,7 @@ import { notifyError, notifyInfo, notifySuccess } from './toast';
 import { useUi } from './uiStore';
 import { uvActions } from './uv/uvActions';
 import { toggleLibraryPanel } from './library/libraryUi';
+import { resetLayout, useLayout } from './layout/layoutStore';
 import { pixelActionDefs } from './pixel/pixelActions';
 import { activeProject, pull, push, setPanelOpen, targetDir, togglePanel, useProjects } from './projects/projectsStore';
 
@@ -309,6 +310,8 @@ export const actions: readonly Action[] = [
   ),
   ...previewActions(action),
   action({ id: 'view.frame', title: (t) => t.actions.frame, group: 'view', keys: ['F', 'NumpadDecimal'], editKeys: ['NumpadDecimal'], command: 'view.frame', run: () => execute('view.frame') }),
+  action({ id: 'layout.manage', title: (t) => t.layout.manage, group: 'view', run: () => useLayout.setState({ manageOpen: true }) }),
+  action({ id: 'layout.reset', title: (t) => t.layout.reset, group: 'view', run: resetLayout }),
 
   // Werkzeug
   ...tools.map((tool) =>

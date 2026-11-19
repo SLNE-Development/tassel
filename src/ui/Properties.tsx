@@ -6,14 +6,11 @@ import type { PolyMesh, Transform, Vec3 } from '../core/types';
 import { useT } from '../i18n';
 import { dispatch, shortcutLabel } from './actions';
 import { Switch } from './controls';
-import { DisplayPanel } from './display/DisplayPanel';
 import { useIsMinecraft } from './format';
 import { useLiveEdit } from './live';
 import { MinecraftProperties } from './minecraft/MinecraftProperties';
 import { Materials } from './Materials';
 import { Modifiers } from './Modifiers';
-import { PaintPanel } from './paint/PaintPanel';
-import { PixelPanel } from './pixel/PixelPanel';
 import { ScrubField } from './ScrubField';
 import { elementCounts } from './StatusBar';
 
@@ -191,18 +188,13 @@ function ObjectProperties({ id }: { id: string }) {
   );
 }
 
+/** The active object's properties (a dockable panel; the paint, pixel and display panels take its place in their workspaces). */
 export function Properties() {
   const activeId = useApp((s) => selectDocState(s).activeId);
   const hasObjects = useApp((s) => selectDocState(s).order.length > 0);
   const selected = useApp((s) => selectDocState(s).selection.length);
-  const painting = useApp((s) => s.workspace === 'paint');
-  const displaying = useApp((s) => s.workspace === 'display');
   const minecraft = useIsMinecraft();
   const t = useT();
-  // The paint workspace shows what is painted on and its layers instead of the object's properties.
-  if (painting) return minecraft ? <PixelPanel /> : <PaintPanel />;
-  // The display workspace edits the model's display transforms instead.
-  if (displaying && minecraft) return <DisplayPanel />;
   return (
     <section aria-label={t.properties.title} className="flex min-h-0 min-w-0 flex-col border-t border-line">
       <header className="flex h-8 shrink-0 items-center justify-between px-3">
