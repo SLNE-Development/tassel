@@ -185,8 +185,33 @@ export const en: Dictionary = {
 
   elements,
 
-  app: {
-    sidebar: 'Outliner and properties',
+  layout: {
+    leftSidebar: 'Left sidebar',
+    rightSidebar: 'Right sidebar',
+    panels: 'Panels',
+    layouts: 'Layouts',
+    manage: 'Save Layout…',
+    manageTitle: 'Layouts',
+    reset: 'Reset Layout',
+    saveCurrent: 'Save the current layout as',
+    namePlaceholder: 'Layout name',
+    save: 'Save',
+    replace: 'Replace',
+    savedLayouts: 'Saved layouts',
+    noneSaved: 'No layouts saved yet.',
+    active: 'active',
+    apply: 'Apply',
+    deleteNamed: (name: string) => `Delete layout “${name}”`,
+    collapse: 'Collapse',
+    expand: 'Expand',
+    moveLeft: 'Move to Left Sidebar',
+    moveRight: 'Move to Right Sidebar',
+    closePanel: 'Close Panel',
+    closeNamed: (title: string) => `Close ${title}`,
+    tabs: 'Panels in this group',
+    resizeColumn: 'Sidebar width',
+    resizeGroups: 'Panel height',
+    resizeHint: 'Drag to resize, double-click to reset',
   },
 
   documents: {
