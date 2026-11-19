@@ -15,8 +15,8 @@ use crate::files;
 
 /// File kinds that belong in a project: Tessel documents, Minecraft models and resource-pack data
 /// (`.json`, `.mcmeta`), images (textures), and the 3D formats Tessel imports and exports.
-pub const PROJECT_EXTENSIONS: [&str; 14] =
-  ["tessel", "json", "mcmeta", "png", "jpg", "jpeg", "webp", "glb", "gltf", "obj", "mtl", "stl", "ply", "fbx"];
+pub const PROJECT_EXTENSIONS: [&str; 15] =
+  ["tessel", "json", "bbmodel", "mcmeta", "png", "jpg", "jpeg", "webp", "glb", "gltf", "obj", "mtl", "stl", "ply", "fbx"];
 /// Largest file read as text or bytes through the project commands.
 pub const MAX_PROJECT_FILE_BYTES: u64 = files::MAX_IMPORT_BYTES;
 /// Upper bound for a recursive listing, so a huge folder cannot stall the editor.

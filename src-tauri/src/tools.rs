@@ -83,10 +83,14 @@ pub fn native_tools() -> Vec<NativeTool> {
     },
     NativeTool {
       name: "file_open",
-      description: "Open a Tessel project file (.tessel), or a Minecraft Java block/item model (.json), from disk \
-        in a new document tab. A .json model becomes a Minecraft Java document; its textures are read from the \
-        resource pack it is in (assets/<namespace>/textures/...) or from next to the file, and textures that are \
-        not found get a placeholder (listed in warnings). Returns \
+      description: "Open a Tessel project file (.tessel), a Minecraft Java block/item model (.json) or a Blockbench \
+        project (.bbmodel) from disk in a new document tab. A .json model becomes a Minecraft Java document; its \
+        textures are read from the resource pack it is in (assets/<namespace>/textures/...), from next to the file, \
+        the active project or the vanilla assets, and textures that are not found get a placeholder (listed in \
+        warnings). Its parent model chain is found the same way and shown read-only (see minecraft_get_parent, \
+        minecraft_merge_parent, minecraft_hide_parent). A .bbmodel becomes a Minecraft Java document (Java \
+        Block/Item projects) or a free document; what could not be imported (animations, locators, ...) is listed \
+        in dropped. Returns \
         { opened, path, id, name, active }: id is the new document's id, to be passed as documentId to other \
         tools. By default the visible tab switches to it; with activate: false it opens in the background and \
         the user keeps looking at their current tab, while you can still work in it and take screenshots of it \
@@ -95,7 +99,7 @@ pub fn native_tools() -> Vec<NativeTool> {
       input_schema: json!({
         "type": "object",
         "properties": {
-          "path": { "type": "string", "description": "Absolute path of the project file (.tessel) or Minecraft Java model (.json)." },
+          "path": { "type": "string", "description": "Absolute path of the project file (.tessel), Minecraft Java model (.json) or Blockbench project (.bbmodel)." },
           "activate": {
             "type": "boolean",
             "description": "true (default): switch the visible tab to the opened document. false: open it as a tab in the background and leave the user where they are."
@@ -655,7 +659,7 @@ impl<'a> OpenArgs<'a> {
   fn parse(args: &'a Value) -> Result<Self, String> {
     let map = object(args, "file_open", &["path", "activate", "documentId"])?;
     let path = req_str(map, "path")?;
-    if files::extension(path) == "json" {
+    if matches!(files::extension(path).as_str(), "json" | "bbmodel") {
       require_absolute(path)?;
     } else {
       require_tessel(path)?;
@@ -869,11 +873,21 @@ pub(crate) async fn file_open<F: Frontend>(frontend: &F, args: &Value) -> Result
     // A Minecraft Java model: a new Minecraft document, with the texture images that can be found.
     let read = files::read_java_model(path).await?;
     let stem = file_stem(path);
-    let mut params = json!({ "json": read["json"], "images": read["images"], "name": stem, "fileName": stem });
+    let mut params = json!({ "json": read["json"], "images": read["images"], "name": stem, "fileName": stem, "sourcePath": path });
     if let Some(activate) = args.activate {
       params["activate"] = json!(activate);
     }
     let opened = frontend.call("document.import_java", with_document(params, args.document_id), FILE_TIMEOUT).await?;
+    return Ok(merged(json!({ "opened": true, "path": path }), &opened));
+  }
+  if files::extension(path) == "bbmodel" {
+    // A Blockbench project: a Minecraft Java document (Java Block/Item projects) or a free document.
+    let read = crate::model_files::read_bbmodel(path).await?;
+    let mut params = json!({ "text": read["text"], "images": read["images"], "name": file_stem(path) });
+    if let Some(activate) = args.activate {
+      params["activate"] = json!(activate);
+    }
+    let opened = frontend.call("document.import_bbmodel", with_document(params, args.document_id), FILE_TIMEOUT).await?;
     return Ok(merged(json!({ "opened": true, "path": path }), &opened));
   }
   let json = files::read_text(path).await?;

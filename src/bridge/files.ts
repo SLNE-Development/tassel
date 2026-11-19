@@ -43,14 +43,17 @@ export async function openProject(): Promise<void> {
 }
 
 /** Shows an open dialog and opens the chosen Minecraft Java model (.json) as a new Minecraft document. */
-export async function openJavaModel(): Promise<{ warnings: string[] } | null> {
+export async function openJavaModel(): Promise<{ warnings: string[]; parent: unknown } | null> {
   requireDesktop();
   const path = await open({ multiple: false, directory: false, filters: [{ name: getT().files.formats.json, extensions: ['json'] }] });
   if (!path) return null;
   // The backend also reads the texture images it finds in the resource pack the model is in.
   const read = await invoke<{ json: string; images: Record<string, { data: string; width: number; height: number }> }>('read_java_model_file', { path });
   const stem = fileStem(path);
-  return (await execute('document.import_java', { json: read.json, images: read.images, name: stem, fileName: stem })) as { warnings: string[] };
+  return (await execute('document.import_java', { json: read.json, images: read.images, name: stem, fileName: stem, sourcePath: path })) as {
+    warnings: string[];
+    parent: unknown;
+  };
 }
 
 /** Saves the active document; asks for a path if it has none or `saveAs` is set. Resolves false if cancelled. */

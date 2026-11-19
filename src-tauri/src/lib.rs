@@ -5,6 +5,7 @@ mod fonts;
 mod git;
 mod mcassets;
 mod mcp;
+mod model_files;
 mod projects;
 #[cfg(test)]
 mod testing;
@@ -49,6 +50,10 @@ pub fn run() {
       files::write_text_file,
       files::write_binary_file,
       files::write_obj_export,
+      model_files::read_java_asset_file,
+      model_files::read_bbmodel_file,
+      model_files::list_model_files_in,
+      model_files::write_converted_model,
       fonts::fonts_list,
       fonts::fonts_outline,
       workspace::project_list,
