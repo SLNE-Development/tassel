@@ -72,10 +72,10 @@ export const sceneLooks: Record<Exclude<PreviewScene, 'none'>, SceneLook> = {
     terrain: null,
     ground: '#2a2a35',
   },
-  plains: { sky: daySky, fog: { color: '#c0d8ff', near: 14, far: 34 }, ...day, terrainLight: 1, terrain: 'plains', ground: '#6fa64a' },
+  plains: { sky: daySky, fog: { color: '#c0d8ff', near: 24, far: 52 }, ...day, terrainLight: 1, terrain: 'plains', ground: '#6fa64a' },
   snowy_tundra: {
     sky: { top: '#9ab8e8', horizon: '#dfe9f7', bottom: '#c8d4e2', sun: { azimuth: -30, elevation: 35, color: '#ffffff', size: 6, glow: '#f4f8ff' } },
-    fog: { color: '#dfe9f7', near: 12, far: 30 },
+    fog: { color: '#dfe9f7', near: 22, far: 48 },
     ambient: { sky: '#eef4ff', ground: '#c8d0dc', intensity: 1.6 },
     key: { color: '#f4f8ff', intensity: 2.3 },
     fill: { color: '#c8d8f4', intensity: 0.8 },
@@ -85,7 +85,7 @@ export const sceneLooks: Record<Exclude<PreviewScene, 'none'>, SceneLook> = {
   },
   cherry_grove: {
     sky: { ...daySky, horizon: '#d6dcff' },
-    fog: { color: '#d6dcff', near: 14, far: 34 },
+    fog: { color: '#d6dcff', near: 24, far: 52 },
     ...day,
     terrainLight: 1,
     terrain: 'cherry',
@@ -93,7 +93,7 @@ export const sceneLooks: Record<Exclude<PreviewScene, 'none'>, SceneLook> = {
   },
   desert: {
     sky: { top: '#6e9cf0', horizon: '#d8e2f0', bottom: '#d8c9a0', sun: { azimuth: 20, elevation: 60, color: '#fffbe0', size: 7, glow: '#fff3b0' } },
-    fog: { color: '#e2dccb', near: 14, far: 36 },
+    fog: { color: '#e2dccb', near: 24, far: 54 },
     ambient: { sky: '#f4ecd8', ground: '#a08a5a', intensity: 1.5 },
     key: { color: '#fff1d6', intensity: 2.9 },
     fill: { color: '#d8c8a8', intensity: 0.6 },
@@ -101,10 +101,10 @@ export const sceneLooks: Record<Exclude<PreviewScene, 'none'>, SceneLook> = {
     terrain: 'desert',
     ground: '#dbcfa0',
   },
-  ocean: { sky: daySky, fog: { color: '#c0d8ff', near: 16, far: 40 }, ...day, terrainLight: 1, terrain: 'ocean', ground: '#dbcfa0' },
+  ocean: { sky: daySky, fog: { color: '#c0d8ff', near: 26, far: 56 }, ...day, terrainLight: 1, terrain: 'ocean', ground: '#dbcfa0' },
   underwater: {
     sky: { top: '#3a7cc4', horizon: '#1d4f8a', bottom: '#0d2a52' },
-    fog: { color: '#1d4f8a', near: 2, far: 22 },
+    fog: { color: '#1d4f8a', near: 4, far: 30 },
     ambient: { sky: '#7fb8ff', ground: '#1d3a5a', intensity: 1.2 },
     key: { color: '#a8d4ff', intensity: 1.7 },
     fill: { color: '#3a78c8', intensity: 0.8 },
@@ -114,7 +114,7 @@ export const sceneLooks: Record<Exclude<PreviewScene, 'none'>, SceneLook> = {
   },
   lush_cave: {
     sky: { top: '#1a2416', horizon: '#26331e', bottom: '#141a10' },
-    fog: { color: '#1f2a18', near: 6, far: 24 },
+    fog: { color: '#1f2a18', near: 12, far: 34 },
     ambient: { sky: '#a8d080', ground: '#3a4a2a', intensity: 1.1 },
     key: { color: '#ffe6b0', intensity: 1.8 },
     fill: { color: '#7ab060', intensity: 0.6 },
@@ -124,7 +124,7 @@ export const sceneLooks: Record<Exclude<PreviewScene, 'none'>, SceneLook> = {
   },
   deep_dark: {
     sky: { top: '#040a0d', horizon: '#06121a', bottom: '#020507' },
-    fog: { color: '#03090c', near: 2, far: 16 },
+    fog: { color: '#03090c', near: 4, far: 24 },
     ambient: { sky: '#3a6a7a', ground: '#081014', intensity: 0.6 },
     key: { color: '#9adfe8', intensity: 1.2 },
     fill: { color: '#2a6a78', intensity: 0.5 },
@@ -134,7 +134,7 @@ export const sceneLooks: Record<Exclude<PreviewScene, 'none'>, SceneLook> = {
   },
   nether: {
     sky: { top: '#2a0a08', horizon: '#5a1a12', bottom: '#1a0605' },
-    fog: { color: '#4a1410', near: 6, far: 26 },
+    fog: { color: '#4a1410', near: 14, far: 40 },
     ambient: { sky: '#ffb08a', ground: '#4a1a10', intensity: 1.1 },
     key: { color: '#ffc8a0', intensity: 2 },
     fill: { color: '#c85a30', intensity: 0.7 },
@@ -144,7 +144,7 @@ export const sceneLooks: Record<Exclude<PreviewScene, 'none'>, SceneLook> = {
   },
   sunset: {
     sky: { top: '#3a4a8a', horizon: '#ff9a5a', bottom: '#5a4a5a', sun: { azimuth: -60, elevation: 4, color: '#ffd27a', size: 8, glow: '#ff8a40' } },
-    fog: { color: '#e8956a', near: 14, far: 34 },
+    fog: { color: '#e8956a', near: 24, far: 52 },
     ambient: { sky: '#ffc8a0', ground: '#4a3a3a', intensity: 1.1 },
     key: { color: '#ffb070', intensity: 2.4 },
     fill: { color: '#8a7ab8', intensity: 0.6 },
@@ -154,7 +154,7 @@ export const sceneLooks: Record<Exclude<PreviewScene, 'none'>, SceneLook> = {
   },
   night: {
     sky: { top: '#03050f', horizon: '#0f1a33', bottom: '#05070c', stars: 900, sun: { azimuth: 30, elevation: 45, color: '#e8ecf4', size: 5 } },
-    fog: { color: '#0b1222', near: 10, far: 28 },
+    fog: { color: '#0b1222', near: 18, far: 44 },
     ambient: { sky: '#6a7ab8', ground: '#10141f', intensity: 0.8 },
     key: { color: '#b8c8f0', intensity: 1.2 },
     fill: { color: '#3a4a7a', intensity: 0.4 },
@@ -181,11 +181,11 @@ export interface Terrain {
 }
 
 /** Half the size of the landscape in blocks. */
-export const TERRAIN_RADIUS = 20;
+export const TERRAIN_RADIUS = 34;
 /** Around the model the ground is flat and free up to this distance. */
-const CLEAR = 5;
+const CLEAR = 12;
 /** Trees and other features keep at least this far from the model. */
-const FEATURE_CLEAR = 7;
+const FEATURE_CLEAR = 15;
 
 /** Small deterministic random generator (mulberry32), so a scene looks the same every time. */
 function random(seed: number): () => number {
@@ -279,10 +279,10 @@ const pillar =
   };
 
 const recipes: Record<TerrainKind, Recipe> = {
-  plains: { surface: 'grass_block', filler: 'dirt', deep: 'stone', hills: 4, features: tree('oak_log', 'oak_leaves'), density: 0.012 },
-  snowy: { surface: 'snowy_grass', filler: 'dirt', deep: 'stone', hills: 4, patches: ['packed_ice', 0.04], features: spruce, density: 0.012 },
-  cherry: { surface: 'grass_block', filler: 'dirt', deep: 'stone', hills: 5, features: tree('cherry_log', 'cherry_leaves', true), density: 0.01 },
-  desert: { surface: 'sand', filler: 'sand', deep: 'sandstone', hills: 3, features: cactus, density: 0.012 },
+  plains: { surface: 'grass_block', filler: 'dirt', deep: 'stone', hills: 7, features: tree('oak_log', 'oak_leaves'), density: 0.012 },
+  snowy: { surface: 'snowy_grass', filler: 'dirt', deep: 'stone', hills: 6, patches: ['packed_ice', 0.04], features: spruce, density: 0.012 },
+  cherry: { surface: 'grass_block', filler: 'dirt', deep: 'stone', hills: 9, features: tree('cherry_log', 'cherry_leaves', true), density: 0.01 },
+  desert: { surface: 'sand', filler: 'sand', deep: 'sandstone', hills: 5, features: cactus, density: 0.012 },
   ocean: { surface: 'sand', filler: 'sand', deep: 'stone', hills: 0 },
   underwater: { surface: 'sand', filler: 'sand', deep: 'stone', hills: 2, patches: ['gravel', 0.15], features: pillar('prismarine', 'sea_lantern'), density: 0.008 },
   lush_cave: {
@@ -309,14 +309,14 @@ const recipes: Record<TerrainKind, Recipe> = {
     surface: 'crimson_nylium',
     filler: 'netherrack',
     deep: 'netherrack',
-    hills: 7,
+    hills: 10,
     patches: ['soul_sand', 0.06],
     features: pillar('basalt', 'glowstone'),
     density: 0.01,
   },
 };
 
-/** Builds the block landscape of a scene. The model area (radius 5 around the origin) is flat ground at height 0. */
+/** Builds the block landscape of a scene. The model area (radius 12 around the origin, room for the camera) is flat ground at height 0. */
 export function generateTerrain(kind: TerrainKind, radius = TERRAIN_RADIUS): Terrain {
   const recipe = recipes[kind];
   const rnd = random(kind.length * 7919 + recipe.hills);
@@ -341,7 +341,7 @@ export function generateTerrain(kind: TerrainKind, radius = TERRAIN_RADIUS): Ter
       const d = Math.hypot(x, z);
       if (d > radius + 0.5) continue;
       // The ocean is a sea floor three blocks down with a small sand island for the model.
-      let h = ocean ? (d <= 4 ? 0 : -3) : height(x, z);
+      let h = ocean ? (d <= 6 ? 0 : -3) : height(x, z);
       // Nether lava pools in the low parts outside the model area.
       if (lava && d > CLEAR + 2 && h <= 0 && detail(x, z) < 0.22) {
         put('lava', x, -0.125, z);

@@ -36,8 +36,8 @@ type PreviewOptions = Pick<
   'previewScene' | 'previewBackground' | 'previewBackgroundColor' | 'previewGround' | 'previewPixelGrid' | 'previewPlayer' | 'previewCraftingTable' | 'previewSkin'
 >;
 
-const PLAYER_AT = -1.5;
-const TABLE_AT = 1.5;
+const PLAYER_AT = -2.25;
+const TABLE_AT = 2.25;
 const PIXEL_GRID_BLOCKS = 3;
 const GROUND_RADIUS = 8;
 
@@ -134,12 +134,15 @@ export class PreviewController {
     this.applyEnvironment();
   }
 
-  /** Called before each frame: the scene fog keeps its distance from the point the camera looks at. */
-  beforeDraw(distance: number): void {
+  /**
+   * Called before each frame: the scene fog keeps its distance from the point the camera looks at.
+   * `pulledBack` is how much further away the drawing camera stands than `distance` (orthographic).
+   */
+  beforeDraw(distance: number, pulledBack = 0): void {
     const look = this.look();
     if (!look?.fog || this.suspended) return;
-    this.fog.near = look.fog.near + distance;
-    this.fog.far = look.fog.far + distance * 2;
+    this.fog.near = look.fog.near + distance + pulledBack;
+    this.fog.far = look.fog.far + distance * 2 + pulledBack;
   }
 
   /** Puts the plain stage back (for a picture); the returned function restores the preview. */
