@@ -7,6 +7,7 @@ import { useIsMinecraft } from './format';
 import { LastOpPanel } from './LastOpPanel';
 import { ModeSwitch } from './ModeSwitch';
 import { PaintHint, PaintOptions } from './paint/PaintOptions';
+import { PreviewOptions } from './preview/PreviewOptions';
 import { CameraViewBadge, TimelineDock } from './timeline/Timeline';
 import { SplitDivider } from './uv/SplitDivider';
 import { CuboidUvEditor } from './uv/CuboidUvEditor';
@@ -70,13 +71,11 @@ export function Centre() {
             <PaintHint />
           </>
         ) : (
-          // Minecraft documents have no edit mode and no operations with parameters to tweak.
-          !minecraft && (
-            <>
-              <ModeSwitch />
-              <LastOpPanel />
-            </>
-          )
+          <>
+            {!minecraft && <ModeSwitch />}
+            <PreviewOptions />
+            {!minecraft && <LastOpPanel />}
+          </>
         )}
       </div>
       {uv && <SplitDivider />}

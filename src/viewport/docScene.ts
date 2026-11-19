@@ -14,7 +14,8 @@ import {
   type Line2NodeMaterial,
   type LineBasicMaterial,
   type MeshStandardMaterial,
-  type PerspectiveCamera,
+  type OrthographicCamera,
+  PerspectiveCamera,
   type WebGPURenderer,
 } from 'three/webgpu';
 import { LineSegments2 } from 'three/addons/lines/webgpu/LineSegments2.js';
@@ -366,11 +367,18 @@ export class Stage {
     this.grid.setPalette(palette);
   }
 
-  /** Renders the scene from `camera`, which looks at `target`. */
-  draw(renderer: WebGPURenderer, camera: PerspectiveCamera, target: Vector3): void {
-    const distance = camera.position.distanceTo(target);
-    fitClipPlanes(camera, distance);
+  /**
+   * Renders the scene from `camera`, which looks at `target`. An orthographic camera sets its own clip
+   * planes and passes the viewing `distance` it stands for (it is pulled back further than that).
+   */
+  draw(renderer: WebGPURenderer, camera: PerspectiveCamera | OrthographicCamera, target: Vector3, viewDistance?: number): void {
+    const distance = viewDistance ?? camera.position.distanceTo(target);
+    if (camera instanceof PerspectiveCamera) fitClipPlanes(camera, distance);
     this.grid.update(target, distance);
+    // Fog is measured from the camera, which an orthographic one stands further back than `distance`.
+    const pulledBack = camera.position.distanceTo(target) - distance;
+    this.grid.fog.near += pulledBack;
+    this.grid.fog.far += pulledBack;
     this.lightRig.quaternion.copy(camera.quaternion);
     renderer.render(this.scene, camera);
   }

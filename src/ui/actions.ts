@@ -12,6 +12,7 @@ import { activeFormat } from './format';
 import { runOp } from './live';
 import { minecraftActions } from './minecraft/minecraftActions';
 import { paintActions } from './paint/paintActions';
+import { previewActions } from './preview/previewActions';
 import { timelineActions } from './timeline/timelineActions';
 import { notifyError, notifyInfo, notifySuccess } from './toast';
 import { useUi } from './uiStore';
@@ -300,6 +301,7 @@ export const actions: readonly Action[] = [
       run: () => execute('view.set_view', { preset }),
     }),
   ),
+  ...previewActions(action),
   action({ id: 'view.frame', title: (t) => t.actions.frame, group: 'view', keys: ['F', 'NumpadDecimal'], editKeys: ['NumpadDecimal'], command: 'view.frame', run: () => execute('view.frame') }),
 
   // Werkzeug

@@ -9,6 +9,7 @@ import { initModifiers } from './core/modifiers/evaluate';
 import { syncDocumentLanguage } from './i18n';
 import { imaging } from './imaging';
 import { createExporter, createImporter } from './io';
+import { initMinecraftAssets } from './mcassets';
 import { createRenderer } from './render';
 import { createVideoService } from './video';
 import { App } from './ui/App';
@@ -25,6 +26,7 @@ services.baker = createBaker();
 services.renderer = createRenderer();
 services.video = createVideoService();
 services.fonts = createFontService();
+initMinecraftAssets();
 startMcpBridge().catch(notifyError);
 installCloseGuard();
 // Boolean modifiers need their WASM kernel; everything else works without waiting for it.

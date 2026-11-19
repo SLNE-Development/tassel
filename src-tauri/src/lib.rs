@@ -3,6 +3,7 @@ mod bridge;
 mod files;
 mod fonts;
 mod git;
+mod mcassets;
 mod mcp;
 mod projects;
 #[cfg(test)]
@@ -22,6 +23,7 @@ pub fn run() {
   tauri::Builder::default()
     .plugin(tauri_plugin_dialog::init())
     .plugin(tauri_plugin_opener::init())
+    .manage(mcassets::McAssetsState::default())
     .setup(|app| {
       if cfg!(debug_assertions) {
         app.handle().plugin(
@@ -79,6 +81,13 @@ pub fn run() {
       workspace::github_owners,
       workspace::github_create_repo,
       workspace::github_clone,
+      mcassets::mc_assets_detect,
+      mcassets::mc_assets_open,
+      mcassets::mc_assets_close,
+      mcassets::mc_assets_info,
+      mcassets::mc_assets_read,
+      mcassets::mc_assets_list,
+      mcassets::mc_assets_read_skin,
     ])
     .run(tauri::generate_context!())
     .expect("error while running Tessel");
