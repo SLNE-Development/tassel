@@ -1,3 +1,4 @@
+import { originStep } from './history';
 import { defaultPreferences } from './preferences';
 import type { AppState, Doc, DocState } from './types';
 
@@ -18,7 +19,7 @@ export const emptyDocState: DocState = {
 };
 
 export function createDoc(name: string, state: DocState = emptyDocState, filePath: string | null = null): Doc {
-  return { id: newId(), name, filePath, dirty: false, state, past: [], future: [] };
+  return { id: newId(), name, filePath, dirty: false, state, past: [], future: [], step: originStep(), pastSteps: [], futureSteps: [] };
 }
 
 /**

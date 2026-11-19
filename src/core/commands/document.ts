@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { parseProject, serializeProject } from '../project';
 import { writeLinkedTextures } from './library';
 import { docFormat } from '../formats';
+import { currentHistoryIndex, englishHistoryLabel, gotoHistory, historyEntries } from '../history';
 import { defaultJavaSettings, textureSizeSchema } from '../minecraft/schema';
 import { applyFactoryTemplate, factoryTemplates } from '../minecraft/factory/templates';
 import { isJavaVersion, javaVersions } from '../minecraft/versions';
@@ -229,17 +230,8 @@ export const documentCommands = [
     history: false,
     run(ctx) {
       const doc = activeDoc(ctx.get());
-      const previous = doc.past.at(-1);
-      if (!previous) return { undone: false };
-      ctx.set((app) =>
-        withDoc(app, {
-          ...doc,
-          state: previous,
-          past: doc.past.slice(0, -1),
-          future: [doc.state, ...doc.future],
-          dirty: true,
-        }),
-      );
+      if (doc.past.length === 0) return { undone: false };
+      ctx.set((app) => withDoc(app, gotoHistory(doc, doc.past.length - 1)));
       return { undone: true };
     },
   }),
@@ -252,18 +244,51 @@ export const documentCommands = [
     history: false,
     run(ctx) {
       const doc = activeDoc(ctx.get());
-      const next = doc.future[0];
-      if (!next) return { redone: false };
-      ctx.set((app) =>
-        withDoc(app, {
-          ...doc,
-          state: next,
-          past: [...doc.past, doc.state],
-          future: doc.future.slice(1),
-          dirty: true,
-        }),
-      );
+      if (doc.future.length === 0) return { redone: false };
+      ctx.set((app) => withDoc(app, gotoHistory(doc, doc.past.length + 1)));
       return { redone: true };
+    },
+  }),
+
+  defineCommand({
+    id: 'history.list',
+    title: 'Verlauf auflisten',
+    description:
+      'List the undo history of the active document, oldest first: index 0 is the document as it was created or opened (or the oldest step still kept), then one entry per change. ' +
+      'Each entry has its index, a label (the command and, where there is one, the object it changed), the command id, the time and whether it is the current state; entries after the current one are undone and are dropped by the next change. Use history_goto to jump to an entry.',
+    params: z.object({}),
+    history: false,
+    run(ctx) {
+      const doc = activeDoc(ctx.get());
+      return {
+        documentId: doc.id,
+        current: currentHistoryIndex(doc),
+        entries: historyEntries(doc).map((entry) => ({
+          index: entry.index,
+          label: englishHistoryLabel(entry.step),
+          command: entry.step.command,
+          ...(entry.step.detail === undefined ? {} : { detail: entry.step.detail }),
+          time: new Date(entry.step.time).toISOString(),
+          current: entry.current,
+          undone: entry.undone,
+        })),
+      };
+    },
+  }),
+
+  defineCommand({
+    id: 'history.goto',
+    title: 'Zu Verlaufsschritt springen',
+    description:
+      "Jump to an entry of the active document's undo history (index from history_list): undoes or redoes as many steps as needed in one go. The entries after it stay redoable until the next change.",
+    params: z.object({ index: z.number().int().min(0).describe('Index of the history entry (history_list).') }),
+    history: false,
+    run(ctx, p) {
+      const doc = activeDoc(ctx.get());
+      const from = currentHistoryIndex(doc);
+      const moved = gotoHistory(doc, p.index);
+      if (moved !== doc) ctx.set((app) => withDoc(app, moved));
+      return { index: p.index, previous: from, undone: Math.max(0, from - p.index), redone: Math.max(0, p.index - from) };
     },
   }),
 ];
