@@ -1,4 +1,4 @@
-# Tessel 0.2.0 – Neuerungen am MCP-Server
+# Tessel 0.2.1 – Neuerungen am MCP-Server
 
 Antwort auf `Tessel-MCP-Feedback.md`. Zum Weitergeben an eine Session, die über MCP mit Tessel arbeitet.
 Konventionen wie bisher: Y ist oben, Meter, Euler XYZ in Grad. Der Server bietet jetzt 150+ Tools.
