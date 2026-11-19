@@ -51,3 +51,13 @@ export const VIEWPORT_PALETTES: Record<'dark' | 'light', ViewportPalette> = {
     caption: '#1f2628',
   },
 };
+
+/** Colours of the factory port markers, by kind; `unset` is a port without a face. The same in both themes (they sit on top of everything). */
+export const FACTORY_COLORS = {
+  input: '#3d8bff',
+  output: '#ff8a1f',
+  bidirectional: '#35c46a',
+  unset: '#ffcf33',
+  selected: '#ffffff',
+  footprint: '#9aa7ab',
+} as const;

@@ -20,6 +20,7 @@ import {
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { TransformControls } from 'three/addons/controls/TransformControls.js';
 import { frameOf, pause, usePlayback } from '../app/playback';
+import { selectPort, useFactorySelection } from '../app/factorySelection';
 import { getAppearance, onAppearanceChange } from '../app/preferences';
 import { execute, useApp } from '../app/store';
 import { animatedState, cameraAt } from '../core/animation';
@@ -44,6 +45,7 @@ import type {
 } from '../core/types';
 import { applyTransform, boxCorners, DocScene, selectionBox, Stage, type Entry, type SceneLooks } from './docScene';
 import { snapSteps, type SnapSteps } from './snapping';
+import { FactoryOverlay } from './factoryOverlay';
 import { EditMaterials, EditView, selectedVertices } from './editMesh';
 import { ElementPicker } from './editPick';
 import { DEFAULT_SPHERE, fitDistance, viewDirection } from './framing';
@@ -115,6 +117,9 @@ export class ViewportEngine {
   private readonly unsubscribe: () => void;
   private readonly unsubscribeAppearance: () => void;
   private readonly unsubscribePlayback: () => void;
+  /** Port markers of a factory model (factoryOverlay.ts) and the subscription to the port selection. */
+  private readonly factoryOverlay = new FactoryOverlay();
+  private readonly unsubscribeFactory: () => void;
   /**
    * "Kamera-Ansicht": while `previewing`, the viewport is drawn through this camera, posed from the
    * animated camera at the playhead. The user's own camera (`camera` with `orbit`) is not touched and
@@ -228,6 +233,7 @@ export class ViewportEngine {
     });
     this.entries = this.docScene.entries;
     this.scene.add(this.docScene.content);
+    this.scene.add(this.factoryOverlay.object);
     this.preview = new PreviewController(this.stage, this.invalidate);
 
     this.camera.position.set(6.5, 4.5, 8);
@@ -289,6 +295,11 @@ export class ViewportEngine {
       this.needsSync = true;
       this.invalidate();
     });
+    // A port was selected in the panels: highlight its marker.
+    this.unsubscribeFactory = useFactorySelection.subscribe(() => {
+      this.needsSync = true;
+      this.invalidate();
+    });
 
     this.service = {
       screenshot: (opts, doc) => this.screenshot(opts, doc),
@@ -321,6 +332,8 @@ export class ViewportEngine {
     this.unsubscribe();
     this.unsubscribeAppearance();
     this.unsubscribePlayback();
+    this.unsubscribeFactory();
+    this.factoryOverlay.dispose();
     window.removeEventListener('resize', this.onWindowResize);
     window.removeEventListener('keydown', this.onModifierKey);
     window.removeEventListener('keyup', this.onModifierKey);
@@ -537,6 +550,7 @@ export class ViewportEngine {
     const state = this.displayed(doc);
     const edit = state.edit;
     this.docScene.sync(app, state);
+    this.factoryOverlay.sync(state, useFactorySelection.getState().portUid);
     this.updatePreview(app, doc);
     this.surfaces.sweep(app);
     this.surfaces.applyLighting(app, this.scene, this.ambient);
@@ -733,6 +747,14 @@ export class ViewportEngine {
   };
 
   private click(event: PointerEvent): void {
+    // Factory model: a port marker is picked before any object; a click elsewhere drops the port selection.
+    if (this.docState()?.factory) {
+      const rect = this.canvas.getBoundingClientRect();
+      this.viewCamera.updateMatrixWorld();
+      const portUid = this.factoryOverlay.pick(event.clientX - rect.left, event.clientY - rect.top, this.viewCamera, rect.width, rect.height);
+      selectPort(portUid);
+      if (portUid) return;
+    }
     const id = this.pick(event.clientX, event.clientY);
     const selection = this.docState()?.selection ?? [];
     let params: { ids: string[]; mode: 'replace' | 'toggle' } | null = null;
