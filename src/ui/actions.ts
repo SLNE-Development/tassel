@@ -19,6 +19,7 @@ import { notifyError, notifyInfo, notifySuccess } from './toast';
 import { useUi } from './uiStore';
 import { uvActions } from './uv/uvActions';
 import { toggleLibraryPanel } from './library/libraryUi';
+import { pixelActionDefs } from './pixel/pixelActions';
 import { activeProject, pull, push, setPanelOpen, targetDir, togglePanel, useProjects } from './projects/projectsStore';
 
 /**
@@ -179,6 +180,9 @@ async function openJavaModelFile() {
 }
 
 export const actions: readonly Action[] = [
+  // Pixel-Malen (Minecraft): first, so that its keys win in the paint workspace of Minecraft documents.
+  ...pixelActionDefs(),
+
   // Datei
   action({ id: 'file.new', title: (t) => t.actions.new, group: 'file', keys: ['Ctrl+N'], inInputs: true, command: 'document.new', run: () => useUi.setState({ newDocOpen: true }) }),
   action({ id: 'file.open', title: (t) => t.actions.open, group: 'file', keys: ['Ctrl+O'], inInputs: true, run: () => openProject() }),
@@ -328,7 +332,7 @@ export const actions: readonly Action[] = [
       id: `workspace.${workspace}`,
       title: (t) => t.actions.workspace(t.workspaces[workspace]),
       group: 'workspace',
-      formats: workspace === 'paint' ? FREE_ONLY : workspace === 'display' ? MINECRAFT_ONLY : undefined,
+      formats: workspace === 'display' ? MINECRAFT_ONLY : undefined,
       run: () => execute('app.set_workspace', { workspace }),
     }),
   ),

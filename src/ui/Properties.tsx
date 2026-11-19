@@ -13,6 +13,7 @@ import { MinecraftProperties } from './minecraft/MinecraftProperties';
 import { Materials } from './Materials';
 import { Modifiers } from './Modifiers';
 import { PaintPanel } from './paint/PaintPanel';
+import { PixelPanel } from './pixel/PixelPanel';
 import { ScrubField } from './ScrubField';
 import { elementCounts } from './StatusBar';
 
@@ -199,7 +200,7 @@ export function Properties() {
   const minecraft = useIsMinecraft();
   const t = useT();
   // The paint workspace shows what is painted on and its layers instead of the object's properties.
-  if (painting && !minecraft) return <PaintPanel />;
+  if (painting) return minecraft ? <PixelPanel /> : <PaintPanel />;
   // The display workspace edits the model's display transforms instead.
   if (displaying && minecraft) return <DisplayPanel />;
   return (

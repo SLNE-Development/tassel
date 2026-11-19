@@ -10,6 +10,8 @@ import { ItemTreePane } from './items/ItemTree';
 import { LastOpPanel } from './LastOpPanel';
 import { ModeSwitch } from './ModeSwitch';
 import { PaintHint, PaintOptions } from './paint/PaintOptions';
+import { PixelEditor } from './pixel/PixelEditor';
+import { PixelOptions } from './pixel/PixelOptions';
 import { PreviewOptions } from './preview/PreviewOptions';
 import { DisplayViewport } from './display/DisplayViewport';
 import { CameraViewBadge, TimelineDock } from './timeline/Timeline';
@@ -57,7 +59,9 @@ export function Centre() {
   const workspace = useApp((s) => (item ? 'modeling' : s.workspace));
   const uvSplit = useUvUi((s) => s.split);
   const itemSplit = useItemUi((s) => s.split);
-  const uv = workspace === 'uv';
+  // Minecraft documents paint pixel art: the 2D texture editor sits beside the 3D view, like the UV editor.
+  const pixelPaint = minecraft && workspace === 'paint';
+  const uv = workspace === 'uv' || pixelPaint;
   const split = item ? itemSplit : uvSplit;
   const left = uv || item;
   useItemPreviewController();
@@ -66,7 +70,7 @@ export function Centre() {
       <div className="relative min-h-0 min-w-0 flex-1 overflow-hidden">
       {uv && (
         <div className="absolute inset-y-0 left-0" style={{ width: `${split * 100}%` }}>
-          {minecraft ? <CuboidUvEditor /> : <UvEditor />}
+          {pixelPaint ? <PixelEditor /> : minecraft ? <CuboidUvEditor /> : <UvEditor />}
         </div>
       )}
       {item && (
@@ -84,6 +88,8 @@ export function Centre() {
         {workspace === 'display' && minecraft ? (
           // The display workspace draws its own reference scenes over the (still mounted) modelling view.
           <DisplayViewport />
+        ) : pixelPaint ? (
+          <PixelOptions />
         ) : workspace === 'paint' ? (
           // The 3D view is the canvas; the brush options float over it.
           <>

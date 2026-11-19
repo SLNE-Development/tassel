@@ -51,6 +51,8 @@ const textureSchema = z
     java: javaTextureRefSchema.optional(),
     // Linked to a texture library file (core/textureLibrary.ts); files written before the library have none.
     link: textureLinkSchema.optional(),
+    // Flipbook animation (a vertical strip of square frames).
+    animation: z.object({ frametime: z.number().int().min(1).max(100000), interpolate: z.boolean() }).optional(),
   })
   .superRefine((texture, ctx) => {
     const fail = (message: string) => ctx.addIssue({ code: 'custom', message: `texture "${texture.name}": ${message}` });
@@ -70,6 +72,9 @@ const textureSchema = z
       if (header && header !== 'unreadable') {
         fail(`is ${header.width} x ${header.height} pixels according to its image data, not ${texture.width} x ${texture.height}`);
       }
+    }
+    if (texture.animation && texture.height % texture.width !== 0) {
+      fail(`is animated, so its height (${texture.height}) must be a whole number of square frames of its width (${texture.width})`);
     }
     if (!texture.layers) return;
     // Layers are PNGs of exactly the texture's size, and the texture's own image is then the flattened PNG.
