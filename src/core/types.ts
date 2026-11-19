@@ -35,6 +35,8 @@ export interface Texture {
    * always the flattened PNG of the visible layers, so renderers and exporters only ever need `data`.
    */
   readonly layers?: readonly PaintLayer[];
+  /** Minecraft documents: where the texture lives in a resource pack. `name` is its file name without .png. */
+  readonly java?: JavaTextureRef;
 }
 
 export const blendModes = ['normal', 'multiply', 'screen', 'overlay', 'add'] as const;
@@ -137,6 +139,56 @@ export interface SceneObject {
   readonly groupId: string | null;
   /** The object's material (a key of `DocState.materials`), or null for the default clay look. */
   readonly materialId: string | null;
+  /**
+   * Present on Minecraft cuboid elements (Minecraft documents only). `mesh` is then always derived from it
+   * (core/minecraft/cuboid.ts) and never edited directly; the object's origin (`transform.position`) is the
+   * element's rotation origin (pivot) and `transform.rotation` its rotation. Scale is always [1, 1, 1].
+   */
+  readonly cuboid?: Cuboid;
+}
+
+/** The six faces of a cuboid, also the directions of cullface and shade_direction_override. */
+export const cuboidFaces = ['north', 'east', 'south', 'west', 'up', 'down'] as const;
+export type CuboidFaceName = (typeof cuboidFaces)[number];
+
+export const uvRotations = [0, 90, 180, 270] as const;
+export type UvRotation = (typeof uvRotations)[number];
+
+/** One face of a cuboid element. */
+export interface CuboidFace {
+  /** Disabled faces are not exported (and drawn as holes). */
+  readonly enabled: boolean;
+  /** Texture id (a key of `DocState.textures`), or null for none (exported as "#missing"). */
+  readonly texture: string | null;
+  /** [x1, y1, x2, y2] in UV pixels (the document's texture size; y down). x1 > x2 mirrors. */
+  readonly uv: readonly [number, number, number, number];
+  /** Clockwise texture rotation on the face. */
+  readonly rotation: UvRotation;
+  /** null = no tint. */
+  readonly tintIndex: number | null;
+  readonly cullface: CuboidFaceName | null;
+}
+
+/**
+ * A Minecraft Java cuboid element. Positions are in pixels (1 px = 1/16 m) RELATIVE TO THE OBJECT'S ORIGIN
+ * (the pivot); model-space from/to are origin + from / origin + to (core/minecraft/space.ts converts).
+ */
+export interface Cuboid {
+  readonly from: Vec3;
+  readonly to: Vec3;
+  /** Pixels added on every side (exported into from/to). */
+  readonly inflate: number;
+  readonly rescale: boolean;
+  readonly shade: boolean;
+  /** 0..15 */
+  readonly lightEmission: number;
+  readonly shadeDirectionOverride: CuboidFaceName | null;
+  readonly locked: boolean;
+  /** false = left out of the exported model. */
+  readonly export: boolean;
+  /** Marker colour index 0..7 (outliner / marker view). */
+  readonly color: number;
+  readonly faces: Readonly<Record<CuboidFaceName, CuboidFace>>;
 }
 
 /**
@@ -148,6 +200,8 @@ export interface Group {
   readonly name: string;
   /** The group this group is nested in, or null at top level. Never forms a cycle. */
   readonly parentId: string | null;
+  /** Minecraft documents: the group's pivot in model-space pixels (exported in "groups"). Absent = [8, 8, 8]. */
+  readonly pivot?: Vec3;
 }
 
 export const elementModes = ['vertex', 'edge', 'face'] as const;
@@ -233,6 +287,48 @@ export interface DocState {
   readonly animation?: Animation;
   /** How the document is rendered to pictures (render.* commands; see core/render.ts). Absent = the defaults. */
   readonly render?: RenderSettings;
+  /** What kind of document this is (core/formats.ts). Absent = 'free'. Never changes after creation. */
+  readonly format?: DocFormat;
+  /** Model settings of a Minecraft Java document; present exactly when `format` is 'minecraft_java'. */
+  readonly java?: JavaModelSettings;
+}
+
+export const docFormats = ['free', 'minecraft_java'] as const;
+/** 'free': a general 3D model (polygon meshes). 'minecraft_java': a Minecraft Java block/item model (cuboids). */
+export type DocFormat = (typeof docFormats)[number];
+
+export const guiLights = ['side', 'front'] as const;
+
+/** Settings of a Minecraft Java block/item model (the model JSON's root keys). */
+export interface JavaModelSettings {
+  /** Target version id (core/minecraft/versions.ts), e.g. '26.3'. */
+  readonly version: string;
+  /** File name of the model without .json, e.g. 'my_block'. */
+  readonly fileName: string;
+  /** e.g. 'block/cube_all' or 'minecraft:item/generated'; '' = none. */
+  readonly parent: string;
+  readonly ambientOcclusion: boolean;
+  /** null = not written (Minecraft's default, side). */
+  readonly guiLight: (typeof guiLights)[number] | null;
+  /** UV size [width, height] in pixels; face UVs are in these units. Default [16, 16]. */
+  readonly textureSize: readonly [number, number];
+  readonly credit: string;
+  /** Texture id used as "particle", or null. */
+  readonly particle: string | null;
+  /** The "display" object as read from a file (kept verbatim for the Display editor of a later project). */
+  readonly display?: Readonly<Record<string, unknown>>;
+  /** Root keys of an imported model that Tessel does not understand, written back unchanged on export. */
+  readonly extra?: Readonly<Record<string, unknown>>;
+}
+
+/** Minecraft Java texture location; the JSON reference is `namespace:folder/name` (namespace left out when 'minecraft'). */
+export interface JavaTextureRef {
+  /** e.g. 'minecraft' or 'mymod'. */
+  readonly namespace: string;
+  /** e.g. 'block' or 'item/tools'; '' = directly under textures/. */
+  readonly folder: string;
+  /** The texture variable in the model's "textures", e.g. '0', 'side', 'all'. Unique per document. */
+  readonly key: string;
 }
 
 export interface Doc {
@@ -376,7 +472,8 @@ export interface ViewportService {
   frame(ids: readonly string[], doc?: ViewDocument): void;
 }
 
-export const exportFormats = ['glb', 'gltf', 'obj', 'stl', 'ply', 'usdz'] as const;
+/** `json` is a Minecraft Java block/item model (Minecraft documents only; see core/minecraft/javaExport.ts). */
+export const exportFormats = ['glb', 'gltf', 'obj', 'stl', 'ply', 'usdz', 'json'] as const;
 export type ExportFormat = (typeof exportFormats)[number];
 
 /** `tessel` is a project file whose content is merged into the document; `import.file` reads it itself, without the import service. */
@@ -483,6 +580,8 @@ export interface ImagingService {
   flatten(width: number, height: number, layers: readonly PaintLayer[]): Promise<string>;
   /** `upper` (with its opacity and blend mode) composited onto the pixels of `lower`. */
   mergeDown(width: number, height: number, lower: PaintLayer, upper: PaintLayer): Promise<string>;
+  /** True if every pixel of the texture inside the rectangle (texture pixels, y down) is fully transparent. */
+  regionTransparent?(texture: Texture, rect: { x: number; y: number; width: number; height: number }): Promise<boolean>;
   /** Tangent-space normal map (OpenGL convention) from the image's luminance as height. */
   normalFromHeight(texture: Texture, strength: number, invert: boolean): Promise<string>;
 }

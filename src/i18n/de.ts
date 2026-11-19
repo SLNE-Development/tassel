@@ -642,7 +642,7 @@ export const de = {
     import: 'Importieren…',
     exportAs: (format: string) => `Als ${format} exportieren`,
     /** Format names: file dialog filters, export actions and toasts. */
-    formats: { glb: 'glTF Binär', gltf: 'glTF', obj: 'Wavefront OBJ', stl: 'STL', ply: 'PLY', usdz: 'USDZ' },
+    formats: { glb: 'glTF Binär', gltf: 'glTF', obj: 'Wavefront OBJ', stl: 'STL', ply: 'PLY', usdz: 'USDZ', json: 'Minecraft-Java-Modell' },
     /** Entries of the export submenu that the menu area does not have. */
     menu: { obj: 'OBJ (Wavefront)', stl: 'STL (3D-Druck)', ply: 'PLY', usdz: 'USDZ (AR)' },
     written: (format: string) => `${format}-Datei geschrieben`,

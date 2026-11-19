@@ -190,7 +190,7 @@ describe('execute with documentId', () => {
 
   it('creates and loads documents in the background with activate: false', async () => {
     const tree = await run('document.new', { name: 'Tree', activate: false });
-    expect(tree).toEqual({ id: expect.any(String), name: 'Tree', active: false });
+    expect(tree).toEqual({ id: expect.any(String), name: 'Tree', active: false, format: 'free' });
     expect(app().activeDocId).toBe(visible);
     expect(app().docOrder).toEqual([background, visible, tree.id]);
     // The new id is the documentId for everything else.

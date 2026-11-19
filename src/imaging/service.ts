@@ -253,6 +253,17 @@ export function createImagingService(decodeOther?: DecodeOther, cacheBytes = 384
       const { width, height } = texture;
       return { width, height, pixels: await decode(texture.data, texture.mimeType, width, height) };
     },
+
+    async regionTransparent(texture, rect) {
+      const { width, height, pixels } = await service.pixels(texture);
+      // Every pixel the rectangle touches, clipped to the image.
+      const x0 = Math.max(0, Math.floor(rect.x));
+      const y0 = Math.max(0, Math.floor(rect.y));
+      const x1 = Math.min(width, Math.ceil(rect.x + rect.width));
+      const y1 = Math.min(height, Math.ceil(rect.y + rect.height));
+      for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) if (pixels[(y * width + x) * 4 + 3] !== 0) return false;
+      return true;
+    },
   };
   return service;
 }

@@ -1,7 +1,9 @@
 import { z } from 'zod';
 import { pruneAnimation } from '../animation';
+import { commandAllowedIn, docFormat, formatError } from '../formats';
+import { syncCuboids } from '../minecraft/cuboid';
 import { activeDoc, own, withDoc } from '../state';
-import type { AppState, DocState, Services } from '../types';
+import type { AppState, DocFormat, DocState, Services } from '../types';
 
 export interface CommandContext {
   get(): AppState;
@@ -34,6 +36,12 @@ export interface CommandDef<P extends z.ZodObject = z.ZodObject> {
    * from the state when it starts, never write to the state, and have `history: false`.
    */
   concurrent?: boolean;
+  /**
+   * Document formats the command works in (core/formats.ts); absent = what `commandFormats` lists for its
+   * id, which is every format for most commands. `runCommand` refuses the command in other documents, and
+   * menus, the tool rail, the palette and the MCP descriptions follow the same rule.
+   */
+  formats?: readonly DocFormat[];
   run(ctx: CommandContext, params: z.infer<P>): unknown;
 }
 
@@ -50,7 +58,8 @@ export const vec3 = z.tuple([z.number(), z.number(), z.number()]);
 export function updateDocState(ctx: CommandContext, update: (state: DocState) => DocState): void {
   ctx.set((app) => {
     const doc = activeDoc(app);
-    const updated = update(doc.state);
+    // Cuboid elements keep their derived mesh (and a unit scale) whatever the command changed.
+    const updated = syncCuboids(doc.state, update(doc.state));
     // Animation tracks cannot outlive their objects (whichever command deleted them).
     const next = updated.animation && updated.objects !== doc.state.objects ? pruneAnimation(updated) : updated;
     // Edit mode cannot outlive its object (deleted, or removed by undoing its creation elsewhere).
@@ -67,6 +76,8 @@ export function docState(ctx: CommandContext): DocState {
 /** Validates params, runs the command and records undo history for every document it changed. */
 export async function runCommand(def: AnyCommand, ctx: CommandContext, rawParams: unknown): Promise<unknown> {
   const params = def.params.parse(rawParams ?? {});
+  const doc = activeDoc(ctx.get());
+  if (doc && !commandAllowedIn(def.id, def.formats, docFormat(doc.state))) throw formatError(def.id, def.formats, docFormat(doc.state), doc.name);
   const before = ctx.get().docs;
   const result = await def.run(ctx, params);
   if (def.history !== false) {

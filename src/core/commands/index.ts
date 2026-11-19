@@ -1,11 +1,13 @@
 import { animCommands } from './anim';
 import { animPoseCommands } from './animPose';
 import { bakeCommands } from './bake';
+import { cuboidCommands } from './cuboid';
 import { documentCommands } from './document';
 import { fileCommands } from './files';
 import { fontCommands } from './font';
 import { groupCommands } from './group';
 import { materialCommands } from './material';
+import { minecraftCommands } from './minecraft';
 import { meshCommands } from './mesh';
 import { modifierCommands } from './modifier';
 import { paintCommands } from './paint';
@@ -28,6 +30,8 @@ export const commands: readonly AnyCommand[] = [
   ...sceneCommands,
   ...sceneOpsCommands,
   ...shapeCommands,
+  ...cuboidCommands,
+  ...minecraftCommands,
   ...fontCommands,
   ...groupCommands,
   ...materialCommands,

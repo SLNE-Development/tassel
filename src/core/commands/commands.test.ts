@@ -367,7 +367,7 @@ describe('documents', () => {
   it('starts with one empty, clean document', async () => {
     expect(app.docOrder).toHaveLength(1);
     expect((await run('document.list')).documents).toEqual([
-      { id: app.activeDocId, name: 'Untitled', filePath: null, dirty: false, active: true, objectCount: 0 },
+      { id: app.activeDocId, name: 'Untitled', filePath: null, dirty: false, active: true, format: 'free', objectCount: 0 },
     ]);
   });
 

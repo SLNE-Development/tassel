@@ -1,6 +1,10 @@
 import { z } from 'zod';
 import { parseProject, serializeProject } from '../project';
-import { DEFAULT_DOC_NAME, activeDoc, addDoc, createDoc, own, uniqueName, withDoc } from '../state';
+import { docFormat } from '../formats';
+import { defaultJavaSettings, textureSizeSchema } from '../minecraft/schema';
+import { isJavaVersion, javaVersions } from '../minecraft/versions';
+import { DEFAULT_DOC_NAME, activeDoc, addDoc, createDoc, emptyDocState, own, uniqueName, withDoc } from '../state';
+import { docFormats } from '../types';
 import type { AppState, Doc } from '../types';
 import { defineCommand, type CommandContext } from './registry';
 import { DOCUMENT_ID_HINT } from './targeting';
@@ -22,6 +26,7 @@ function docSummary(app: AppState, doc: Doc) {
     filePath: doc.filePath,
     dirty: doc.dirty,
     active: doc.id === app.activeDocId,
+    format: docFormat(doc.state),
     objectCount: doc.state.order.length,
   };
 }
@@ -44,22 +49,58 @@ const activateParam = z
 
 const docIdParam = z.string().optional().describe('Document id. Defaults to the active document.');
 
+/** A Minecraft resource name from a document name: lower case, [a-z0-9._-], spaces as underscores. */
+export function modelFileName(name: string): string {
+  const cleaned = name
+    .toLowerCase()
+    .replace(/\s+/g, '_')
+    .replace(/[^a-z0-9._-]/g, '');
+  return cleaned || 'model';
+}
+
 export const documentCommands = [
   defineCommand({
     id: 'document.new',
     title: 'Neues Modell',
     description:
-      'Create a new empty document (model) in a new tab. Returns { id, name, active }: id is the document id, to be used as "documentId" of other tools. By default the visible tab switches to it; with activate: false it is created in the background, so that you do not pull the user away from what they are looking at - you can still build in it and take screenshots of it by passing its id as documentId on every call.',
-    params: z.object({ name: z.string().min(1).default(DEFAULT_DOC_NAME), activate: activateParam }),
+      'Create a new empty document (model) in a new tab, as a free 3D model or (format) a Minecraft Java block/item model. Returns { id, name, active, format }: id is the document id, to be used as "documentId" of other tools. By default the visible tab switches to it; with activate: false it is created in the background, so that you do not pull the user away from what they are looking at - you can still build in it and take screenshots of it by passing its id as documentId on every call.',
+    params: z.object({
+      name: z.string().min(1).default(DEFAULT_DOC_NAME),
+      activate: activateParam,
+      format: z
+        .enum(docFormats)
+        .default('free')
+        .describe(
+          'Kind of document. "free": a general 3D model (meshes, modifiers, materials, animation) - the default. "minecraft_java": a Minecraft Java block/item model made of cuboid elements (cuboid_* and minecraft_* tools; exported as model .json). The format cannot be changed later.',
+        ),
+      fileName: z.string().min(1).optional().describe('minecraft_java only: model file name without .json. Default: the document name in lower case.'),
+      parent: z.string().default('').describe('minecraft_java only: parent model, e.g. "block/block" or "item/generated". Default: none.'),
+      ambientOcclusion: z.boolean().default(true).describe('minecraft_java only.'),
+      textureSize: textureSizeSchema.default([16, 16]).describe('minecraft_java only: UV size [width, height] in pixels (texture_size).'),
+      version: z
+        .string()
+        .default(javaVersions[javaVersions.length - 1].id)
+        .describe(`minecraft_java only: target Minecraft Java version, one of ${javaVersions.map((v) => v.id).join(', ')}.`),
+    }),
     run(ctx, p) {
-      return open(ctx, createDoc(uniqueName(docNames(ctx.get()), p.name)), p.activate);
+      const name = uniqueName(docNames(ctx.get()), p.name);
+      if (p.format === 'free') return { ...open(ctx, createDoc(name), p.activate), format: p.format };
+      if (!isJavaVersion(p.version)) throw new Error(`Unknown Minecraft Java version "${p.version}". Known: ${javaVersions.map((v) => v.id).join(', ')}`);
+      const java = defaultJavaSettings({
+        version: p.version,
+        fileName: p.fileName ?? modelFileName(name),
+        parent: p.parent,
+        ambientOcclusion: p.ambientOcclusion,
+        textureSize: p.textureSize,
+      });
+      return { ...open(ctx, createDoc(name, { ...emptyDocState, format: p.format, java }), p.activate), format: p.format };
     },
   }),
 
   defineCommand({
     id: 'document.list',
     title: 'Dokumente auflisten',
-    description: `List all open documents (tabs) in tab order: id, name, filePath (null if never saved), dirty (has unsaved changes), active (the visible tab) and objectCount (the number of scene objects in the document; groups, materials and textures are not counted). Use an id from here as "documentId" of other tools. ${DOCUMENT_ID_HINT}`,
+    description: `List all open documents (tabs) in tab order: id, name, filePath (null if never saved), dirty (has unsaved changes), active (the visible tab), format ("free" or "minecraft_java": which tools work in it, see the tool descriptions) and objectCount (the number of scene objects in the document; groups, materials and textures are not counted). Use an id from here as "documentId" of other tools. ${DOCUMENT_ID_HINT}`,
     params: z.object({}),
     run(ctx) {
       const app = ctx.get();

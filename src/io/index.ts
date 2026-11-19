@@ -10,6 +10,7 @@ import { collectItems } from './scene';
 import { writePly, writeStl } from './stlPly';
 import { readFbx, readPly, readStl } from './threeLoaders';
 import { writeUsdz } from './usdz';
+import { exportJavaModel } from '../core/minecraft/javaExport';
 
 export function createExporter(ops: ImageOps = browserImageOps): ExportService {
   return {
@@ -28,6 +29,8 @@ export function createExporter(ops: ImageOps = browserImageOps): ExportService {
           return { base64: toBase64(writePly(items)) };
         case 'usdz':
           return { base64: toBase64(await writeUsdz(state, items)) };
+        case 'json':
+          return { text: exportJavaModel(state, ids ? { ids } : {}) };
       }
     },
   };
