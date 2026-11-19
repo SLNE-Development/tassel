@@ -337,6 +337,9 @@ export class SurfaceMaterials {
    * and textures that no material assigned to an object refers to. Looks at all open documents,
    * so switching tabs does not decode everything again. Call after every sync.
    */
+  /** Textures drawn outside the documents (the inherited parent preview); kept by `sweep`. */
+  keepTextures: (() => Iterable<Texture>) | null = null;
+
   sweep(app: AppState): void {
     if (app.docs === this.sweptDocs) return;
     this.sweptDocs = app.docs;
@@ -348,7 +351,7 @@ export class SurfaceMaterials {
       this.materials.delete(id);
     }
     if (this.textures.size === 0) return;
-    const used = new Set<Texture>();
+    const used = new Set<Texture>(this.keepTextures?.() ?? []);
     for (const { state } of docs) {
       const seen = new Set<string>();
       for (const obj of Object.values(state.objects)) {
