@@ -11,6 +11,7 @@ import { groupToUngroup } from './groupActions';
 import { meshToolIcons, primitiveIcons } from './labels';
 import { TimelineItems } from './timeline/TimelineMenu';
 import { UvMenuItems } from './uv/UvMenu';
+import { useProjects } from './projects/projectsStore';
 import { ActionItem, MenuLabel, MenuPopup, MenuSeparator, RadioActionItem, Submenu } from './menu';
 
 function TopMenu({ title, disabled, children }: { title: string; disabled?: boolean; children: ReactNode }) {
@@ -152,6 +153,8 @@ function ViewItems() {
       <MenuSeparator />
       <ActionItem id="view.frame" />
       <MenuSeparator />
+      <ActionItem id="projects.toggle" />
+      <MenuSeparator />
       <TimelineItems />
       <MenuSeparator />
       <ActionItem id="palette.open" title={t.menu.palette} />
@@ -174,6 +177,7 @@ export function AddItems() {
 
 export function MenuBar() {
   const t = useT();
+  const hasProject = useProjects((s) => s.activeId !== null && s.projects.some((p) => p.id === s.activeId));
   return (
     <Menubar className="flex items-center gap-0.5">
       <TopMenu title={t.menu.file}>
@@ -183,6 +187,7 @@ export function MenuBar() {
         <MenuSeparator />
         <ActionItem id="file.save" />
         <ActionItem id="file.save_as" />
+        <ActionItem id="projects.save_into" disabled={!hasProject} />
         <Submenu title={t.menu.export}>
           <ActionItem id="file.export_glb" title={t.menu.exportGlb} />
           <ActionItem id="file.export_gltf" title={t.menu.exportGltf} />

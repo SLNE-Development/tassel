@@ -12,6 +12,7 @@ import { timelineActions } from './timeline/timelineActions';
 import { notifyError, notifyInfo, notifySuccess } from './toast';
 import { useUi } from './uiStore';
 import { uvActions } from './uv/uvActions';
+import { activeProject, pull, push, setPanelOpen, targetDir, togglePanel, useProjects } from './projects/projectsStore';
 
 /**
  * A UI action: something the user can trigger from a menu, a shortcut or the command palette.
@@ -280,6 +281,23 @@ export const actions: readonly Action[] = [
       run: () => execute('app.set_workspace', { workspace }),
     }),
   ),
+
+  // Projekt
+  action({ id: 'projects.toggle', title: (t) => t.projects.togglePanel, group: 'project', keys: ['Ctrl+Shift+E'], inInputs: true, run: togglePanel }),
+  action({
+    id: 'projects.save_into',
+    title: (t) => t.projects.saveInto,
+    group: 'project',
+    available: () => activeProject() !== null,
+    run: () => {
+      setPanelOpen(true);
+      useProjects.setState({ prompt: { kind: 'saveInto', dir: targetDir() } });
+    },
+  }),
+  action({ id: 'projects.github', title: (t) => t.projects.cloneFromGitHub, group: 'project', run: () => useProjects.setState({ githubOpen: true }) }),
+  action({ id: 'git.pull', title: (t) => t.projects.pull, group: 'project', available: () => useProjects.getState().status?.isRepo === true, run: pull }),
+  action({ id: 'git.commit', title: (t) => t.projects.commitTitle, group: 'project', available: () => (useProjects.getState().status?.files.length ?? 0) > 0, run: () => useProjects.setState({ commitOpen: true }) }),
+  action({ id: 'git.push', title: (t) => t.projects.push, group: 'project', available: () => useProjects.getState().status?.isRepo === true, run: push }),
 
   action({ id: 'preferences.open', title: (t) => t.actions.preferences, group: 'file', keys: ['Ctrl+,'], inInputs: true, run: () => useUi.setState({ preferencesOpen: true }) }),
   action({ id: 'palette.open', title: (t) => t.actions.palette, group: 'view', keys: ['Ctrl+K'], inInputs: true, hidden: true, run: () => useUi.setState((s) => ({ paletteOpen: !s.paletteOpen })) }),
