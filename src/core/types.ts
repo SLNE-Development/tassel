@@ -3,6 +3,7 @@
 // Conventions: Y is up, units are meters, rotations are Euler XYZ in degrees.
 
 import type { MinecraftAssetsService } from './minecraftAssets';
+import type { PixelOp, TextureTransform } from './pixelOps';
 import type { Preferences } from './preferences';
 import type { RenderService, RenderSettings } from './render';
 import type { VideoService } from './video';
@@ -38,6 +39,19 @@ export interface Texture {
   readonly layers?: readonly PaintLayer[];
   /** Minecraft documents: where the texture lives in a resource pack. `name` is its file name without .png. */
   readonly java?: JavaTextureRef;
+  /**
+   * An animated (flipbook) texture: the image is a vertical strip of square frames (frame height = width),
+   * played in order. Written as the texture's `.png.mcmeta` on export.
+   */
+  readonly animation?: TextureAnimation;
+}
+
+/** Playback of a flipbook texture, as Minecraft's `.mcmeta` "animation" section. */
+export interface TextureAnimation {
+  /** Game ticks (1/20 s) each frame is shown, >= 1. */
+  readonly frametime: number;
+  /** Blend between frames while one is shown. */
+  readonly interpolate: boolean;
 }
 
 export const blendModes = ['normal', 'multiply', 'screen', 'overlay', 'add'] as const;
@@ -585,6 +599,14 @@ export interface ImagingService {
   regionTransparent?(texture: Texture, rect: { x: number; y: number; width: number; height: number }): Promise<boolean>;
   /** Tangent-space normal map (OpenGL convention) from the image's luminance as height. */
   normalFromHeight(texture: Texture, strength: number, invert: boolean): Promise<string>;
+  /**
+   * A pixel-art edit (core/pixelOps.ts) of one layer, or with `layerId` null of the image of a texture without
+   * layers (then `layer` and `flattened` are the same new PNG). `changed` is false when no pixel changed (the
+   * strings are then the old ones).
+   */
+  pixelEdit(texture: Texture, layerId: string | null, op: PixelOp): Promise<{ layer: string; flattened: string; changed: boolean }>;
+  /** The same transform applied to the image and every layer; the size may change. `layers` follows texture.layers. */
+  transformTexture(texture: Texture, transform: TextureTransform): Promise<{ data: string; width: number; height: number; layers?: string[] }>;
 }
 
 /** What a bake computes; see the bake.* commands for the meaning of the fields. */

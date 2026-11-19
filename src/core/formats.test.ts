@@ -28,7 +28,6 @@ const FREE_ONLY = [
   'scene.set_smooth',
   'material.create',
   'material.assign',
-  'paint.stroke',
   'bake.ao',
   'anim.set_key',
   'render.video',
@@ -65,6 +64,13 @@ const BOTH = [
   'group.ungroup',
   'texture.add',
   'texture.remove',
+  'paint.stroke',
+  'paint.add_layer',
+  'paint.pixel_stroke',
+  'paint.pixel_fill',
+  'paint.frames',
+  'texture.set_animation',
+  'texture.export',
   'export.file',
   'view.screenshot',
   'render.image',
@@ -93,7 +99,7 @@ describe('document formats', () => {
 
   it('gates every command of the free-only and Minecraft-only families', () => {
     for (const { id, formats } of commands) {
-      if (/^(edit|mesh|uv|modifier|material|paint|bake|anim)\./.test(id)) expect(commandFormats(id, formats), id).toEqual(['free']);
+      if (/^(edit|mesh|uv|modifier|material|bake|anim)\./.test(id)) expect(commandFormats(id, formats), id).toEqual(['free']);
       if (/^(cuboid|minecraft)\./.test(id)) expect(commandFormats(id, formats), id).toEqual(['minecraft_java']);
     }
   });

@@ -31,9 +31,8 @@ const formatsByCommand: Readonly<Record<string, readonly DocFormat[]>> = {
   'mesh.': FREE_ONLY,
   'uv.': FREE_ONLY,
   'modifier.': FREE_ONLY,
-  // PBR materials, texture painting, baking, keyframe animation and video.
+  // PBR materials, baking, keyframe animation and video. (Texture painting, paint.*, works in every format.)
   'material.': FREE_ONLY,
-  'paint.': FREE_ONLY,
   'bake.': FREE_ONLY,
   'anim.': FREE_ONLY,
   'render.video': FREE_ONLY,

@@ -11,6 +11,7 @@ import { minecraftCommands } from './minecraft';
 import { meshCommands } from './mesh';
 import { modifierCommands } from './modifier';
 import { paintCommands } from './paint';
+import { pixelPaintCommands } from './pixelPaint';
 import { preferencesCommands } from './preferences';
 import { previewCommands } from './preview';
 import type { AnyCommand } from './registry';
@@ -39,6 +40,7 @@ export const commands: readonly AnyCommand[] = [
   ...materialCommands,
   ...textureCommands,
   ...paintCommands,
+  ...pixelPaintCommands,
   ...meshCommands,
   ...uvCommands,
   ...modifierCommands,
