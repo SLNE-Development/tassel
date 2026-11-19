@@ -8,6 +8,7 @@ use serde_json::{Map, Value, json};
 use crate::batch;
 use crate::bridge::{CALL_TIMEOUT, Frontend};
 use crate::files;
+use crate::workspace_tools;
 
 pub struct NativeTool {
   pub name: &'static str,
@@ -45,7 +46,7 @@ const NATIVE_NAMES: [&str; 9] =
   ["file_save", "file_open", "file_export", "file_import", "scene_place_model", "material_import", "render_image", "render_video", "batch"];
 
 pub fn is_native(tool: &str) -> bool {
-  NATIVE_NAMES.contains(&tool)
+  NATIVE_NAMES.contains(&tool) || workspace_tools::is_workspace_tool(tool)
 }
 
 fn document_id_schema() -> Value {
@@ -59,7 +60,7 @@ pub fn native_tools() -> Vec<NativeTool> {
   let vec3 = |description: &str| {
     json!({ "type": "array", "items": { "type": "number" }, "minItems": 3, "maxItems": 3, "description": description })
   };
-  vec![
+  let mut tools = vec![
     NativeTool {
       name: "file_save",
       description: "Save a document as a Tessel project file (.tessel, JSON) on disk and mark it as saved. \
@@ -421,7 +422,9 @@ pub fn native_tools() -> Vec<NativeTool> {
         "additionalProperties": false
       }),
     },
-  ]
+  ];
+  tools.extend(workspace_tools::tools());
+  tools
 }
 
 /// Runs any tool by its MCP name.
@@ -449,6 +452,7 @@ pub async fn call_single<F: Frontend>(frontend: &F, tool: &str, args: Value) -> 
     "render_image" => render_image(frontend, &args).await,
     "render_video" => render_video(frontend, &args).await,
     "batch" => Err(NESTED_BATCH.into()),
+    _ if workspace_tools::is_workspace_tool(tool) => workspace_tools::call(frontend, tool, args).await,
     _ => match frontend.command_id(tool) {
       Some(command) => frontend.call(&command, args, CALL_TIMEOUT).await,
       None => Err(unknown_tool(frontend, tool)),
@@ -482,6 +486,7 @@ pub fn check_native(tool: &str, args: &Value) -> Result<(), String> {
     "material_import" => MaterialImportArgs::parse(args).map(drop),
     "render_image" => RenderArgs::parse(args).map(drop),
     "render_video" => VideoArgs::parse(args).map(drop),
+    _ if workspace_tools::is_workspace_tool(tool) => workspace_tools::check(tool, args),
     _ => Ok(()),
   }
 }
@@ -813,7 +818,7 @@ impl<'a> MaterialImportArgs<'a> {
 
 // ---- the tools -------------------------------------------------------------------------------
 
-async fn file_save<F: Frontend>(frontend: &F, args: &Value) -> Result<Value, String> {
+pub(crate) async fn file_save<F: Frontend>(frontend: &F, args: &Value) -> Result<Value, String> {
   let args = SaveArgs::parse(args)?;
   let target = match args.document_id {
     Some(id) => json!({ "id": id }),
@@ -857,7 +862,7 @@ async fn file_save<F: Frontend>(frontend: &F, args: &Value) -> Result<Value, Str
   Ok(result)
 }
 
-async fn file_open<F: Frontend>(frontend: &F, args: &Value) -> Result<Value, String> {
+pub(crate) async fn file_open<F: Frontend>(frontend: &F, args: &Value) -> Result<Value, String> {
   let args = OpenArgs::parse(args)?;
   let path = args.path;
   if files::extension(path) == "json" {
