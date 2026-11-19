@@ -10,6 +10,8 @@ export interface UiState {
   closeDocId: string | null;
   quitOpen: boolean;
   preferencesOpen: boolean;
+  /** The "New model" dialog (format and settings of the new document). */
+  newDocOpen: boolean;
   /** Object being renamed inline in the outliner. */
   renamingId: string | null;
 }
@@ -21,5 +23,6 @@ export const useUi = create<UiState>(() => ({
   closeDocId: null,
   quitOpen: false,
   preferencesOpen: false,
+  newDocOpen: false,
   renamingId: null,
 }));

@@ -2,7 +2,8 @@ import { Menu } from '@base-ui/react/menu';
 import { Check, ChevronRight, type LucideIcon } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { useT } from '../i18n';
-import { getAction, runAction, shortcutLabel } from './actions';
+import { actionAllowedIn, getAction, runAction, shortcutLabel } from './actions';
+import { useDocFormat } from './format';
 
 /** Shared look for all menus (menu bar, add menu). */
 
@@ -45,6 +46,9 @@ export function ActionItem({
   disabled?: boolean;
 }) {
   useT(); // The action's title and shortcut label follow the UI language.
+  const format = useDocFormat();
+  // An action the document's format does not have is left out rather than greyed.
+  if (!actionAllowedIn(getAction(id), format)) return null;
   return (
     <Menu.Item className={itemClass} disabled={disabled} onClick={() => void runAction(id)}>
       <Slot icon={icon} />
@@ -56,6 +60,8 @@ export function ActionItem({
 
 export function RadioActionItem({ id, value, title }: { id: string; value: string; title: string }) {
   useT(); // The shortcut label follows the UI language.
+  const format = useDocFormat();
+  if (!actionAllowedIn(getAction(id), format)) return null;
   return (
     <Menu.RadioItem className={itemClass} value={value} closeOnClick onClick={() => void runAction(id)}>
       <span className="flex w-4 shrink-0 justify-center">

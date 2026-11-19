@@ -3,11 +3,13 @@ import { selectDocState, useApp } from '../app/store';
 import { useT } from '../i18n';
 import { Viewport } from '../viewport/Viewport';
 import { shortcutLabel } from './actions';
+import { useIsMinecraft } from './format';
 import { LastOpPanel } from './LastOpPanel';
 import { ModeSwitch } from './ModeSwitch';
 import { PaintHint, PaintOptions } from './paint/PaintOptions';
 import { CameraViewBadge, TimelineDock } from './timeline/Timeline';
 import { SplitDivider } from './uv/SplitDivider';
+import { CuboidUvEditor } from './uv/CuboidUvEditor';
 import { UvEditor } from './uv/UvEditor';
 import { UvOverlays } from './uv/UvMenu';
 import { useUvUi } from './uv/uvStore';
@@ -46,12 +48,13 @@ export function Centre() {
   const workspace = useApp((s) => s.workspace);
   const split = useUvUi((s) => s.split);
   const uv = workspace === 'uv';
+  const minecraft = useIsMinecraft();
   return (
     <main className="flex min-h-0 min-w-0 flex-col overflow-hidden bg-ink">
       <div className="relative min-h-0 min-w-0 flex-1 overflow-hidden">
       {uv && (
         <div className="absolute inset-y-0 left-0" style={{ width: `${split * 100}%` }}>
-          <UvEditor />
+          {minecraft ? <CuboidUvEditor /> : <UvEditor />}
         </div>
       )}
       {/* The 3D view: everything in modelling, the right part next to the UV editor. Its overlays stay inside it. */}
@@ -67,17 +70,20 @@ export function Centre() {
             <PaintHint />
           </>
         ) : (
-          <>
-            <ModeSwitch />
-            <LastOpPanel />
-          </>
+          // Minecraft documents have no edit mode and no operations with parameters to tweak.
+          !minecraft && (
+            <>
+              <ModeSwitch />
+              <LastOpPanel />
+            </>
+          )
         )}
       </div>
       {uv && <SplitDivider />}
       <UvOverlays />
       </div>
       {/* The timeline docks under the views and takes its height from them. */}
-      <TimelineDock />
+      {!minecraft && <TimelineDock />}
     </main>
   );
 }

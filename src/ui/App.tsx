@@ -7,6 +7,7 @@ import { RenderDialog } from './render/RenderDialog';
 import { VideoDialog } from './timeline/VideoDialog';
 import { CommandPalette } from './CommandPalette';
 import { Dialogs } from './Dialogs';
+import { NewDocDialog } from './minecraft/NewDocDialog';
 import { Outliner } from './Outliner';
 import { Preferences } from './Preferences';
 import { Properties } from './Properties';
@@ -15,11 +16,13 @@ import { toastManager } from './toast';
 import { Toasts } from './Toasts';
 import { ToolRail } from './ToolRail';
 import { TopBar } from './TopBar';
+import { useFormatGuards } from './formatGuards';
 import { useShortcuts } from './useShortcuts';
 
 /** The editor shell. It subscribes to nothing but the UI language, so state changes only re-render the panels that care. */
 export function App() {
   useShortcuts();
+  useFormatGuards();
   const t = useT();
   return (
     <Toast.Provider toastManager={toastManager} limit={4}>
@@ -38,6 +41,7 @@ export function App() {
         </div>
         <CommandPalette />
         <Dialogs />
+        <NewDocDialog />
         <Preferences />
         <BakeDialog />
         <RenderDialog />

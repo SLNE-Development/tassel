@@ -3,8 +3,10 @@ import { Search } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { execute } from '../app/store';
 import { commands } from '../core/commands';
+import { commandAllowedIn } from '../core/formats';
 import { commandTitle, getT, useT } from '../i18n';
 import { actions, comboLabel, inEditMode, isAvailable } from './actions';
+import { activeFormat } from './format';
 import { notifyError, notifyInfo } from './toast';
 import { useUi } from './uiStore';
 
@@ -20,6 +22,7 @@ interface Entry {
 
 function buildEntries(): Entry[] {
   const edit = inEditMode();
+  const format = activeFormat();
   const fromActions = actions
     .filter((a) => !a.hidden && isAvailable(a))
     .map((a): Entry => ({
@@ -33,7 +36,7 @@ function buildEntries(): Entry[] {
   // Registry commands that need no parameters and are not already offered as a UI action.
   const covered = new Set(actions.map((a) => a.command).filter(Boolean));
   const fromRegistry = commands
-    .filter((c) => !covered.has(c.id) && c.params.safeParse({}).success)
+    .filter((c) => !covered.has(c.id) && commandAllowedIn(c.id, c.formats, format) && c.params.safeParse({}).success)
     .map((c): Entry => {
       const title = commandTitle(c);
       return {

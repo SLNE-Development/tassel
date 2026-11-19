@@ -1,12 +1,16 @@
 import { execute, selectDocState, useApp } from '../app/store';
-import { exportFile, importFile, openProject, saveProject } from '../bridge/files';
+import { exportFile, importFile, openJavaModel, openProject, saveProject } from '../bridge/files';
 import { openBakeDialog } from './bake/bakeStore';
 import { openRenderDialog } from './render/renderStore';
+import { commandsById } from '../core/commands';
+import { commandAllowedIn, FREE_ONLY, MINECRAFT_ONLY } from '../core/formats';
 import { primitiveTypes } from '../core/mesh/primitives';
-import { elementModes, shadings, tools, viewPresets, workspaces, type ExportFormat, type ViewPreset } from '../core/types';
+import { elementModes, shadings, tools, viewPresets, workspaces, type DocFormat, type ExportFormat, type ViewPreset } from '../core/types';
 import { getT, type Dictionary } from '../i18n';
 import { groupSelection, newEmptyGroup, ungroupSelection } from './groupActions';
+import { activeFormat } from './format';
 import { runOp } from './live';
+import { minecraftActions } from './minecraft/minecraftActions';
 import { paintActions } from './paint/paintActions';
 import { timelineActions } from './timeline/timelineActions';
 import { notifyError, notifyInfo, notifySuccess } from './toast';
@@ -35,6 +39,12 @@ export interface Action {
   command?: string;
   /** Not listed in the command palette. */
   hidden?: boolean;
+  /**
+   * Document formats the action is offered in; absent = what its registry `command` allows, else every
+   * format. Menus, the tool rail, the palette and shortcuts leave out actions that do not fit the active
+   * document (see `actionAllowedIn`).
+   */
+  formats?: readonly DocFormat[];
   /** Further condition for offering the action (palette, shortcuts), e.g. the workspace it belongs to. */
   available?(): boolean;
   run(): unknown;
@@ -55,8 +65,26 @@ const action = ({ title, group, ...rest }: Omit<Action, 'title' | 'group'> & { t
 
 export const inEditMode = () => selectDocState(useApp.getState()).edit !== null;
 
-/** Whether the action is offered in the current mode. */
-export const isAvailable = (action: Action) => (!action.when || action.when === (inEditMode() ? 'edit' : 'object')) && (action.available?.() ?? true);
+/**
+ * Actions that are only offered in free documents, by id prefix; for the action families that are built
+ * from other modules (UV, painting, the timeline) and do not all stand for a registry command.
+ */
+const freeOnlyPrefixes = ['uv.', 'paint.', 'timeline.', 'video.', 'bake.'];
+
+/** Whether the action works in a document of this format: its own `formats`, and what its registry command allows. */
+export function actionAllowedIn(action: Pick<Action, 'id' | 'formats' | 'command'>, format: DocFormat): boolean {
+  const declared = action.formats ?? (freeOnlyPrefixes.some((prefix) => action.id.startsWith(prefix)) ? FREE_ONLY : undefined);
+  if (declared && !declared.includes(format)) return false;
+  const def = action.command ? commandsById.get(action.command) : undefined;
+  return !def || commandAllowedIn(def.id, def.formats, format);
+}
+
+/** Whether the action fits the active document's format. */
+export const isAllowedHere = (action: Action) => actionAllowedIn(action, activeFormat());
+
+/** Whether the action is offered in the current mode and document. */
+export const isAvailable = (action: Action) =>
+  isAllowedHere(action) && (!action.when || action.when === (inEditMode() ? 'edit' : 'object')) && (action.available?.() ?? true);
 
 function toggleEditMode() {
   const state = selectDocState(useApp.getState());
@@ -138,18 +166,26 @@ async function importIntoActiveDoc() {
   if (result.warnings.length > 0) notifyInfo(getT().files.importNotes(result.warnings.length), result.warnings.join(' '));
 }
 
+/** Opens a Minecraft Java model (.json) as a new document; what the file had that Tessel could not use is shown as a note. */
+async function openJavaModelFile() {
+  const result = await openJavaModel();
+  if (result && result.warnings.length > 0) notifyInfo(getT().files.importNotes(result.warnings.length), result.warnings.join(' '));
+}
+
 export const actions: readonly Action[] = [
   // Datei
-  action({ id: 'file.new', title: (t) => t.actions.new, group: 'file', keys: ['Ctrl+N'], inInputs: true, command: 'document.new', run: () => execute('document.new') }),
+  action({ id: 'file.new', title: (t) => t.actions.new, group: 'file', keys: ['Ctrl+N'], inInputs: true, command: 'document.new', run: () => useUi.setState({ newDocOpen: true }) }),
   action({ id: 'file.open', title: (t) => t.actions.open, group: 'file', keys: ['Ctrl+O'], inInputs: true, run: () => openProject() }),
   action({ id: 'file.save', title: (t) => t.actions.save, group: 'file', keys: ['Ctrl+S'], inInputs: true, run: () => saveActiveDoc() }),
   action({ id: 'file.save_as', title: (t) => t.actions.saveAs, group: 'file', keys: ['Ctrl+Shift+S'], inInputs: true, run: () => saveActiveDoc(true) }),
-  action({ id: 'file.import', title: (t) => t.files.import, group: 'file', command: 'import.file', run: importIntoActiveDoc }),
+  action({ id: 'file.open_java', title: (t) => t.mc.openModel, group: 'file', run: openJavaModelFile }),
+  action({ id: 'file.import', title: (t) => t.files.import, group: 'file', command: 'import.file', formats: FREE_ONLY, run: importIntoActiveDoc }),
   action({ id: 'file.export_glb', title: (t) => t.actions.exportGlb, group: 'file', command: 'export.gltf', run: () => exportActiveDoc('glb') }),
   action({ id: 'file.export_gltf', title: (t) => t.actions.exportGltf, group: 'file', command: 'export.file', run: () => exportActiveDoc('gltf') }),
   ...(['obj', 'stl', 'ply', 'usdz'] as const).map((format) =>
-    action({ id: `file.export_${format}`, title: (t) => t.files.exportAs(t.files.formats[format]), group: 'file', run: () => exportActiveDoc(format) }),
+    action({ id: `file.export_${format}`, title: (t) => t.files.exportAs(t.files.formats[format]), group: 'file', formats: FREE_ONLY, run: () => exportActiveDoc(format) }),
   ),
+  action({ id: 'file.export_json', title: (t) => t.files.exportAs(t.files.formats.json), group: 'file', command: 'export.file', formats: MINECRAFT_ONLY, run: () => exportActiveDoc('json') }),
   action({ id: 'render.open', title: (t) => t.render.open, group: 'file', keys: ['F12'], inInputs: true, command: 'render.image', run: openRenderDialog }),
   action({ id: 'file.close', title: (t) => t.actions.close, group: 'file', command: 'document.close', run: () => requestCloseDoc(useApp.getState().activeDocId) }),
 
@@ -218,6 +254,7 @@ export const actions: readonly Action[] = [
       id: `add.${type}`,
       title: (t) => t.actions.addPrimitive(t.primitives[type]),
       group: 'add',
+      formats: FREE_ONLY,
       // The new object is named in the UI language; the command's own default name is German.
       run: () => runOp('scene.add_primitive', { type, name: getT().primitives[type] }, (t) => t.primitives[type]),
     }),
@@ -226,8 +263,12 @@ export const actions: readonly Action[] = [
     id: 'add.text',
     title: (t) => t.actions.addPrimitive(t.shapes.text),
     group: 'add',
+    formats: FREE_ONLY,
     run: () => runOp('scene.add_text', { text: getT().shapes.text }, (t) => t.shapes.text),
   }),
+
+  // Minecraft Java
+  ...minecraftActions(action),
 
   // Ansicht
   ...shadings.map((shading) =>
@@ -267,6 +308,8 @@ export const actions: readonly Action[] = [
       title: (t) => t.actions.tool(t.tools[tool]),
       group: 'tool',
       keys: [toolKeys[tool]],
+      // Elements are resized in the element panel; the scale gizmo would only bake into the box.
+      formats: tool === 'scale' ? FREE_ONLY : undefined,
       run: () => execute('view.set_tool', { tool }),
     }),
   ),
@@ -277,6 +320,7 @@ export const actions: readonly Action[] = [
       id: `workspace.${workspace}`,
       title: (t) => t.actions.workspace(t.workspaces[workspace]),
       group: 'workspace',
+      formats: workspace === 'paint' ? FREE_ONLY : undefined,
       run: () => execute('app.set_workspace', { workspace }),
     }),
   ),
@@ -363,6 +407,7 @@ export function matchShortcut(event: KeyboardEvent): Action | undefined {
   return bindings.find(
     ({ combo, mode: when, action }) =>
       (!when || when === mode) &&
+      isAllowedHere(action) &&
       (action.available?.() ?? true) &&
       combo.ctrl === ctrl &&
       combo.shift === event.shiftKey &&
