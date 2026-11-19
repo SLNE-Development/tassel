@@ -1167,6 +1167,7 @@ export const en: Dictionary = {
     guiLight: 'GUI light',
     guiLights: { side: 'Side', front: 'Front' },
     gizmo: 'Gizmo',
+    resetCamera: 'Reset camera',
     gizmoModes: { translate: 'Move', rotate: 'Rotate', scale: 'Scale' },
     noAssets: 'Reference scenes use flat colours. Set your Minecraft jar in the preferences for vanilla textures.',
     approx: 'Reference scenes approximate the game.',

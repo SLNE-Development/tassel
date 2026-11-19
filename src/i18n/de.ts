@@ -1200,6 +1200,7 @@ export const de = {
     guiLight: 'GUI-Licht',
     guiLights: { side: 'Seite', front: 'Vorne' },
     gizmo: 'Gizmo',
+    resetCamera: 'Kamera zurücksetzen',
     gizmoModes: { translate: 'Verschieben', rotate: 'Drehen', scale: 'Skalieren' },
     noAssets: 'Referenzszenen nutzen flache Farben. Für Vanilla-Texturen das Minecraft-Jar in den Einstellungen festlegen.',
     approx: 'Referenzszenen bilden das Spiel nur näherungsweise nach.',
