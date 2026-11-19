@@ -190,13 +190,16 @@ function PreviewOptionsBody() {
         options={projections.map((value) => ({ value, title: t.projections[value] }))}
         onChange={(projection) => void dispatch('view.set_projection', { projection })}
       />
-      <div className="grid grid-cols-3 gap-1">
-        {anglePresets.map((preset) => (
-          <button key={preset} className={smallButton} title={t.angles[preset]} onClick={() => void setAngle(preset)}>
-            {t.angles[preset]}
-          </button>
-        ))}
-      </div>
+      {/* Sides in a grid, the longer isometric names one per row. */}
+      {[anglePresets.filter((p) => !p.includes('iso')), anglePresets.filter((p) => p.includes('iso'))].map((presets, i) => (
+        <div key={i} className={`grid gap-1 ${i === 0 ? 'grid-cols-3' : 'grid-cols-1'}`}>
+          {presets.map((preset) => (
+            <button key={preset} className={smallButton} title={t.angles[preset]} onClick={() => void setAngle(preset)}>
+              {t.angles[preset]}
+            </button>
+          ))}
+        </div>
+      ))}
       <SavedAngles />
     </div>
   );
