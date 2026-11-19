@@ -2,7 +2,8 @@
 //
 // Like the exporter, every key is read by a rule with a version range, so a later version can change how a
 // key is read without touching older versions. Unknown root keys are kept (JavaModelSettings.extra) and
-// written back on export. Parent models are not resolved yet: "parent" is kept as text.
+// written back on export. "parent" is kept as text; resolving the parent chain is parents.ts' job, which can
+// hand the variables and textures the parents provide in through the options.
 import { emptyDocState, newId, uniqueName } from '../state';
 import { cuboidFaces } from '../types';
 import type { Cuboid, CuboidFace, CuboidFaceName, DocState, Group, JavaModelSettings, SceneObject, Texture, Vec3 } from '../types';
@@ -25,6 +26,13 @@ export interface JavaImportOptions {
   fileName?: string;
   /** Texture images by resource location as written in the model ("block/stone", "mymod:item/x"), PNG base64. */
   images?: Readonly<Record<string, { data: string; width: number; height: number }>>;
+  /** Variables the parent chain defines: references to them are kept quietly (`textureRefs`). */
+  inheritedVariables?: ReadonlySet<string>;
+  /**
+   * Texture variable -> resolved location the parent chain provides. Faces that use a variable the model
+   * does not define itself get that texture (its image looked up in `images` by the same location).
+   */
+  inheritedTextures?: Readonly<Record<string, string>>;
 }
 
 export interface JavaImportResult {
@@ -46,6 +54,8 @@ interface ReadContext {
   readonly textureSize: readonly [number, number];
   /** Texture variable -> texture id. */
   readonly textureIds: ReadonlyMap<string, string>;
+  /** Variables the parent chain defines (no warning when a face uses one of them). */
+  readonly inherited?: ReadonlySet<string>;
 }
 
 interface ReadRule<T> extends Ranged {
@@ -97,7 +107,7 @@ function readFace(raw: unknown, name: CuboidFaceName, draft: ElementDraft, ctx: 
   const uv: [number, number, number, number] = [tidy((uv16[0] * w) / 16), tidy((uv16[1] * h) / 16), tidy((uv16[2] * w) / 16), tidy((uv16[3] * h) / 16)];
   const variable = typeof raw.texture === 'string' ? raw.texture.replace(/^#/, '') : null;
   const texture = variable === null ? null : (ctx.textureIds.get(variable) ?? null);
-  if (variable !== null && variable !== 'missing' && texture === null) ctx.warnings.push(`Face texture "#${variable}" is not defined in "textures"`);
+  if (variable !== null && variable !== 'missing' && texture === null && !ctx.inherited?.has(variable)) ctx.warnings.push(`Face texture "#${variable}" is not defined in "textures"`);
   const rotation = raw.rotation === 90 || raw.rotation === 180 || raw.rotation === 270 ? raw.rotation : 0;
   return {
     enabled: true,
@@ -257,10 +267,15 @@ export function importJavaModel(text: string, opts: JavaImportOptions = {}): Jav
     if (key === 'particle') particle = id;
     else textureIds.set(key, id);
   }
+  const textureRefs: Record<string, string> = {};
   for (const [key, target] of aliases) {
     const id = textureIds.get(target);
     if (!id) {
-      warnings.push(`Texture variable "${key}" refers to "#${target}", which the model does not define (it may come from the parent model)`);
+      // Defined by the parent model: kept as a reference and written back on export.
+      textureRefs[key] = `#${target}`;
+      if (!opts.inheritedVariables?.has(target)) {
+        warnings.push(`Texture variable "${key}" refers to "#${target}", which the model does not define (it may come from the parent model)`);
+      }
       continue;
     }
     if (key === 'particle') particle = id;
@@ -269,10 +284,39 @@ export function importJavaModel(text: string, opts: JavaImportOptions = {}): Jav
       warnings.push(`Texture variable "${key}" is an alias of "#${target}"; faces using it now use "#${target}"`);
     }
   }
+  // Faces that use a variable only the parent model defines get that texture (written out explicitly on export).
+  if (opts.inheritedTextures && Array.isArray(raw.elements)) {
+    for (const element of raw.elements) {
+      const faces = isObject(element) && isObject(element.faces) ? Object.values(element.faces) : [];
+      for (const face of faces) {
+        const variable = isObject(face) && typeof face.texture === 'string' ? face.texture.replace(/^#/, '') : null;
+        const location = variable !== null ? opts.inheritedTextures[variable] : undefined;
+        if (variable === null || location === undefined || textureIds.has(variable) || location.startsWith('#')) continue;
+        let id = byLocation.get(location);
+        if (!id) {
+          id = newId();
+          const parsed = parseLocation(location);
+          const image = opts.images?.[location];
+          if (!image) warnings.push(`Texture "${location}" was not found; a placeholder is shown instead`);
+          textures[id] = {
+            id,
+            name: parsed.name,
+            mimeType: 'image/png',
+            data: image?.data ?? MISSING_TEXTURE_PNG,
+            width: image?.width ?? 16,
+            height: image?.height ?? 16,
+            java: { namespace: parsed.namespace, folder: parsed.folder, key: variable },
+          };
+          byLocation.set(location, id);
+        }
+        textureIds.set(variable, id);
+      }
+    }
+  }
   // A particle texture that is only used as particle keeps a readable variable.
   if (particle && textures[particle].java!.key.startsWith('particle_')) textures[particle] = { ...textures[particle], java: { ...textures[particle].java!, key: 'particle_texture' } };
 
-  const ctx: ReadContext = { version, warnings, textureSize, textureIds };
+  const ctx: ReadContext = { version, warnings, textureSize, textureIds, inherited: opts.inheritedVariables };
   const { groups, elementGroup } = readGroups(raw.groups, warnings);
   const objects: Record<string, SceneObject> = {};
   const order: string[] = [];
@@ -315,6 +359,7 @@ export function importJavaModel(text: string, opts: JavaImportOptions = {}): Jav
     particle,
     ...(isObject(raw.display) ? { display: raw.display } : {}),
     ...(Object.keys(extra).length > 0 ? { extra } : {}),
+    ...(Object.keys(textureRefs).length > 0 ? { textureRefs } : {}),
   });
   return {
     state: {

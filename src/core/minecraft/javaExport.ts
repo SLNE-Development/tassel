@@ -106,12 +106,15 @@ const rootRules: readonly Rule<RootInput>[] = [
     since: '26.3',
     write: ({ state, java }) => {
       const textures = sortedTextures(state);
-      if (textures.length === 0 && java.particle === null) return undefined;
+      const refs = Object.entries(java.textureRefs ?? {});
+      if (textures.length === 0 && java.particle === null && refs.length === 0) return undefined;
       const out: Json = {};
       for (const texture of textures) out[texture.java!.key] = textureLocation(texture);
       const particle = java.particle !== null && Object.hasOwn(state.textures, java.particle) ? state.textures[java.particle] : undefined;
       if (particle) out.particle = textureLocation(particle);
-      return out;
+      // References to variables the parent model defines ("particle": "#all").
+      for (const [key, value] of refs) if (!Object.hasOwn(out, key)) out[key] = value;
+      return Object.keys(out).length > 0 ? out : undefined;
     },
   },
   { key: 'elements', since: '26.3', write: ({ elements }) => (elements.length > 0 ? elements : undefined) },

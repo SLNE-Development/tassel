@@ -46,6 +46,20 @@ export const javaSettingsSchema = z.object({
   particle: z.string().nullable().default(null),
   display: z.record(z.string(), z.unknown()).optional(),
   extra: z.record(z.string(), z.unknown()).optional(),
+  textureRefs: z.record(z.string(), z.string()).optional(),
+  sourcePath: z.string().optional(),
+  inherited: z
+    .object({
+      chain: z.array(z.string()),
+      builtin: z.enum(['generated', 'entity']).nullable(),
+      textures: z.record(z.string(), z.string()),
+      elements: z.array(z.unknown()).nullable(),
+      textureSize: z.tuple([z.number(), z.number()]).nullable(),
+      display: z.record(z.string(), z.unknown()),
+      images: z.record(z.string(), z.object({ data: z.string(), width: z.number().int().min(1), height: z.number().int().min(1) })),
+      missing: z.array(z.string()),
+    })
+    .optional(),
 }) satisfies z.ZodType<JavaModelSettings, unknown>;
 
 export const javaTextureRefSchema = z.object({
