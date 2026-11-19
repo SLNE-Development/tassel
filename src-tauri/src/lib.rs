@@ -2,7 +2,9 @@ mod batch;
 mod bridge;
 mod files;
 mod fonts;
+mod git;
 mod mcp;
+mod projects;
 #[cfg(test)]
 mod testing;
 mod tools;
