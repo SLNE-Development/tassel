@@ -8,6 +8,7 @@ import { VideoDialog } from './timeline/VideoDialog';
 import { CommandPalette } from './CommandPalette';
 import { Dialogs } from './Dialogs';
 import { NewDocDialog } from './minecraft/NewDocDialog';
+import { ModelImportDialogs } from './modelImport/ModelImportDialogs';
 import { Outliner } from './Outliner';
 import { Preferences } from './Preferences';
 import { Properties } from './Properties';
@@ -67,6 +68,7 @@ export function App() {
         <CommandPalette />
         <Dialogs />
         <NewDocDialog />
+        <ModelImportDialogs />
         <ItemWizard />
         <Preferences />
         <BakeDialog />

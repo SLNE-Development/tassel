@@ -11,6 +11,8 @@ import { itemCommands } from './item';
 import { libraryCommands } from './library';
 import { materialCommands } from './material';
 import { minecraftCommands } from './minecraft';
+import { minecraftParentCommands } from './minecraftParents';
+import { modelImportCommands } from './modelImport';
 import { meshCommands } from './mesh';
 import { modifierCommands } from './modifier';
 import { paintCommands } from './paint';
@@ -38,6 +40,8 @@ export const commands: readonly AnyCommand[] = [
   ...shapeCommands,
   ...cuboidCommands,
   ...minecraftCommands,
+  ...minecraftParentCommands,
+  ...modelImportCommands,
   ...displayCommands,
   ...itemCommands,
   ...fontCommands,

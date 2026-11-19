@@ -1,5 +1,6 @@
 import { execute, selectDocState, useApp } from '../app/store';
-import { exportFile, importFile, openJavaModel, openProject, saveProject } from '../bridge/files';
+import { exportFile, importFile, openProject, saveProject } from '../bridge/files';
+import { openModelDialog } from './modelImport/modelImportFlows';
 import { openBakeDialog } from './bake/bakeStore';
 import { openRenderDialog } from './render/renderStore';
 import { commandsById } from '../core/commands';
@@ -11,6 +12,7 @@ import { groupSelection, newEmptyGroup, ungroupSelection } from './groupActions'
 import { activeFormat } from './format';
 import { runOp } from './live';
 import { minecraftActions } from './minecraft/minecraftActions';
+import { modelImportActions } from './modelImport/modelImportActions';
 import { itemActions, saveItemDefinition } from './items/itemActions';
 import { paintActions } from './paint/paintActions';
 import { previewActions } from './preview/previewActions';
@@ -173,12 +175,6 @@ async function importIntoActiveDoc() {
   if (result.warnings.length > 0) notifyInfo(getT().files.importNotes(result.warnings.length), result.warnings.join(' '));
 }
 
-/** Opens a Minecraft Java model (.json) as a new document; what the file had that Tessel could not use is shown as a note. */
-async function openJavaModelFile() {
-  const result = await openJavaModel();
-  if (result && result.warnings.length > 0) notifyInfo(getT().files.importNotes(result.warnings.length), result.warnings.join(' '));
-}
-
 export const actions: readonly Action[] = [
   // Pixel-Malen (Minecraft): first, so that its keys win in the paint workspace of Minecraft documents.
   ...pixelActionDefs(),
@@ -188,7 +184,7 @@ export const actions: readonly Action[] = [
   action({ id: 'file.open', title: (t) => t.actions.open, group: 'file', keys: ['Ctrl+O'], inInputs: true, run: () => openProject() }),
   action({ id: 'file.save', title: (t) => t.actions.save, group: 'file', keys: ['Ctrl+S'], inInputs: true, run: () => saveActiveDoc() }),
   action({ id: 'file.save_as', title: (t) => t.actions.saveAs, group: 'file', keys: ['Ctrl+Shift+S'], inInputs: true, run: () => saveActiveDoc(true) }),
-  action({ id: 'file.open_java', title: (t) => t.mc.openModel, group: 'file', run: openJavaModelFile }),
+  action({ id: 'file.open_java', title: (t) => t.modelImport.openModel, group: 'file', run: openModelDialog }),
   action({ id: 'file.import', title: (t) => t.files.import, group: 'file', command: 'import.file', formats: FREE_ONLY, run: importIntoActiveDoc }),
   action({ id: 'file.export_glb', title: (t) => t.actions.exportGlb, group: 'file', command: 'export.gltf', run: () => exportActiveDoc('glb') }),
   action({ id: 'file.export_gltf', title: (t) => t.actions.exportGltf, group: 'file', command: 'export.file', run: () => exportActiveDoc('gltf') }),
@@ -279,6 +275,7 @@ export const actions: readonly Action[] = [
 
   // Minecraft Java
   ...minecraftActions(action),
+  ...modelImportActions(action),
   ...itemActions(action),
 
   // Ansicht

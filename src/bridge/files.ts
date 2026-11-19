@@ -43,7 +43,7 @@ export async function openProject(): Promise<void> {
 }
 
 /** Shows an open dialog and opens the chosen Minecraft Java model (.json) as a new Minecraft document. */
-export async function openJavaModel(): Promise<{ warnings: string[] } | null> {
+export async function openJavaModel(): Promise<{ warnings: string[]; parent: unknown } | null> {
   requireDesktop();
   const path = await open({ multiple: false, directory: false, filters: [{ name: getT().files.formats.json, extensions: ['json'] }] });
   if (!path) return null;
@@ -51,7 +51,7 @@ export async function openJavaModel(): Promise<{ warnings: string[] } | null> {
   const read = await invoke<{ json: string; images: Record<string, { data: string; width: number; height: number }> }>('read_java_model_file', { path });
   const stem = fileStem(path);
   // Item definitions (items/<id>.json) open as item definition documents and are saved back to the file.
-  const result = (await execute('document.import_java', { json: read.json, images: read.images, name: stem, fileName: stem, filePath: path })) as { warnings: string[] };
+  const result = (await execute('document.import_java', { json: read.json, images: read.images, name: stem, fileName: stem, filePath: path, sourcePath: path })) as { warnings: string[]; parent: unknown };
   // Textures that live in the texture library are linked to their files instead of staying copies.
   if (services.textureLibrary) await execute('library.link_all', {}).catch(() => undefined);
   return result;

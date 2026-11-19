@@ -4,6 +4,7 @@
 
 import type { ItemDocSettings } from './minecraft/items/types';
 import type { MinecraftAssetsService } from './minecraftAssets';
+import type { ModelFileService } from './modelFiles';
 import type { PixelOp, TextureTransform } from './pixelOps';
 import type { Preferences } from './preferences';
 import type { RenderService, RenderSettings } from './render';
@@ -350,6 +351,41 @@ export interface JavaModelSettings {
   readonly display?: Readonly<Record<string, unknown>>;
   /** Root keys of an imported model that Tessel does not understand, written back unchanged on export. */
   readonly extra?: Readonly<Record<string, unknown>>;
+  /**
+   * Texture variables whose value is another variable (`"particle": "#all"`) that this model does not define
+   * itself but inherits from its parent. Written back into "textures" on export.
+   */
+  readonly textureRefs?: Readonly<Record<string, string>>;
+  /** The file the model was opened from, for finding its parent models in the same resource pack. */
+  readonly sourcePath?: string;
+  /** What the parent chain provides, when it is shown (read-only) in the viewport; absent = parent reference only. */
+  readonly inherited?: JavaInherited;
+}
+
+/** A texture image of a parent model, PNG base64. */
+export interface JavaImage {
+  readonly data: string;
+  readonly width: number;
+  readonly height: number;
+}
+
+/** A snapshot of a Minecraft model's parent chain (core/minecraft/parents.ts). Never exported; shown read-only. */
+export interface JavaInherited {
+  /** Normalised ids, nearest parent first; a built-in root (`minecraft:builtin/generated`) is included. */
+  readonly chain: readonly string[];
+  /** 'generated': items drawn from their layer0..4 textures; 'entity': drawn by code. */
+  readonly builtin: 'generated' | 'entity' | null;
+  /** Texture variables of the chain merged (nearer parents win), as written (`#var` references kept). */
+  readonly textures: Readonly<Record<string, string>>;
+  /** The "elements" of the nearest parent that has any, as JSON; null if none has. */
+  readonly elements: readonly unknown[] | null;
+  readonly textureSize: readonly [number, number] | null;
+  /** Display transforms of the chain merged per context. */
+  readonly display: Readonly<Record<string, unknown>>;
+  /** Images of the inherited textures by normalised id (`minecraft:block/stone`). */
+  readonly images: Readonly<Record<string, JavaImage>>;
+  /** Parent models and textures that could not be found. */
+  readonly missing: readonly string[];
 }
 
 /** Minecraft Java texture location; the JSON reference is `namespace:folder/name` (namespace left out when 'minecraft'). */
@@ -710,6 +746,8 @@ export interface Services {
   video?: VideoService | null;
   /** Vanilla Minecraft assets from the user's install (src/mcassets). */
   minecraftAssets?: MinecraftAssetsService | null;
+  /** Model files on disk and parent model lookup (src/bridge/javaModels.ts). */
+  modelFiles?: ModelFileService | null;
   /** Texture library files of projects, library folders and vanilla (src/texlib). */
   textureLibrary?: TextureLibraryService | null;
 }

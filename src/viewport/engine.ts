@@ -1,3 +1,4 @@
+import { InheritedView } from './inheritedView';
 import {
   Box3,
   DoubleSide,
@@ -111,6 +112,8 @@ export class ViewportEngine {
   private readonly looks: SceneLooks;
   /** The objects of the visible document. */
   private readonly docScene: DocScene;
+  /** What a Minecraft model inherits from its parent, drawn read-only. */
+  private readonly inherited: InheritedView;
   private readonly entries: Map<string, Entry>;
   private readonly raycaster = new Raycaster();
   private readonly resizeObserver: ResizeObserver;
@@ -232,6 +235,11 @@ export class ViewportEngine {
     });
     this.entries = this.docScene.entries;
     this.scene.add(this.docScene.content);
+    this.inherited = new InheritedView(this.looks, () => {
+      this.needsSync = true;
+      this.invalidate();
+    });
+    this.scene.add(this.inherited.content);
     this.preview = new PreviewController(this.stage, this.invalidate);
 
     this.camera.position.set(6.5, 4.5, 8);
@@ -567,6 +575,7 @@ export class ViewportEngine {
     const state = this.displayed(doc);
     const edit = state.edit;
     this.docScene.sync(app, state);
+    this.inherited.sync(app, state);
     this.updatePreview(app, doc);
     this.surfaces.sweep(app);
     this.surfaces.applyLighting(app, this.scene, this.ambient);

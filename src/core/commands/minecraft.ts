@@ -2,7 +2,10 @@ import { z } from 'zod';
 import { looksLikeItemDefinition } from '../minecraft/items/codec';
 import { importItemDefinition } from './item';
 import { textureLink } from '../textureLibrary';
-import { MISSING_TEXTURE_PNG, importJavaModel } from '../minecraft/javaImport';
+import { MISSING_TEXTURE_PNG } from '../minecraft/javaImport';
+import { openJavaModelWithParents, parentModes } from '../minecraft/openModel';
+import { inheritedSummary } from '../minecraft/parents';
+import { refreshParent } from './minecraftParents';
 import { exportJavaModel, textureLocation } from '../minecraft/javaExport';
 import { pxVec3, textureSizeSchema } from '../minecraft/schema';
 import { validateJavaModel } from '../minecraft/validate';
@@ -22,8 +25,11 @@ function requireJava(state: DocState): JavaModelSettings {
 function settingsResult(state: DocState) {
   const java = requireJava(state);
   const particle = java.particle !== null ? own(state.textures, java.particle) : undefined;
+  // The parent snapshot carries images; only its summary is reported.
+  const { inherited: _inherited, ...rest } = java;
   return {
-    ...java,
+    ...rest,
+    inherited: inheritedSummary(state),
     particle: particle ? { id: particle.id, name: particle.name, location: textureLocation(particle) } : null,
     versions: javaVersions.map((v) => v.id),
     capabilities: capabilities(java.version),
@@ -62,7 +68,7 @@ export const minecraftCommands = [
       particle: z.string().nullable().optional(),
       version: z.string().optional(),
     }),
-    run(ctx, p) {
+    async run(ctx, p) {
       const state = docState(ctx);
       if (p.version !== undefined && !isJavaVersion(p.version)) {
         throw new Error(`Unknown Minecraft Java version "${p.version}". Known: ${javaVersions.map((v) => v.id).join(', ')}`);
@@ -70,7 +76,16 @@ export const minecraftCommands = [
       const particle = p.particle === undefined ? undefined : p.particle === null ? null : resolveTextureId(state, p.particle);
       const { particle: _p, ...rest } = p;
       const set = Object.fromEntries(Object.entries(rest).filter(([, v]) => v !== undefined));
-      updateJava(ctx, (java) => ({ ...java, ...set, ...(particle !== undefined ? { particle } : {}) }));
+      const parentChanged = p.parent !== undefined && p.parent !== state.java?.parent;
+      updateJava(ctx, (java) => {
+        const next = { ...java, ...set, ...(particle !== undefined ? { particle } : {}) };
+        // A snapshot of the old parent chain no longer applies.
+        if (!parentChanged || !next.inherited) return next;
+        const { inherited: _old, ...without } = next;
+        return without;
+      });
+      // It was shown: show the new parent instead.
+      if (parentChanged && state.java?.inherited && p.parent) await refreshParent(ctx).catch(() => undefined);
       return settingsResult(docState(ctx));
     },
   }),
@@ -155,7 +170,7 @@ export const minecraftCommands = [
     id: 'document.import_java',
     title: 'Minecraft-Java-Modell öffnen',
     description:
-      'Open a Minecraft Java block/item model (.json text) as a NEW Minecraft Java document tab. Usually you want the file_open tool instead, which reads a .json file from disk together with its textures from the resource pack. images: texture PNGs by the resource location the model uses (e.g. "block/stone" or "mymod:item/gear"); textures without an image get a placeholder. Unknown root keys and "display" are kept and written back on export; the parent model is not resolved. Returns { id, name, active, warnings }. An item model definition (assets/<ns>/items/<id>.json: a "model" object with a "type") opens as a "minecraft_item" document instead; filePath tells where it is.',
+      'Open a Minecraft Java block/item model (.json text) as a NEW Minecraft Java document tab. Usually you want the file_open tool instead, which reads a .json file from disk together with its textures from the resource pack. images: texture PNGs by the resource location the model uses (e.g. "block/stone" or "mymod:item/gear"); textures not given are looked up in the resource pack of sourcePath, the active project and the vanilla assets, else get a placeholder. Unknown root keys and "display" are kept and written back on export. parent: what to do with the parent model chain (looked up the same way): "show" (default) shows its elements and textures read-only (generated items as their flat extruded layers), "merge" turns them into elements and textures of the model itself, "reference" only keeps the "parent" text. Returns { id, name, active, warnings, parent }. An item model definition (assets/<ns>/items/<id>.json: a "model" object with a "type") opens as a "minecraft_item" document instead; filePath tells where it is.',
     params: z.object({
       json: z.string().min(1),
       name: z.string().min(1).default('model'),
@@ -164,19 +179,23 @@ export const minecraftCommands = [
       images: z
         .record(z.string(), z.object({ data: z.string().min(1), width: z.number().int().min(1).max(8192), height: z.number().int().min(1).max(8192) }))
         .optional(),
+      sourcePath: z.string().optional().describe('The file the model was read from, for finding its parent models and textures.'),
+      parent: z.enum(parentModes).default('show'),
       activate: z.boolean().default(true),
       filePath: z.string().optional().describe('Where the file is on disk; item definitions are saved back to it.'),
     }),
-    run(ctx, p) {
+    async run(ctx, p) {
       if (isItemDefinitionText(p.json)) return importItemDefinition(ctx, { json: p.json, filePath: p.filePath, name: p.name === 'model' ? undefined : p.name, version: p.version, activate: p.activate });
-      const { state, warnings } = importJavaModel(p.json, { version: p.version, fileName: p.fileName ?? p.name, images: p.images });
+      const source = ctx.services.modelFiles?.source(p.sourcePath ?? null) ?? null;
+      const opened = await openJavaModelWithParents(p.json, { version: p.version, fileName: p.fileName ?? p.name, images: p.images, sourcePath: p.sourcePath, parent: p.parent }, source);
+      const { state, warnings } = opened;
       const names = Object.values(ctx.get().docs).map((d) => d.name);
       const doc = createDoc(uniqueName(names, p.name), state);
       ctx.set((app) => {
         const next = addDoc(app, doc);
         return p.activate ? next : { ...next, activeDocId: app.activeDocId };
       });
-      return { id: doc.id, name: doc.name, active: p.activate, format: 'minecraft_java', elements: state.order.length, warnings };
+      return { id: doc.id, name: doc.name, active: p.activate, format: 'minecraft_java', elements: state.order.length, warnings, parent: opened.parent, ...(opened.merged ? { merged: opened.merged } : {}) };
     },
   }),
 ];

@@ -13,6 +13,7 @@ import { addTextureFromFile, textureAccept, useThumbnail } from '../textureFiles
 import { addLibraryTexture, setLibraryPanelOpen } from '../library/libraryUi';
 import { LinkBadge, TextureLinkBar, useTextureDrop } from '../library/TextureLinkBar';
 import { notifyError } from '../toast';
+import { ParentSection } from '../modelImport/ParentSection';
 import { FieldRow, SectionTitle, smallButton, TextField } from './fields';
 
 const setSettings = (changes: Record<string, unknown>) => void dispatch('minecraft.set_settings', changes);
@@ -119,6 +120,7 @@ export function ModelSettings() {
           onChange={(version) => setSettings({ version })}
         />
       </FieldRow>
+      <ParentSection />
       <SectionTitle>{t.model.check}</SectionTitle>
       <Issues issues={issues} />
     </div>
