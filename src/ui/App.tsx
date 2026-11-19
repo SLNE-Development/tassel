@@ -17,6 +17,11 @@ import { Toasts } from './Toasts';
 import { ToolRail } from './ToolRail';
 import { TopBar } from './TopBar';
 import { useFormatGuards } from './formatGuards';
+import { useDocFormat } from './format';
+import { ItemSidebar } from './items/ItemInspector';
+import { ItemWizard } from './items/ItemWizard';
+import { registerItemFileOpener } from './items/itemActions';
+import { useEffect } from 'react';
 import { useShortcuts } from './useShortcuts';
 import { GitHubDialog } from './projects/GitHubDialog';
 import { ProjectDialogs } from './projects/ProjectDialogs';
@@ -29,6 +34,9 @@ export function App() {
   useFormatGuards();
   const t = useT();
   const projectsOpen = useProjects((s) => s.panelOpen);
+  const itemDefinition = useDocFormat() === 'minecraft_item';
+  // Item definitions in the project tree open in the item editor.
+  useEffect(() => registerItemFileOpener(), []);
   return (
     <Toast.Provider toastManager={toastManager} limit={4}>
       <Tooltip.Provider delay={450} closeDelay={0}>
@@ -39,8 +47,14 @@ export function App() {
             {projectsOpen && <ProjectsPanel />}
             <Centre />
             <aside aria-label={t.app.sidebar} className="grid min-h-0 min-w-0 grid-cols-[minmax(0,1fr)] grid-rows-[minmax(7rem,2fr)_minmax(0,3fr)] border-l border-line bg-panel">
-              <Outliner />
-              <Properties />
+              {itemDefinition ? (
+                <ItemSidebar />
+              ) : (
+                <>
+                  <Outliner />
+                  <Properties />
+                </>
+              )}
             </aside>
           </div>
           <StatusBar />
@@ -48,6 +62,7 @@ export function App() {
         <CommandPalette />
         <Dialogs />
         <NewDocDialog />
+        <ItemWizard />
         <Preferences />
         <BakeDialog />
         <RenderDialog />

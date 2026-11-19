@@ -42,6 +42,7 @@ import type {
   ViewportService,
   ViewPreset,
 } from '../core/types';
+import { itemPreviewScene, onItemPreviewChange } from './itemPreview';
 import { applyTransform, boxCorners, DocScene, selectionBox, Stage, type Entry, type SceneLooks } from './docScene';
 import { snapSteps, type SnapSteps } from './snapping';
 import { EditMaterials, EditView, selectedVertices } from './editMesh';
@@ -115,6 +116,7 @@ export class ViewportEngine {
   private readonly unsubscribe: () => void;
   private readonly unsubscribeAppearance: () => void;
   private readonly unsubscribePlayback: () => void;
+  private readonly unsubscribeItemPreview: () => void;
   /**
    * "Kamera-Ansicht": while `previewing`, the viewport is drawn through this camera, posed from the
    * animated camera at the playhead. The user's own camera (`camera` with `orbit`) is not touched and
@@ -289,6 +291,10 @@ export class ViewportEngine {
       this.needsSync = true;
       this.invalidate();
     });
+    this.unsubscribeItemPreview = onItemPreviewChange(() => {
+      this.needsSync = true;
+      this.invalidate();
+    });
 
     this.service = {
       screenshot: (opts, doc) => this.screenshot(opts, doc),
@@ -321,6 +327,7 @@ export class ViewportEngine {
     this.unsubscribe();
     this.unsubscribeAppearance();
     this.unsubscribePlayback();
+    this.unsubscribeItemPreview();
     window.removeEventListener('resize', this.onWindowResize);
     window.removeEventListener('keydown', this.onModifierKey);
     window.removeEventListener('keyup', this.onModifierKey);
@@ -413,6 +420,8 @@ export class ViewportEngine {
    * static pose (the mesh is edited where the object rests). Objects that do not move keep their identity.
    */
   private displayed(doc: { id: string; state: DocState }): DocState {
+    // Item definitions have no scene: they show the models picked for the editor's test inputs.
+    if (doc.state.format === 'minecraft_item') return itemPreviewScene(doc.id) ?? doc.state;
     const state = doc.state;
     return state.animation && !state.edit ? animatedState(state, frameOf(doc.id)) : state;
   }

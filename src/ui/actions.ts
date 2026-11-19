@@ -11,6 +11,7 @@ import { groupSelection, newEmptyGroup, ungroupSelection } from './groupActions'
 import { activeFormat } from './format';
 import { runOp } from './live';
 import { minecraftActions } from './minecraft/minecraftActions';
+import { itemActions, saveItemDefinition } from './items/itemActions';
 import { paintActions } from './paint/paintActions';
 import { previewActions } from './preview/previewActions';
 import { timelineActions } from './timeline/timelineActions';
@@ -151,7 +152,9 @@ export function requestCloseDoc(id: string): unknown {
 }
 
 export async function saveActiveDoc(saveAs = false): Promise<boolean> {
-  const saved = await saveProject({ saveAs });
+  // An item definition is saved as its items/<id>.json file, not as a project.
+  const item = selectDocState(useApp.getState()).item !== undefined;
+  const saved = item ? await saveItemDefinition(saveAs) : await saveProject({ saveAs });
   if (saved) notifySuccess(getT().toasts.saved, useApp.getState().docs[useApp.getState().activeDocId]?.name);
   return saved;
 }
@@ -271,6 +274,7 @@ export const actions: readonly Action[] = [
 
   // Minecraft Java
   ...minecraftActions(action),
+  ...itemActions(action),
 
   // Ansicht
   ...shadings.map((shading) =>
