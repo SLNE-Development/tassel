@@ -434,6 +434,23 @@ fn file_import_and_open_forward_the_document() {
   }
   let message = error_of(&call(&mock, "file_open", json!({ "path": project, "activate": "no" })));
   assert!(message.contains("activate") && message.contains("true or false"), "{message}");
+
+  // A Minecraft Java model opens as a new Minecraft document with the textures found next to it.
+  let mock = Mock::new();
+  let mut png = vec![0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, b'I', b'H', b'D', b'R'];
+  png.extend([0, 0, 0, 16, 0, 0, 0, 16, 8, 6, 0, 0, 0]);
+  dir.file("gear.png", png);
+  let model = dir.file("gear.json", r#"{"textures":{"0":"mymod:item/gear"}}"#);
+  let output = call(&mock, "file_open", json!({ "path": model, "activate": false }));
+  assert!(!output.is_error, "{}", output.value);
+  let params = params_of(&mock, "document.import_java");
+  assert_eq!(params["json"], r#"{"textures":{"0":"mymod:item/gear"}}"#);
+  assert_eq!(params["name"], "gear");
+  assert_eq!(params["fileName"], "gear");
+  assert_eq!(params["activate"], false);
+  assert_eq!(params["images"]["mymod:item/gear"]["width"], 16);
+  assert_eq!(output.value["opened"], true);
+  assert!(error_of(&call(&mock, "file_open", json!({ "path": "gear.json" }))).contains("not an absolute path"));
 }
 
 #[test]

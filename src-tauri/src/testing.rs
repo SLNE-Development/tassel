@@ -108,6 +108,7 @@ impl Mock {
       })),
       "document.mark_saved" => Ok(Value::Null),
       "document.load" => Ok(json!({ "id": "doc9", "name": params.get("name").cloned().unwrap_or(Value::Null) })),
+      "document.import_java" => Ok(json!({ "id": "doc10", "name": params.get("name").cloned().unwrap_or(Value::Null), "warnings": [] })),
       "export.file" => Ok(match params.get("format").and_then(Value::as_str) {
         Some("obj") => json!({
           "format": "obj", "text": "o a\n", "mtlName": "chair.mtl", "mtl": "newmtl a\n",

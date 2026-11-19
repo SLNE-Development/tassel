@@ -33,7 +33,8 @@ impl ToolOutput {
 }
 
 const EXPORT_FORMATS: &str = ".glb (binary glTF, one self-contained file), .gltf (glTF JSON, everything embedded), \
-  .obj (Wavefront OBJ with .mtl and texture images next to it), .stl, .ply and .usdz";
+  .obj (Wavefront OBJ with .mtl and texture images next to it), .stl, .ply, .usdz and .json (a Minecraft Java \
+  block/item model, from Minecraft Java documents only)";
 const IMPORT_FORMATS: &str =
   ".glb, .gltf, .obj, .stl, .ply and .fbx (3D models), or .png, .jpg and .webp (an image as a texture)";
 const PLACE_FORMATS: &str = ".tessel (a Tessel project), .glb, .gltf, .obj, .stl, .ply and .fbx";
@@ -81,7 +82,10 @@ pub fn native_tools() -> Vec<NativeTool> {
     },
     NativeTool {
       name: "file_open",
-      description: "Open a Tessel project file (.tessel) from disk in a new document tab. Returns \
+      description: "Open a Tessel project file (.tessel), or a Minecraft Java block/item model (.json), from disk \
+        in a new document tab. A .json model becomes a Minecraft Java document; its textures are read from the \
+        resource pack it is in (assets/<namespace>/textures/...) or from next to the file, and textures that are \
+        not found get a placeholder (listed in warnings). Returns \
         { opened, path, id, name, active }: id is the new document's id, to be passed as documentId to other \
         tools. By default the visible tab switches to it; with activate: false it opens in the background and \
         the user keeps looking at their current tab, while you can still work in it and take screenshots of it \
@@ -90,7 +94,7 @@ pub fn native_tools() -> Vec<NativeTool> {
       input_schema: json!({
         "type": "object",
         "properties": {
-          "path": { "type": "string", "description": "Absolute path of the project file, ending in .tessel." },
+          "path": { "type": "string", "description": "Absolute path of the project file (.tessel) or Minecraft Java model (.json)." },
           "activate": {
             "type": "boolean",
             "description": "true (default): switch the visible tab to the opened document. false: open it as a tab in the background and leave the user where they are."
@@ -108,7 +112,9 @@ pub fn native_tools() -> Vec<NativeTool> {
         textures, UVs and the group hierarchy - usually what you want), .gltf (the same as JSON text with everything \
         embedded as base64), .obj (Wavefront OBJ: polygons stay polygons; the material library <name>.mtl and the \
         texture images <name>_<texture>.png are written into the same folder), .stl (binary, triangles only, for 3D \
-        printing), .ply (binary, triangles with normals and UVs) or .usdz (USD archive for AR viewers). Exported are \
+        printing), .ply (binary, triangles with normals and UVs), .usdz (USD archive for AR viewers) or .json (a \
+        Minecraft Java block/item model; only from Minecraft Java documents, written for their target version with \
+        every element whose export flag is on; texture images are not written). Exported are \
         the visible objects as they look after their modifiers; .obj, .stl and .ply have no transforms, so they are \
         written in world space. Set selectionOnly to export just the selected objects. Missing parent folders are \
         created; existing files are overwritten. Returns { exported, path, format, bytes, files, selectionOnly }; \
@@ -119,7 +125,7 @@ pub fn native_tools() -> Vec<NativeTool> {
         "properties": {
           "path": {
             "type": "string",
-            "description": "Absolute path of the exported file, ending in .glb, .gltf, .obj, .stl, .ply or .usdz."
+            "description": "Absolute path of the exported file, ending in .glb, .gltf, .obj, .stl, .ply, .usdz or .json (Minecraft Java model)."
           },
           "selectionOnly": {
             "type": "boolean",
@@ -644,7 +650,11 @@ impl<'a> OpenArgs<'a> {
   fn parse(args: &'a Value) -> Result<Self, String> {
     let map = object(args, "file_open", &["path", "activate", "documentId"])?;
     let path = req_str(map, "path")?;
-    require_tessel(path)?;
+    if files::extension(path) == "json" {
+      require_absolute(path)?;
+    } else {
+      require_tessel(path)?;
+    }
     Ok(Self { path, activate: opt_bool(map, "activate")?, document_id: opt_str(map, "documentId")? })
   }
 }
@@ -850,6 +860,17 @@ async fn file_save<F: Frontend>(frontend: &F, args: &Value) -> Result<Value, Str
 async fn file_open<F: Frontend>(frontend: &F, args: &Value) -> Result<Value, String> {
   let args = OpenArgs::parse(args)?;
   let path = args.path;
+  if files::extension(path) == "json" {
+    // A Minecraft Java model: a new Minecraft document, with the texture images that can be found.
+    let read = files::read_java_model(path).await?;
+    let stem = file_stem(path);
+    let mut params = json!({ "json": read["json"], "images": read["images"], "name": stem, "fileName": stem });
+    if let Some(activate) = args.activate {
+      params["activate"] = json!(activate);
+    }
+    let opened = frontend.call("document.import_java", with_document(params, args.document_id), FILE_TIMEOUT).await?;
+    return Ok(merged(json!({ "opened": true, "path": path }), &opened));
+  }
   let json = files::read_text(path).await?;
   let mut params = json!({ "json": json, "filePath": path, "name": file_stem(path) });
   if let Some(activate) = args.activate {
