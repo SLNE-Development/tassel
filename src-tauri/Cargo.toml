@@ -25,7 +25,7 @@ tauri-plugin-dialog = "2"
 tokio = { version = "1", features = ["net", "sync", "time", "fs", "rt"] }
 axum = { version = "0.8", default-features = false, features = ["http1", "tokio"] }
 rmcp = { version = "3.11", default-features = false, features = ["server", "transport-streamable-http-server"] }
-base64 = "0.22"
+base64 = "0.23"
 getrandom = "0.4"
-fontdb = "0.23"
+fontdb = "0.24"
 ttf-parser = "0.25"
