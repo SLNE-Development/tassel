@@ -28,6 +28,8 @@ import { GitHubDialog } from './projects/GitHubDialog';
 import { ProjectDialogs } from './projects/ProjectDialogs';
 import { TextureLibraryPanel } from './library/TextureLibraryPanel';
 import { useLibraryUi } from './library/libraryUi';
+import { HistoryPanel } from './history/HistoryPanel';
+import { useHistoryUi } from './history/historyUi';
 import { ProjectsPanel } from './projects/ProjectsPanel';
 import { useProjects } from './projects/projectsStore';
 
@@ -41,7 +43,8 @@ export function App() {
   // Item definitions in the project tree open in the item editor.
   useEffect(() => registerItemFileOpener(), []);
   const libraryOpen = useLibraryUi((s) => s.panelOpen);
-  const columns = ['44px', ...(projectsOpen ? ['248px'] : []), ...(libraryOpen ? ['272px'] : []), 'minmax(0,1fr)', '272px'].join('_');
+  const historyOpen = useHistoryUi((s) => s.panelOpen);
+  const columns = ['44px', ...(projectsOpen ? ['248px'] : []), ...(libraryOpen ? ['272px'] : []), 'minmax(0,1fr)', ...(historyOpen ? ['232px'] : []), '272px'].join('_');
   return (
     <Toast.Provider toastManager={toastManager} limit={4}>
       <Tooltip.Provider delay={450} closeDelay={0}>
@@ -52,6 +55,7 @@ export function App() {
             {projectsOpen && <ProjectsPanel />}
             {libraryOpen && <TextureLibraryPanel />}
             <Centre />
+            {historyOpen && <HistoryPanel />}
             <aside aria-label={t.app.sidebar} className="grid min-h-0 min-w-0 grid-cols-[minmax(0,1fr)] grid-rows-[minmax(7rem,2fr)_minmax(0,3fr)] border-l border-line bg-panel">
               {itemDefinition ? (
                 <ItemSidebar />

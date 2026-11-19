@@ -1123,6 +1123,18 @@ export const de = {
     tokenButton: 'Anmelden',
   },
 
+  history: {
+    title: 'Verlauf',
+    togglePanel: 'Verlauf ein-/ausblenden',
+    close: 'Verlauf ausblenden',
+    newDocument: 'Neues Dokument',
+    opened: 'Geöffnet',
+    unknown: 'Änderung',
+    steps: (n: number) => (n === 1 ? '1 Schritt' : `${num(n)} Schritte`),
+    undone: (n: number) => `${num(n)} rückgängig`,
+    jumpHint: 'Klick springt zu diesem Zustand zurück; mit ↑/↓ durch den Verlauf',
+  },
+
   library: {
     title: 'Texturbibliothek',
     togglePanel: 'Texturbibliothek ein-/ausblenden',

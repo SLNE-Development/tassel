@@ -1,9 +1,10 @@
 import { z } from 'zod';
 import { pruneAnimation } from '../animation';
+import { originStep, stepDetail } from '../history';
 import { commandAllowedIn, docFormat, formatError } from '../formats';
 import { syncCuboids } from '../minecraft/cuboid';
 import { activeDoc, own, withDoc } from '../state';
-import type { AppState, DocFormat, DocState, Services } from '../types';
+import type { AppState, DocFormat, DocState, HistoryStep, Services } from '../types';
 
 export interface CommandContext {
   get(): AppState;
@@ -80,17 +81,29 @@ export async function runCommand(def: AnyCommand, ctx: CommandContext, rawParams
   if (doc && !commandAllowedIn(def.id, def.formats, docFormat(doc.state))) throw formatError(def.id, def.formats, docFormat(doc.state), doc.name);
   const before = ctx.get().docs;
   const result = await def.run(ctx, params);
+  const time = Date.now();
+  const created = Object.values(ctx.get().docs).filter((doc) => !before[doc.id]);
+  if (created.length > 0) {
+    // A document this command created or opened starts its history with that command.
+    ctx.set((app) => created.reduce((next, doc) => (next.docs[doc.id] ? withDoc(next, { ...next.docs[doc.id], step: originStep(def.id, time) }) : next), app));
+  }
   if (def.history !== false) {
     ctx.set((app) => {
       let next = app;
       for (const doc of Object.values(app.docs)) {
         const prev = before[doc.id];
         if (prev && prev.state !== doc.state) {
+          const limit = app.preferences.undoSteps;
+          const detail = stepDetail(params, result, prev.state, doc.state);
+          const step: HistoryStep = detail === undefined ? { command: def.id, time } : { command: def.id, detail, time };
           next = withDoc(next, {
             ...doc,
             dirty: true,
-            past: [...prev.past, prev.state].slice(-app.preferences.undoSteps),
+            past: [...prev.past, prev.state].slice(-limit),
+            pastSteps: [...prev.pastSteps, prev.step].slice(-limit),
             future: [],
+            futureSteps: [],
+            step,
           });
         }
       }

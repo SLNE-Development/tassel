@@ -456,6 +456,18 @@ export interface JavaTextureRef {
   readonly key: string;
 }
 
+/** What produced one undo snapshot of a document: the History panel's label for it (core/history.ts). */
+export interface HistoryStep {
+  /** Id of the command that made the change (its localised title is the label). */
+  readonly command: string;
+  /** A short detail, e.g. the name of the object it changed. */
+  readonly detail?: string;
+  /** When the change was made, in ms since the epoch. */
+  readonly time: number;
+  /** The document as it was created or opened, by `command`. */
+  readonly origin?: true;
+}
+
 export interface Doc {
   readonly id: string;
   readonly name: string;
@@ -464,6 +476,12 @@ export interface Doc {
   readonly state: DocState;
   readonly past: readonly DocState[];
   readonly future: readonly DocState[];
+  /** What produced `state`. */
+  readonly step: HistoryStep;
+  /** What produced each entry of `past` (same length and order). */
+  readonly pastSteps: readonly HistoryStep[];
+  /** What produced each entry of `future` (same length and order). */
+  readonly futureSteps: readonly HistoryStep[];
 }
 
 export const workspaces = ['modeling', 'uv', 'paint', 'display'] as const;

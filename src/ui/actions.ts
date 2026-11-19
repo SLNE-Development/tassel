@@ -21,6 +21,7 @@ import { notifyError, notifyInfo, notifySuccess } from './toast';
 import { useUi } from './uiStore';
 import { uvActions } from './uv/uvActions';
 import { toggleLibraryPanel } from './library/libraryUi';
+import { toggleHistoryPanel } from './history/historyUi';
 import { pixelActionDefs } from './pixel/pixelActions';
 import { activeProject, pull, push, setPanelOpen, targetDir, togglePanel, useProjects } from './projects/projectsStore';
 
@@ -337,6 +338,7 @@ export const actions: readonly Action[] = [
   // Projekt
   action({ id: 'projects.toggle', title: (t) => t.projects.togglePanel, group: 'project', keys: ['Ctrl+Shift+E'], inInputs: true, run: togglePanel }),
   action({ id: 'library.toggle', title: (t) => t.library.togglePanel, group: 'project', keys: ['Ctrl+Shift+L'], inInputs: true, run: toggleLibraryPanel }),
+  action({ id: 'history.toggle', title: (t) => t.history.togglePanel, group: 'view', keys: ['Ctrl+Shift+H'], inInputs: true, run: toggleHistoryPanel }),
   action({
     id: 'projects.save_into',
     title: (t) => t.projects.saveInto,

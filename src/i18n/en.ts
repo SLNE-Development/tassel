@@ -1092,6 +1092,18 @@ export const en: Dictionary = {
     tokenButton: 'Sign in',
   },
 
+  history: {
+    title: 'History',
+    togglePanel: 'Show/Hide History',
+    close: 'Hide history',
+    newDocument: 'New document',
+    opened: 'Opened',
+    unknown: 'Change',
+    steps: (n: number) => (n === 1 ? '1 step' : `${num(n)} steps`),
+    undone: (n: number) => `${num(n)} undone`,
+    jumpHint: 'Click to return to this state; ↑/↓ to step through the history',
+  },
+
   library: {
     title: 'Texture library',
     togglePanel: 'Show/Hide Texture Library',
@@ -1886,6 +1898,8 @@ export const commandTitles: Record<string, string> = {
   'document.mark_saved': 'Mark as Saved',
   'history.undo': 'Undo',
   'history.redo': 'Redo',
+  'history.list': 'List History',
+  'history.goto': 'Go to History Step',
 
   'scene.list_objects': 'List Objects',
   'scene.get_object': 'Get Object',
