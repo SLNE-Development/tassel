@@ -9,6 +9,7 @@ import {
   MeshStandardMaterial,
   MOUSE,
   Object3D,
+  OrthographicCamera,
   PerspectiveCamera,
   Raycaster,
   Sphere,
@@ -46,6 +47,7 @@ import { ElementPicker } from './editPick';
 import { DEFAULT_SPHERE, fitDistance, viewDirection } from './framing';
 import { GeometryStore } from './geometry';
 import { PaintView } from './paintView';
+import { PreviewController } from './preview/controller';
 import { rotateAbout, scaleAbout } from './groupTransform';
 import { SurfaceMaterials } from './surfaces';
 import { VIEWPORT_PALETTES, type ViewportPalette } from './theme';
@@ -119,6 +121,15 @@ export class ViewportEngine {
   private readonly animCamera = new PerspectiveCamera(40, 1, 0.1, 1000);
   private readonly animTarget = new Vector3();
   private previewing = false;
+  /**
+   * The orthographic projection (preference `viewportProjection`): drawn through this camera, which is
+   * posed from the user's perspective camera every frame - same direction, and as much of the scene in
+   * view as the perspective camera shows at the orbit target. Orbit and zoom keep working on `camera`.
+   */
+  private readonly orthoCamera = new OrthographicCamera();
+  private orthographic = false;
+  /** Preview scene, background, ground, pixel grid and reference models (src/viewport/preview). */
+  private readonly preview: PreviewController;
   private readonly ready: Promise<void>;
   /**
    * The cameras of the documents in the background: where the user left them, or where a view command
@@ -215,6 +226,7 @@ export class ViewportEngine {
     });
     this.entries = this.docScene.entries;
     this.scene.add(this.docScene.content);
+    this.preview = new PreviewController(this.stage, this.invalidate);
 
     this.camera.position.set(6.5, 4.5, 8);
     this.orbit = new OrbitControls(this.camera, this.canvas);
@@ -314,6 +326,7 @@ export class ViewportEngine {
     this.canvas.removeEventListener('mousedown', this.onMouseDown);
     this.canvas.removeEventListener('dblclick', this.onDoubleClick);
     this.paintView.dispose();
+    this.preview.dispose();
     this.gizmo.detach();
     this.gizmo.dispose();
     this.orbit.dispose();
@@ -351,12 +364,41 @@ export class ViewportEngine {
   private renderNow(): void {
     if (!this.initialised || this.disposed) return;
     this.syncIfNeeded();
-    this.stage.draw(this.renderer, this.viewCamera, this.previewing ? this.animTarget : this.orbit.target);
+    const target = this.previewing ? this.animTarget : this.orbit.target;
+    const camera = this.viewCamera;
+    const distance = (this.previewing ? this.animCamera : this.camera).position.distanceTo(target);
+    this.preview.beforeDraw(distance);
+    this.stage.draw(this.renderer, camera, target, distance);
   }
 
-  /** The camera the viewport is drawn through: the user's, or the animated one in the camera preview. */
-  private get viewCamera(): PerspectiveCamera {
-    return this.previewing ? this.animCamera : this.camera;
+  /** The camera the viewport is drawn through: the user's (perspective or orthographic), or the animated one in the camera preview. */
+  private get viewCamera(): PerspectiveCamera | OrthographicCamera {
+    if (this.previewing) return this.animCamera;
+    // Painting projects the brush through the perspective camera, so the paint workspace keeps it.
+    if (this.orthographic && useApp.getState().workspace !== 'paint') return this.poseOrtho();
+    return this.camera;
+  }
+
+  /** Poses `orthoCamera` from the user's camera and returns it. */
+  private poseOrtho(): OrthographicCamera {
+    const camera = this.camera;
+    const target = this.orbit.target;
+    const distance = Math.max(camera.position.distanceTo(target), 1e-6);
+    const halfHeight = distance * Math.tan(MathUtils.degToRad(camera.fov) / 2);
+    const ortho = this.orthoCamera;
+    ortho.top = halfHeight;
+    ortho.bottom = -halfHeight;
+    ortho.left = -halfHeight * camera.aspect;
+    ortho.right = halfHeight * camera.aspect;
+    // Pulled far back along the viewing direction, so nothing near the target falls behind it.
+    const pull = Math.max(distance, 1) * 50;
+    ortho.position.copy(camera.position).sub(target).normalize().multiplyScalar(pull).add(target);
+    ortho.quaternion.copy(camera.quaternion);
+    ortho.near = pull * 0.01;
+    ortho.far = pull * 2;
+    ortho.updateProjectionMatrix();
+    ortho.updateMatrixWorld();
+    return ortho;
   }
 
   /**
@@ -411,6 +453,7 @@ export class ViewportEngine {
     this.animCamera.updateProjectionMatrix();
     if (!this.initialised) return;
     this.renderer.setPixelRatio(Math.min((window.devicePixelRatio || 1) * cssZoom, 2));
+    this.preview.setPixelRatio(this.renderer.getPixelRatio());
     this.renderer.setSize(width, height, false);
     // Resizing clears the canvas, so draw right away instead of waiting for the next frame.
     this.renderNow();
@@ -424,6 +467,7 @@ export class ViewportEngine {
     const palette = VIEWPORT_PALETTES[theme];
     this.container.style.background = palette.background;
     this.stage.setPalette(palette);
+    this.preview.setPalette(palette);
     for (const material of this.clay) {
       material.color.set(palette.clay);
       material.emissive.set(accent);
@@ -445,6 +489,13 @@ export class ViewportEngine {
     if (preferences === this.preferences) return;
     this.preferences = preferences;
     this.grid.setVisible(preferences.showGrid, preferences.showAxes);
+    this.preview.setOptions(preferences);
+    const orthographic = preferences.viewportProjection === 'orthographic';
+    if (orthographic !== this.orthographic) {
+      this.orthographic = orthographic;
+      // The gizmo follows the camera that draws (see updatePreview).
+      this.needsSync = true;
+    }
     this.orbit.rotateSpeed = preferences.orbitSpeed;
     // A negative speed makes the orbit controls zoom the other way.
     this.orbit.zoomSpeed = BASE_ZOOM_SPEED * preferences.zoomSpeed * (preferences.invertZoom ? -1 : 1);
@@ -666,9 +717,10 @@ export class ViewportEngine {
     const rect = this.canvas.getBoundingClientRect();
     if (!edit || !entry || !view || view.shown !== edit || !entry.obj.visible || rect.width < 1 || rect.height < 1) return null;
     this.scene.updateMatrixWorld();
-    this.camera.updateMatrixWorld();
+    const camera = this.viewCamera;
+    camera.updateMatrixWorld();
     const matrix = new Matrix4()
-      .multiplyMatrices(this.camera.projectionMatrix, this.camera.matrixWorldInverse)
+      .multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse)
       .multiply(entry.group.matrixWorld);
     // In wireframe shading the elements behind faces are visible, so they can be picked.
     const occlusion = useApp.getState().shading !== 'wireframe';
@@ -708,7 +760,7 @@ export class ViewportEngine {
       if (edge) params = { edges: [edge] };
     } else {
       const ndc = new Vector2((x / rect.width) * 2 - 1, -(y / rect.height) * 2 + 1);
-      this.raycaster.setFromCamera(ndc, this.camera);
+      this.raycaster.setFromCamera(ndc, this.viewCamera);
       const hit = this.raycaster.intersectObject(view.solid, false)[0];
       if (hit && hit.faceIndex != null) params = { indices: [view.triToFace[hit.faceIndex]] };
     }
@@ -1142,6 +1194,8 @@ export class ViewportEngine {
     const pixelRatio = this.renderer.getPixelRatio();
     const gizmoVisible = this.gizmoHelper.visible;
     this.gizmoHelper.visible = false;
+    // Pictures show the plain stage: the preview scene is a view setting of the user's, not part of the document.
+    const restorePreview = stage === this.stage ? this.preview.suspend() : () => {};
     try {
       show(app);
 
@@ -1191,6 +1245,7 @@ export class ViewportEngine {
       // twice), it was last set up for the other document, and the scene on screen sets it up again.
       if (background) this.needsSync = true;
       this.gizmoHelper.visible = gizmoVisible;
+      restorePreview();
       this.renderer.setPixelRatio(pixelRatio);
       // Draws what the user sees again, in this same task: the picture went through the visible canvas.
       this.resize();
