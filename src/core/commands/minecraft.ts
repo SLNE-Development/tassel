@@ -1,4 +1,6 @@
 import { z } from 'zod';
+import { looksLikeItemDefinition } from '../minecraft/items/codec';
+import { importItemDefinition } from './item';
 import { MISSING_TEXTURE_PNG, importJavaModel } from '../minecraft/javaImport';
 import { exportJavaModel, textureLocation } from '../minecraft/javaExport';
 import { pxVec3, textureSizeSchema } from '../minecraft/schema';
@@ -146,7 +148,7 @@ export const minecraftCommands = [
     id: 'document.import_java',
     title: 'Minecraft-Java-Modell öffnen',
     description:
-      'Open a Minecraft Java block/item model (.json text) as a NEW Minecraft Java document tab. Usually you want the file_open tool instead, which reads a .json file from disk together with its textures from the resource pack. images: texture PNGs by the resource location the model uses (e.g. "block/stone" or "mymod:item/gear"); textures without an image get a placeholder. Unknown root keys and "display" are kept and written back on export; the parent model is not resolved. Returns { id, name, active, warnings }.',
+      'Open a Minecraft Java block/item model (.json text) as a NEW Minecraft Java document tab. Usually you want the file_open tool instead, which reads a .json file from disk together with its textures from the resource pack. images: texture PNGs by the resource location the model uses (e.g. "block/stone" or "mymod:item/gear"); textures without an image get a placeholder. Unknown root keys and "display" are kept and written back on export; the parent model is not resolved. Returns { id, name, active, warnings }. An item model definition (assets/<ns>/items/<id>.json: a "model" object with a "type") opens as a "minecraft_item" document instead; filePath tells where it is.',
     params: z.object({
       json: z.string().min(1),
       name: z.string().min(1).default('model'),
@@ -156,8 +158,10 @@ export const minecraftCommands = [
         .record(z.string(), z.object({ data: z.string().min(1), width: z.number().int().min(1).max(8192), height: z.number().int().min(1).max(8192) }))
         .optional(),
       activate: z.boolean().default(true),
+      filePath: z.string().optional().describe('Where the file is on disk; item definitions are saved back to it.'),
     }),
     run(ctx, p) {
+      if (isItemDefinitionText(p.json)) return importItemDefinition(ctx, { json: p.json, filePath: p.filePath, name: p.name === 'model' ? undefined : p.name, version: p.version, activate: p.activate });
       const { state, warnings } = importJavaModel(p.json, { version: p.version, fileName: p.fileName ?? p.name, images: p.images });
       const names = Object.values(ctx.get().docs).map((d) => d.name);
       const doc = createDoc(uniqueName(names, p.name), state);
@@ -171,3 +175,11 @@ export const minecraftCommands = [
 ];
 
 export { MISSING_TEXTURE_PNG };
+
+function isItemDefinitionText(text: string): boolean {
+  try {
+    return looksLikeItemDefinition(JSON.parse(text.replace(/^﻿/, '')));
+  } catch {
+    return false;
+  }
+}

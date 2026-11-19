@@ -1,0 +1,11 @@
+{
+  "model": {
+    "type": "minecraft:select",
+    "property": "minecraft:main_hand",
+    "cases": "oops",
+    "fallback": {
+      "type": "minecraft:model",
+      "model": "item/stick"
+    }
+  }
+}

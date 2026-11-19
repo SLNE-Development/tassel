@@ -254,6 +254,8 @@ export function MenuBar() {
     <Menubar className="flex items-center gap-0.5">
       <TopMenu title={t.menu.file}>
         <ActionItem id="file.new" />
+        <ActionItem id="file.new_item" />
+        <ActionItem id="mc.create_item" />
         <ActionItem id="file.open" />
         <ActionItem id="file.open_java" />
         <ActionItem id="file.import" />
@@ -269,6 +271,7 @@ export function MenuBar() {
           ))}
           <ActionItem id="file.export_json" title={t.files.menu.json} />
         </Submenu>
+        <ActionItem id="item.check" />
         <ActionItem id="render.open" />
         <ActionItem id="video.export" />
         <MenuSeparator />

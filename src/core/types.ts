@@ -2,6 +2,7 @@
 // All state is immutable: commands produce new objects, which makes undo a stack of DocStates.
 // Conventions: Y is up, units are meters, rotations are Euler XYZ in degrees.
 
+import type { ItemDocSettings } from './minecraft/items/types';
 import type { MinecraftAssetsService } from './minecraftAssets';
 import type { Preferences } from './preferences';
 import type { RenderService, RenderSettings } from './render';
@@ -292,10 +293,15 @@ export interface DocState {
   readonly format?: DocFormat;
   /** Model settings of a Minecraft Java document; present exactly when `format` is 'minecraft_java'. */
   readonly java?: JavaModelSettings;
+  /** The item definition of a Minecraft item definition document; present exactly when `format` is 'minecraft_item'. */
+  readonly item?: ItemDocSettings;
 }
 
-export const docFormats = ['free', 'minecraft_java'] as const;
-/** 'free': a general 3D model (polygon meshes). 'minecraft_java': a Minecraft Java block/item model (cuboids). */
+export const docFormats = ['free', 'minecraft_java', 'minecraft_item'] as const;
+/**
+ * 'free': a general 3D model (polygon meshes). 'minecraft_java': a Minecraft Java block/item model (cuboids).
+ * 'minecraft_item': a Minecraft Java item model definition (assets/<ns>/items/<id>.json; no scene objects).
+ */
 export type DocFormat = (typeof docFormats)[number];
 
 export const guiLights = ['side', 'front'] as const;

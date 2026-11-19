@@ -86,7 +86,8 @@ pub fn native_tools() -> Vec<NativeTool> {
       description: "Open a Tessel project file (.tessel), or a Minecraft Java block/item model (.json), from disk \
         in a new document tab. A .json model becomes a Minecraft Java document; its textures are read from the \
         resource pack it is in (assets/<namespace>/textures/...) or from next to the file, and textures that are \
-        not found get a placeholder (listed in warnings). Returns \
+        not found get a placeholder (listed in warnings). An item model definition (assets/<namespace>/items/<id>.json) \
+        opens as a Minecraft item definition document (item_* tools) instead. Returns \
         { opened, path, id, name, active }: id is the new document's id, to be passed as documentId to other \
         tools. By default the visible tab switches to it; with activate: false it opens in the background and \
         the user keeps looking at their current tab, while you can still work in it and take screenshots of it \
@@ -115,7 +116,8 @@ pub fn native_tools() -> Vec<NativeTool> {
         texture images <name>_<texture>.png are written into the same folder), .stl (binary, triangles only, for 3D \
         printing), .ply (binary, triangles with normals and UVs), .usdz (USD archive for AR viewers) or .json (a \
         Minecraft Java block/item model; only from Minecraft Java documents, written for their target version with \
-        every element whose export flag is on; texture images are not written). Exported are \
+        every element whose export flag is on; texture images are not written; from a Minecraft item definition document .json writes its items/<id>.json \
+        file, the only format there). Exported are \
         the visible objects as they look after their modifiers; .obj, .stl and .ply have no transforms, so they are \
         written in world space. Set selectionOnly to export just the selected objects. Missing parent folders are \
         created; existing files are overwritten. Returns { exported, path, format, bytes, files, selectionOnly }; \
@@ -869,7 +871,8 @@ pub(crate) async fn file_open<F: Frontend>(frontend: &F, args: &Value) -> Result
     // A Minecraft Java model: a new Minecraft document, with the texture images that can be found.
     let read = files::read_java_model(path).await?;
     let stem = file_stem(path);
-    let mut params = json!({ "json": read["json"], "images": read["images"], "name": stem, "fileName": stem });
+    // The path lets item definitions (items/<id>.json) know their namespace and id and be saved back to it.
+    let mut params = json!({ "json": read["json"], "images": read["images"], "name": stem, "fileName": stem, "filePath": path });
     if let Some(activate) = args.activate {
       params["activate"] = json!(activate);
     }

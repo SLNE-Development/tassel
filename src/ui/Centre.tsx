@@ -3,7 +3,10 @@ import { selectDocState, useApp } from '../app/store';
 import { useT } from '../i18n';
 import { Viewport } from '../viewport/Viewport';
 import { shortcutLabel } from './actions';
-import { useIsMinecraft } from './format';
+import { useDocFormat } from './format';
+import { useItemPreviewController, useItemUi } from './items/itemStore';
+import { ItemPreviewOverlay } from './items/ItemPreviewOverlay';
+import { ItemTreePane } from './items/ItemTree';
 import { LastOpPanel } from './LastOpPanel';
 import { ModeSwitch } from './ModeSwitch';
 import { PaintHint, PaintOptions } from './paint/PaintOptions';
@@ -47,10 +50,17 @@ function EmptyHint() {
 }
 
 export function Centre() {
-  const workspace = useApp((s) => s.workspace);
-  const split = useUvUi((s) => s.split);
+  const format = useDocFormat();
+  const minecraft = format === 'minecraft_java';
+  // Item definitions have no scene of their own: their tree sits left of the preview, in every workspace.
+  const item = format === 'minecraft_item';
+  const workspace = useApp((s) => (item ? 'modeling' : s.workspace));
+  const uvSplit = useUvUi((s) => s.split);
+  const itemSplit = useItemUi((s) => s.split);
   const uv = workspace === 'uv';
-  const minecraft = useIsMinecraft();
+  const split = item ? itemSplit : uvSplit;
+  const left = uv || item;
+  useItemPreviewController();
   return (
     <main className="flex min-h-0 min-w-0 flex-col overflow-hidden bg-ink">
       <div className="relative min-h-0 min-w-0 flex-1 overflow-hidden">
@@ -59,12 +69,18 @@ export function Centre() {
           {minecraft ? <CuboidUvEditor /> : <UvEditor />}
         </div>
       )}
+      {item && (
+        <div className="absolute inset-y-0 left-0" style={{ width: `${split * 100}%` }}>
+          <ItemTreePane />
+        </div>
+      )}
       {/* The 3D view: everything in modelling, the right part next to the UV editor. Its overlays stay inside it. */}
-      <div className="absolute inset-y-0 right-0 overflow-hidden" style={{ left: uv ? `${split * 100}%` : 0 }}>
+      <div className="absolute inset-y-0 right-0 overflow-hidden" style={{ left: left ? `${split * 100}%` : 0 }}>
         {/* The viewport stays mounted in every workspace so its camera and the screenshot service survive. */}
         <ViewportHost />
         <CameraViewBadge />
-        {workspace === 'modeling' && <EmptyHint />}
+        {workspace === 'modeling' && !item && <EmptyHint />}
+        {item && <ItemPreviewOverlay />}
         {workspace === 'display' && minecraft ? (
           // The display workspace draws its own reference scenes over the (still mounted) modelling view.
           <DisplayViewport />
@@ -76,9 +92,9 @@ export function Centre() {
           </>
         ) : (
           <>
-            {!minecraft && <ModeSwitch />}
+            {!minecraft && !item && <ModeSwitch />}
             <PreviewOptions />
-            {!minecraft && <LastOpPanel />}
+            {!minecraft && !item && <LastOpPanel />}
           </>
         )}
       </div>
@@ -86,7 +102,7 @@ export function Centre() {
       <UvOverlays />
       </div>
       {/* The timeline docks under the views and takes its height from them. */}
-      {!minecraft && <TimelineDock />}
+      {!minecraft && !item && <TimelineDock />}
     </main>
   );
 }
