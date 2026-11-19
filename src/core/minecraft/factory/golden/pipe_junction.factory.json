@@ -1,0 +1,183 @@
+{
+  "schema_version": 1,
+  "generator": "Tessel",
+  "machine": {
+    "id": "factory:pipe_junction",
+    "display_name": "pipe_junction",
+    "model": "pipe_junction",
+    "properties": {
+      "pressure": 1
+    }
+  },
+  "footprint": {
+    "size": [1, 1, 1],
+    "anchor": [0, 0, 0],
+    "min": [0, 0, 0],
+    "max": [0, 0, 0]
+  },
+  "rotation": {
+    "authored_facing": "north",
+    "default_facing": "north",
+    "allowed_facings": ["north"],
+    "pivot": [8, 8, 8]
+  },
+  "ports": [
+    {
+      "id": "north",
+      "name": "",
+      "kind": "bidirectional",
+      "resource": "fluid",
+      "connector": "pipe",
+      "face": "north",
+      "direction": [0, 0, -1],
+      "position": [8, 8, 0],
+      "block": [0, 0, 0],
+      "size": [4, 4],
+      "capacity": 1000,
+      "rate": null,
+      "tags": [],
+      "properties": {}
+    },
+    {
+      "id": "east",
+      "name": "",
+      "kind": "bidirectional",
+      "resource": "fluid",
+      "connector": "pipe",
+      "face": "east",
+      "direction": [1, 0, 0],
+      "position": [16, 8, 8],
+      "block": [0, 0, 0],
+      "size": [4, 4],
+      "capacity": 1000,
+      "rate": null,
+      "tags": [],
+      "properties": {}
+    },
+    {
+      "id": "south",
+      "name": "",
+      "kind": "bidirectional",
+      "resource": "fluid",
+      "connector": "pipe",
+      "face": "south",
+      "direction": [0, 0, 1],
+      "position": [8, 8, 16],
+      "block": [0, 0, 0],
+      "size": [4, 4],
+      "capacity": 1000,
+      "rate": null,
+      "tags": [],
+      "properties": {}
+    },
+    {
+      "id": "west",
+      "name": "",
+      "kind": "bidirectional",
+      "resource": "fluid",
+      "connector": "pipe",
+      "face": "west",
+      "direction": [-1, 0, 0],
+      "position": [0, 8, 8],
+      "block": [0, 0, 0],
+      "size": [4, 4],
+      "capacity": 1000,
+      "rate": null,
+      "tags": [],
+      "properties": {}
+    },
+    {
+      "id": "up",
+      "name": "",
+      "kind": "bidirectional",
+      "resource": "fluid",
+      "connector": "pipe",
+      "face": "up",
+      "direction": [0, 1, 0],
+      "position": [8, 16, 8],
+      "block": [0, 0, 0],
+      "size": [4, 4],
+      "capacity": 1000,
+      "rate": null,
+      "tags": [],
+      "properties": {}
+    },
+    {
+      "id": "down",
+      "name": "",
+      "kind": "bidirectional",
+      "resource": "fluid",
+      "connector": "pipe",
+      "face": "down",
+      "direction": [0, -1, 0],
+      "position": [8, 0, 8],
+      "block": [0, 0, 0],
+      "size": [4, 4],
+      "capacity": 1000,
+      "rate": null,
+      "tags": [],
+      "properties": {}
+    }
+  ],
+  "facings": {
+    "north": {
+      "blockstate": {
+        "x": 0,
+        "y": 0
+      },
+      "matrix": [
+        [1, 0, 0],
+        [0, 1, 0],
+        [0, 0, 1]
+      ],
+      "footprint": {
+        "min": [0, 0, 0],
+        "max": [0, 0, 0]
+      },
+      "ports": [
+        {
+          "id": "north",
+          "face": "north",
+          "direction": [0, 0, -1],
+          "position": [8, 8, 0],
+          "block": [0, 0, 0]
+        },
+        {
+          "id": "east",
+          "face": "east",
+          "direction": [1, 0, 0],
+          "position": [16, 8, 8],
+          "block": [0, 0, 0]
+        },
+        {
+          "id": "south",
+          "face": "south",
+          "direction": [0, 0, 1],
+          "position": [8, 8, 16],
+          "block": [0, 0, 0]
+        },
+        {
+          "id": "west",
+          "face": "west",
+          "direction": [-1, 0, 0],
+          "position": [0, 8, 8],
+          "block": [0, 0, 0]
+        },
+        {
+          "id": "up",
+          "face": "up",
+          "direction": [0, 1, 0],
+          "position": [8, 16, 8],
+          "block": [0, 0, 0]
+        },
+        {
+          "id": "down",
+          "face": "down",
+          "direction": [0, -1, 0],
+          "position": [8, 0, 8],
+          "block": [0, 0, 0]
+        }
+      ]
+    }
+  }
+}

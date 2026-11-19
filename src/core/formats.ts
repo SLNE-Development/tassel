@@ -1,6 +1,8 @@
 // Document formats: what kind of model a document is, and which commands work in which kind.
 // A 'free' document is a general 3D model (polygon meshes, modifiers, materials, animation); a
-// 'minecraft_java' document is a Minecraft Java block/item model built from cuboid elements.
+// 'minecraft_java' document is a Minecraft Java block/item model built from cuboid elements; a 'minecraft_factory'
+// document is a Minecraft Java model too (everything that works there works here) plus a machine definition with
+// ports for a server plugin (core/minecraft/factory).
 import type { DocFormat, DocState } from './types';
 
 export { docFormats, type DocFormat } from './types';
@@ -9,16 +11,21 @@ export function docFormat(state: Pick<DocState, 'format'>): DocFormat {
   return state.format ?? 'free';
 }
 
-export const isMinecraft = (state: Pick<DocState, 'format'>): boolean => docFormat(state) === 'minecraft_java';
+/** Whether the document is a Minecraft Java model: a plain one or a factory model, which extends it. */
+export const isMinecraft = (state: Pick<DocState, 'format'>): boolean => isMinecraftFormat(docFormat(state));
+export const isMinecraftFormat = (format: DocFormat): boolean => format === 'minecraft_java' || format === 'minecraft_factory';
+export const isFactory = (state: Pick<DocState, 'format'>): boolean => docFormat(state) === 'minecraft_factory';
 
 /** English name of a format, for error messages and MCP descriptions. */
 export const formatNames: Record<DocFormat, string> = {
   free: 'Free model',
   minecraft_java: 'Minecraft Java Block/Item',
+  minecraft_factory: 'Minecraft Factory Model',
 };
 
 export const FREE_ONLY: readonly DocFormat[] = ['free'];
-export const MINECRAFT_ONLY: readonly DocFormat[] = ['minecraft_java'];
+export const MINECRAFT_ONLY: readonly DocFormat[] = ['minecraft_java', 'minecraft_factory'];
+export const FACTORY_ONLY: readonly DocFormat[] = ['minecraft_factory'];
 
 /**
  * Formats of the commands that do not declare `formats` themselves, by id prefix or full id. Commands of
@@ -50,6 +57,8 @@ const formatsByCommand: Readonly<Record<string, readonly DocFormat[]>> = {
   // Minecraft cuboid elements and model settings.
   'cuboid.': MINECRAFT_ONLY,
   'minecraft.': MINECRAFT_ONLY,
+  // Factory machine definition: ports, footprint, facings.
+  'factory.': FACTORY_ONLY,
 };
 
 /** The formats a command works in; undefined = every format. `declared` is the command's own `formats`. */

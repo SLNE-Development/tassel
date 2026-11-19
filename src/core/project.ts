@@ -4,6 +4,8 @@ import { polyMeshSchema } from './mesh/polymesh';
 import { modifierSchema } from './modifiers/schema';
 import { syncCuboidObject, uvSize, withKnownFaceTextures } from './minecraft/cuboid';
 import { cuboidSchema, javaSettingsSchema, javaTextureRefSchema } from './minecraft/schema';
+import { factoryMachineSchema, repairMachine } from './minecraft/factory/model';
+import { isMinecraftFormat } from './formats';
 import { repairGroups } from './groups';
 import { base64ImageSize } from './imageInfo';
 import { MAX_TEXTURE_SIZE, materialFields, repairMaterials, textureDataProblem, textureSizeProblem } from './materials';
@@ -86,8 +88,10 @@ const projectSchema = z.object({
   name: z.string(),
   // The kind of document (core/formats.ts). Files written before formats existed are free models.
   documentFormat: z.enum(docFormats).default('free'),
-  // Minecraft Java model settings, present in minecraft_java documents.
+  // Minecraft Java model settings, present in minecraft_java and minecraft_factory documents.
   java: javaSettingsSchema.optional(),
+  // The machine definition of a minecraft_factory document.
+  factory: factoryMachineSchema.optional(),
   objects: z.array(
     z.object({
       id: z.string().min(1),
@@ -134,6 +138,7 @@ export function serializeProject(doc: Doc): string {
     // Free documents leave the key out, so their files stay exactly as before formats existed.
     ...(doc.state.format && doc.state.format !== 'free' ? { documentFormat: doc.state.format } : {}),
     ...(doc.state.java ? { java: doc.state.java } : {}),
+    ...(doc.state.factory ? { factory: doc.state.factory } : {}),
     objects: doc.state.order.map((id) => doc.state.objects[id]),
     groups: doc.state.groupOrder.map((id) => doc.state.groups[id]),
     materials: Object.values(doc.state.materials),
@@ -156,7 +161,8 @@ export function parseProject(json: string): { name: string; state: DocState } {
   const parsed = projectSchema.safeParse(raw);
   if (!parsed.success) throw new Error(`Not a valid Tessel file: ${parsed.error.issues[0]?.message ?? 'unknown'}`);
   const format = parsed.data.documentFormat;
-  const minecraft = format === 'minecraft_java';
+  const minecraft = isMinecraftFormat(format);
+  const factory = format === 'minecraft_factory' ? repairMachine(parsed.data.factory ?? factoryMachineSchema.parse({})) : undefined;
   const java = minecraft ? (parsed.data.java ?? javaSettingsSchema.parse({})) : undefined;
   const size = uvSize({ java });
   const objects: Record<string, SceneObject> = {};
@@ -214,6 +220,7 @@ export function parseProject(json: string): { name: string; state: DocState } {
       edit: null,
       ...(animation ? { animation } : {}),
       ...(minecraft ? { format, java: repairJavaSettings(java!, textures) } : {}),
+      ...(factory ? { factory } : {}),
       ...(parsed.data.render !== undefined && parsed.data.render !== null ? { render: parseRenderSettings(parsed.data.render) } : {}),
     },
   };
