@@ -1,3 +1,4 @@
+import { isMinecraft, MINECRAFT_ONLY } from '../formats';
 import { z } from 'zod';
 import { base64ImageSize } from '../imageInfo';
 import { defaultMaterial, textureDataProblem } from '../materials';
@@ -187,7 +188,7 @@ export async function writeLinkedTextures(
 /** A new texture linked to a library file (with a Java location in Minecraft documents). */
 function addLinkedTexture(state: DocState, link: TextureLink, image: { data: string; width: number; height: number }): { state: DocState; id: string } {
   const id = newId();
-  const minecraft = state.format === 'minecraft_java';
+  const minecraft = isMinecraft(state);
   const names = Object.values(state.textures).map((t) => t.name);
   const texture: Texture = {
     id,
@@ -427,7 +428,7 @@ export const libraryCommands = [
     description:
       'Link every texture of the active Minecraft document that has a resource location but no link to the library file at that location, loading its image from there. Textures whose file is not in the library are linked too when they only hold the missing-texture placeholder (they then show as missing with a locate action). Returns { linked, missing }.',
     params: z.object({}),
-    formats: ['minecraft_java'],
+    formats: MINECRAFT_ONLY,
     async run(ctx) {
       const lib = library(ctx);
       const entries = await lib.entries();
@@ -538,7 +539,7 @@ async function linkTexture(ctx: CommandContext, id: string, link: TextureLink, s
 
 function assignTexture(ctx: CommandContext, textureId: string, objects: readonly string[] | undefined, faces: readonly CuboidFaceName[] | undefined, materialId: string | undefined, slot: (typeof textureSlots)[number]): void {
   const state = docState(ctx);
-  if (state.format === 'minecraft_java') {
+  if (isMinecraft(state)) {
     if (!objects) return;
     const ids = resolveObjectIds(state, objects);
     updateDocState(ctx, (s) => {

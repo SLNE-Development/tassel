@@ -1,3 +1,4 @@
+import { isMinecraft } from '../formats';
 import { z } from 'zod';
 import { colorSchema } from '../materials';
 import { faceRegions, frameCount, frameHeight, imageMirror, mirrorAxes, mirrorMaps, regionsAt } from '../minecraft/paintRegions';
@@ -129,7 +130,7 @@ export function pixelMirror(state: DocState, texture: Texture, m: PixelMirror | 
   if (!m) return undefined;
   const maps: MirrorMap[] = [];
   if (m.axes.length > 0) {
-    if (state.format !== 'minecraft_java') throw new Error('Mirror painting across model axes needs a Minecraft Java document; use mirror.image for image symmetry');
+    if (!isMinecraft(state)) throw new Error('Mirror painting across model axes needs a Minecraft Java document; use mirror.image for image symmetry');
     maps.push(...mirrorMaps(state, texture.id, m.axes, m.mode, frameIndex));
   }
   if (m.image) maps.push(imageMirror(texture, frameIndex));
@@ -249,7 +250,7 @@ export const pixelPaintCommands = [
         };
         if (p.mode === 'all') return { op: 'fill', mode: 'all', ...common };
         if (p.mode === 'connected' || p.mode === 'same_color') return { op: 'fill', mode: p.mode, ...needPoint(), tolerance: p.tolerance, ...common };
-        if (state.format !== 'minecraft_java') throw new Error(`mode "${p.mode}" fills the faces of Minecraft elements; it needs a Minecraft Java document`);
+        if (!isMinecraft(state)) throw new Error(`mode "${p.mode}" fills the faces of Minecraft elements; it needs a Minecraft Java document`);
         let regions: PixelRect[];
         if (p.mode === 'selected') {
           regions = faceRegions(state, texture.id, { elementIds: state.selection, frame: p.frame }).map((r) => r.rect);
@@ -417,7 +418,7 @@ export const pixelPaintCommands = [
     params: z.object({ textureId, layerId }),
     run(ctx, p) {
       return edit(ctx, p, (state, texture) => {
-        if (state.format !== 'minecraft_java') throw new Error('paint.clear_unused needs a Minecraft Java document: it keeps what the elements show');
+        if (!isMinecraft(state)) throw new Error('paint.clear_unused needs a Minecraft Java document: it keeps what the elements show');
         const keep: PixelRect[] = [];
         for (let f = 0; f < frameCount(texture); f++) keep.push(...faceRegions(state, texture.id, { frame: f }).map((r) => r.rect));
         return { op: 'clear', keep };

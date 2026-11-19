@@ -109,12 +109,17 @@ impl Mock {
       "document.mark_saved" => Ok(Value::Null),
       "document.load" => Ok(json!({ "id": "doc9", "name": params.get("name").cloned().unwrap_or(Value::Null) })),
       "document.import_java" => Ok(json!({ "id": "doc10", "name": params.get("name").cloned().unwrap_or(Value::Null), "warnings": [] })),
+      "document.import_factory" => Ok(json!({ "id": "doc11", "name": params.get("name").cloned().unwrap_or(Value::Null), "warnings": [] })),
       "export.file" => Ok(match params.get("format").and_then(Value::as_str) {
         Some("obj") => json!({
           "format": "obj", "text": "o a\n", "mtlName": "chair.mtl", "mtl": "newmtl a\n",
           "files": [{ "name": "chair_wood.png", "base64": "AQID" }]
         }),
         Some("gltf") => json!({ "format": "gltf", "text": "{}" }),
+        Some("json") => json!({
+          "format": "json", "text": "{\"elements\":[]}", "fileName": "crusher.json",
+          "sidecar": { "fileName": "crusher.factory.json", "text": "{\"schema_version\":1}" }
+        }),
         _ => json!({ "format": "glb", "base64": "AQIDBA==" }),
       }),
       "import.file" => Ok(json!({

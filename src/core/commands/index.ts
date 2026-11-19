@@ -4,6 +4,7 @@ import { bakeCommands } from './bake';
 import { cuboidCommands } from './cuboid';
 import { displayCommands } from './display';
 import { documentCommands } from './document';
+import { factoryCommands } from './factory';
 import { fileCommands } from './files';
 import { fontCommands } from './font';
 import { groupCommands } from './group';
@@ -42,6 +43,7 @@ export const commands: readonly AnyCommand[] = [
   ...minecraftCommands,
   ...minecraftParentCommands,
   ...modelImportCommands,
+  ...factoryCommands,
   ...displayCommands,
   ...itemCommands,
   ...fontCommands,

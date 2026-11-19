@@ -3,12 +3,13 @@ import { parseProject, serializeProject } from '../project';
 import { writeLinkedTextures } from './library';
 import { docFormat } from '../formats';
 import { defaultJavaSettings, textureSizeSchema } from '../minecraft/schema';
+import { applyFactoryTemplate, factoryTemplates } from '../minecraft/factory/templates';
 import { isJavaVersion, javaVersions } from '../minecraft/versions';
 import { itemDocState, newItemSettings } from '../minecraft/items/document';
 import { singleModelDefinition } from '../minecraft/items/templates';
 import { DEFAULT_DOC_NAME, activeDoc, addDoc, createDoc, emptyDocState, own, uniqueName, withDoc } from '../state';
 import { docFormats } from '../types';
-import type { AppState, Doc } from '../types';
+import type { AppState, Doc, DocState } from '../types';
 import { defineCommand, type CommandContext } from './registry';
 import { DOCUMENT_ID_HINT } from './targeting';
 
@@ -66,7 +67,7 @@ export const documentCommands = [
     id: 'document.new',
     title: 'Neues Modell',
     description:
-      'Create a new empty document (model) in a new tab, as a free 3D model or (format) a Minecraft Java block/item model. Returns { id, name, active, format }: id is the document id, to be used as "documentId" of other tools. By default the visible tab switches to it; with activate: false it is created in the background, so that you do not pull the user away from what they are looking at - you can still build in it and take screenshots of it by passing its id as documentId on every call.',
+      'Create a new empty document (model) in a new tab, as a free 3D model or (format) a Minecraft Java block/item model or a factory model (a Minecraft Java model plus ports and machine data for a server plugin; template starts it from a common machine). Returns { id, name, active, format }: id is the document id, to be used as "documentId" of other tools. By default the visible tab switches to it; with activate: false it is created in the background, so that you do not pull the user away from what they are looking at - you can still build in it and take screenshots of it by passing its id as documentId on every call.',
     params: z.object({
       name: z.string().min(1).default(DEFAULT_DOC_NAME),
       activate: activateParam,
@@ -74,7 +75,7 @@ export const documentCommands = [
         .enum(docFormats)
         .default('free')
         .describe(
-          'Kind of document. "free": a general 3D model (meshes, modifiers, materials, animation) - the default. "minecraft_java": a Minecraft Java block/item model made of cuboid elements (cuboid_* and minecraft_* tools; exported as model .json). "minecraft_item": a Minecraft item model definition (items/<id>.json; item_* tools; document_new_item sets its id and model directly). The format cannot be changed later.',
+          'Kind of document. "free": a general 3D model (meshes, modifiers, materials, animation) - the default. "minecraft_java": a Minecraft Java block/item model made of cuboid elements (cuboid_* and minecraft_* tools; exported as model .json). "minecraft_item": a Minecraft item model definition (items/<id>.json; item_* tools; document_new_item sets its id and model directly). "minecraft_factory": a Minecraft Java model plus a machine definition with ports for a server plugin (also factory_* tools; exported as model .json plus <fileName>.factory.json). The format cannot be changed later.',
         ),
       fileName: z.string().min(1).optional().describe('minecraft_java only: model file name without .json. Default: the document name in lower case.'),
       parent: z.string().default('').describe('minecraft_java only: parent model, e.g. "block/block" or "item/generated". Default: none.'),
@@ -84,6 +85,11 @@ export const documentCommands = [
         .string()
         .default(javaVersions[javaVersions.length - 1].id)
         .describe(`minecraft_java only: target Minecraft Java version, one of ${javaVersions.map((v) => v.id).join(', ')}.`),
+      template: z
+        .enum(factoryTemplates)
+        .default('empty')
+        .describe('minecraft_factory only: "empty", "machine" (one block, item input west and output east), "conveyor" (belt segment carrying items north) or "pipe_junction" (six-way fluid junction).'),
+      machineId: z.string().min(1).optional().describe('minecraft_factory only: namespaced machine id. Default: "factory:<fileName>".'),
     }),
     run(ctx, p) {
       const name = uniqueName(docNames(ctx.get()), p.name);
@@ -101,14 +107,19 @@ export const documentCommands = [
         ambientOcclusion: p.ambientOcclusion,
         textureSize: p.textureSize,
       });
-      return { ...open(ctx, createDoc(name, { ...emptyDocState, format: p.format, java }), p.activate), format: p.format };
+      let state: DocState = { ...emptyDocState, format: p.format, java };
+      if (p.format === 'minecraft_factory') {
+        state = applyFactoryTemplate(state, p.template, { fileName: java.fileName, displayName: name });
+        if (p.machineId) state = { ...state, factory: { ...state.factory!, id: p.machineId } };
+      }
+      return { ...open(ctx, createDoc(name, state), p.activate), format: p.format };
     },
   }),
 
   defineCommand({
     id: 'document.list',
     title: 'Dokumente auflisten',
-    description: `List all open documents (tabs) in tab order: id, name, filePath (null if never saved), dirty (has unsaved changes), active (the visible tab), format ("free", "minecraft_java" or "minecraft_item": which tools work in it, see the tool descriptions) and objectCount (the number of scene objects in the document; groups, materials and textures are not counted). Use an id from here as "documentId" of other tools. ${DOCUMENT_ID_HINT}`,
+    description: `List all open documents (tabs) in tab order: id, name, filePath (null if never saved), dirty (has unsaved changes), active (the visible tab), format ("free", "minecraft_java", "minecraft_item" or "minecraft_factory": which tools work in it, see the tool descriptions) and objectCount (the number of scene objects in the document; groups, materials and textures are not counted). Use an id from here as "documentId" of other tools. ${DOCUMENT_ID_HINT}`,
     params: z.object({}),
     run(ctx) {
       const app = ctx.get();

@@ -1,7 +1,8 @@
 import { Dialog } from '@base-ui/react/dialog';
-import { Box, FileJson, Shapes, X } from 'lucide-react';
+import { Box, Factory, FileJson, Shapes, X } from 'lucide-react';
 import { useState, type ReactNode } from 'react';
 import { execute } from '../../app/store';
+import { factoryTemplates, type FactoryTemplate } from '../../core/minecraft/factory/templates';
 import { DEFAULT_VERSION, javaVersions } from '../../core/minecraft/versions';
 import type { DocFormat } from '../../core/types';
 import { useT } from '../../i18n';
@@ -42,8 +43,11 @@ function FormatCard({ icon, title, description, selected, onSelect }: { icon: Re
 
 function NewDocBody({ close }: { close(): void }) {
   const t = useT().mc.newDoc;
+  const tf = useT().factory.newDoc;
   const items = useT().items;
   const [format, setFormat] = useState<DocFormat>('free');
+  const [machineId, setMachineId] = useState('');
+  const [template, setTemplate] = useState<FactoryTemplate>('machine');
   const [java, setJava] = useState(initialJava);
   const patch = (changes: Partial<typeof initialJava>) => setJava((j) => ({ ...j, ...changes }));
 
@@ -59,6 +63,7 @@ function NewDocBody({ close }: { close(): void }) {
             ambientOcclusion: java.ambientOcclusion,
             textureSize: java.textureSize,
             version: java.version,
+            ...(format === 'minecraft_factory' ? { template, ...(machineId.trim() ? { machineId: machineId.trim() } : {}) } : {}),
           };
     execute('document.new', params).catch(notifyError);
   };
@@ -70,7 +75,7 @@ function NewDocBody({ close }: { close(): void }) {
         create();
       }}
     >
-      <div role="radiogroup" aria-label={t.format} className="grid grid-cols-3 gap-2 px-5 pt-4">
+      <div role="radiogroup" aria-label={t.format} className="grid grid-cols-2 gap-2 px-5 pt-4">
         <FormatCard icon={<Shapes size={15} strokeWidth={1.75} />} title={t.free} description={t.freeText} selected={format === 'free'} onSelect={() => setFormat('free')} />
         <FormatCard
           icon={<Box size={15} strokeWidth={1.75} />}
@@ -78,6 +83,13 @@ function NewDocBody({ close }: { close(): void }) {
           description={t.javaText}
           selected={format === 'minecraft_java'}
           onSelect={() => setFormat('minecraft_java')}
+        />
+        <FormatCard
+          icon={<Factory size={15} strokeWidth={1.75} />}
+          title={tf.factory}
+          description={tf.factoryText}
+          selected={format === 'minecraft_factory'}
+          onSelect={() => setFormat('minecraft_factory')}
         />
         {/* Item definitions have their own short wizard (id, base model, variants). */}
         <FormatCard
@@ -91,11 +103,28 @@ function NewDocBody({ close }: { close(): void }) {
           }}
         />
       </div>
-      {format === 'minecraft_java' && (
+      {format !== 'free' && (
         <div className="mt-4 flex flex-col gap-2.5 border-t border-line px-5 pt-4">
           <FieldRow title={t.fileName}>
             <input aria-label={t.fileName} className={inputClass} value={java.fileName} placeholder={t.fileNameHint} spellCheck={false} autoFocus onChange={(e) => patch({ fileName: e.currentTarget.value })} />
           </FieldRow>
+          {format === 'minecraft_factory' && (
+            <>
+              <FieldRow title={tf.machineId}>
+                <input aria-label={tf.machineId} className={inputClass} value={machineId} placeholder={tf.machineIdHint} spellCheck={false} onChange={(e) => setMachineId(e.currentTarget.value)} />
+              </FieldRow>
+              <FieldRow title={tf.template}>
+                <PickMenu<FactoryTemplate>
+                  label={tf.template}
+                  value={template}
+                  placeholder={tf.templates[template]}
+                  options={factoryTemplates.map((id) => ({ value: id, title: tf.templates[id] }))}
+                  onChange={setTemplate}
+                />
+              </FieldRow>
+              <p className="text-[calc(12px*var(--font-scale))] leading-snug text-faint">{tf.templateText[template]}</p>
+            </>
+          )}
           <FieldRow title={t.parent}>
             <input
               aria-label={t.parent}

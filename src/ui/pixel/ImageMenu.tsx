@@ -1,3 +1,4 @@
+import { isMinecraft } from '../../core/formats';
 import { Dialog } from '@base-ui/react/dialog';
 import { Menu } from '@base-ui/react/menu';
 import { ChevronDown, ImageIcon } from 'lucide-react';
@@ -316,7 +317,7 @@ function ResizeDialog() {
 export function ImageDialogHost() {
   const open = useImageDialog((s) => s.open);
   // A dialog belongs to the texture it was opened on, and to the paint workspace.
-  const paint = useApp((s) => s.workspace === 'paint' && selectDocState(s).format === 'minecraft_java');
+  const paint = useApp((s) => s.workspace === 'paint' && isMinecraft(selectDocState(s)));
   const textureId = usePixelTexture()?.id;
   useEffect(() => {
     if (open && (!paint || !textureId)) closeImageDialog();

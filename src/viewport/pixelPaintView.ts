@@ -1,3 +1,4 @@
+import { isMinecraft } from '../core/formats';
 import { DataTexture, RGBAFormat, UnsignedByteType, Vector2, type Mesh, type Texture as GpuTexture } from 'three/webgpu';
 import { selectDocState, useApp } from '../app/store';
 import { frameCount, frameHeight } from '../core/minecraft/paintRegions';
@@ -102,7 +103,7 @@ export class PixelPaintView implements PixelTextures {
 
   private active(): boolean {
     const app = useApp.getState();
-    return app.workspace === 'paint' && selectDocState(app).format === 'minecraft_java';
+    return app.workspace === 'paint' && isMinecraft(selectDocState(app));
   }
 
   /** The texture pixel under the pointer on an enabled element face, or null. */

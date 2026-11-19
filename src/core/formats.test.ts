@@ -100,7 +100,8 @@ describe('document formats', () => {
   it('gates every command of the free-only and Minecraft-only families', () => {
     for (const { id, formats } of commands) {
       if (/^(edit|mesh|uv|modifier|material|bake|anim)\./.test(id)) expect(commandFormats(id, formats), id).toEqual(['free']);
-      if (/^(cuboid|minecraft)\./.test(id)) expect(commandFormats(id, formats), id).toEqual(['minecraft_java']);
+      if (/^(cuboid|minecraft)\./.test(id)) expect(commandFormats(id, formats), id).toEqual(['minecraft_java', 'minecraft_factory']);
+      if (/^factory\./.test(id)) expect(commandFormats(id, formats), id).toEqual(['minecraft_factory']);
     }
   });
 
@@ -115,14 +116,14 @@ describe('document formats', () => {
 
   it('refuses cuboid commands in a free document', async () => {
     const t = testApp();
-    await expect(t.run('cuboid.add')).rejects.toThrow(/cuboid\.add is not available in Free model documents: it only works in Minecraft Java Block\/Item documents/);
+    await expect(t.run('cuboid.add')).rejects.toThrow(/cuboid\.add is not available in Free model documents: it only works in Minecraft Java Block\/Item or Minecraft Factory Model documents/);
     expect(t.state().order).toEqual([]);
   });
 
   it('tells MCP clients up front which tools are format-specific', () => {
     const manifest = new Map(buildManifest().map((entry) => [entry.id, entry.description]));
     expect(manifest.get('mesh.bevel')).toMatch(/^Only in Free model documents/);
-    expect(manifest.get('cuboid.add')).toMatch(/^Only in Minecraft Java Block\/Item documents/);
+    expect(manifest.get('cuboid.add')).toMatch(/^Only in Minecraft Java Block\/Item or Minecraft Factory Model documents/);
     expect(manifest.get('scene.select')).not.toMatch(/^Only in/);
   });
 });

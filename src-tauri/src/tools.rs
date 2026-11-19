@@ -91,7 +91,8 @@ pub fn native_tools() -> Vec<NativeTool> {
         minecraft_merge_parent, minecraft_hide_parent). A .bbmodel becomes a Minecraft Java document (Java \
         Block/Item projects) or a free document; what could not be imported (animations, locators, ...) is listed \
         in dropped. An item model definition (assets/<namespace>/items/<id>.json) opens as a Minecraft item \
-        definition document (item_* tools) instead. Returns \
+        definition document (item_* tools) instead. A model with a factory sidecar (<name>.factory.json) next \
+        to it - or the sidecar itself - opens as a factory document (model plus machine and ports). Returns \
         { opened, path, id, name, active }: id is the new document's id, to be passed as documentId to other \
         tools. By default the visible tab switches to it; with activate: false it opens in the background and \
         the user keeps looking at their current tab, while you can still work in it and take screenshots of it \
@@ -100,7 +101,7 @@ pub fn native_tools() -> Vec<NativeTool> {
       input_schema: json!({
         "type": "object",
         "properties": {
-          "path": { "type": "string", "description": "Absolute path of the project file (.tessel), Minecraft Java model (.json) or Blockbench project (.bbmodel)." },
+          "path": { "type": "string", "description": "Absolute path of the project file (.tessel), Minecraft Java model (.json), factory sidecar (.factory.json) or Blockbench project (.bbmodel)." },
           "activate": {
             "type": "boolean",
             "description": "true (default): switch the visible tab to the opened document. false: open it as a tab in the background and leave the user where they are."
@@ -119,10 +120,10 @@ pub fn native_tools() -> Vec<NativeTool> {
         embedded as base64), .obj (Wavefront OBJ: polygons stay polygons; the material library <name>.mtl and the \
         texture images <name>_<texture>.png are written into the same folder), .stl (binary, triangles only, for 3D \
         printing), .ply (binary, triangles with normals and UVs), .usdz (USD archive for AR viewers) or .json (a \
-        Minecraft Java block/item model; only from Minecraft Java documents, written for their target version with \
-        every element whose export flag is on; texture images are not written; from a Minecraft item definition document .json writes its items/<id>.json \
-        file, the only format there). Exported are \
-        the visible objects as they look after their modifiers; .obj, .stl and .ply have no transforms, so they are \
+        Minecraft Java block/item model; only from Minecraft Java and factory documents, written for their target version with \
+        every element whose export flag is on; texture images are not written; a factory document also writes \
+        its sidecar <name>.factory.json for the server plugin next to it; from a Minecraft item definition document \
+        .json writes its items/<id>.json file, the only format there). Exported are the visible objects as they look after their modifiers; .obj, .stl and .ply have no transforms, so they are \
         written in world space. Set selectionOnly to export just the selected objects. Missing parent folders are \
         created; existing files are overwritten. Returns { exported, path, format, bytes, files, selectionOnly }; \
         files lists the absolute path of every file written (the main file first). This does not save the project \
@@ -872,15 +873,22 @@ pub(crate) async fn file_open<F: Frontend>(frontend: &F, args: &Value) -> Result
   let args = OpenArgs::parse(args)?;
   let path = args.path;
   if files::extension(path) == "json" {
-    // A Minecraft Java model: a new Minecraft document, with the texture images that can be found.
-    let read = files::read_java_model(path).await?;
-    let stem = file_stem(path);
+    // A Minecraft Java model: a new Minecraft document, with the texture images that can be found. With a
+    // factory sidecar next to it (or when the sidecar itself is opened) it becomes a factory document.
+    let read = files::read_model_bundle(path).await?;
+    let stem = read["name"].clone();
     // sourcePath finds parent models; filePath lets item definitions (items/<id>.json) know their id and be saved back.
     let mut params = json!({ "json": read["json"], "images": read["images"], "name": stem, "fileName": stem, "sourcePath": path, "filePath": path });
+    let command = if read["sidecar"].is_string() {
+      params["sidecar"] = read["sidecar"].clone();
+      "document.import_factory"
+    } else {
+      "document.import_java"
+    };
     if let Some(activate) = args.activate {
       params["activate"] = json!(activate);
     }
-    let opened = frontend.call("document.import_java", with_document(params, args.document_id), FILE_TIMEOUT).await?;
+    let opened = frontend.call(command, with_document(params, args.document_id), FILE_TIMEOUT).await?;
     return Ok(merged(json!({ "opened": true, "path": path }), &opened));
   }
   if files::extension(path) == "bbmodel" {
@@ -930,6 +938,14 @@ async fn file_export<F: Frontend>(frontend: &F, args: &Value) -> Result<Value, S
     text.len()
   } else if let Some(text) = exported.get("text").and_then(Value::as_str) {
     files::write_bytes(path, text.as_bytes()).await?;
+    // A factory model also writes its sidecar for the server plugin, named after the chosen model file.
+    if let Some(sidecar) = exported.get("sidecar").filter(|s| !s.is_null()) {
+      let contents = field(sidecar, "text", "export.file")?;
+      let target = Path::new(path).with_file_name(format!("{}{}", file_stem(path), files::FACTORY_SUFFIX));
+      let target = target.to_string_lossy().into_owned();
+      files::write_bytes(&target, contents.as_bytes()).await?;
+      written.push(target);
+    }
     text.len()
   } else {
     let bytes = files::decode_base64(field(&exported, "base64", "export.file")?)?;

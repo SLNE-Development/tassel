@@ -9,12 +9,15 @@ export function TextField({
   value,
   placeholder,
   mono,
+  list,
   onCommit,
 }: {
   label: string;
   value: string;
   placeholder?: string;
   mono?: boolean;
+  /** Id of a `<datalist>` with suggestions. */
+  list?: string;
   onCommit(value: string): void;
 }) {
   const reverting = useRef(false);
@@ -24,6 +27,7 @@ export function TextField({
       aria-label={label}
       defaultValue={value}
       placeholder={placeholder}
+      list={list}
       spellCheck={false}
       autoComplete="off"
       className={`${inputClass} ${mono ? 'font-mono' : ''}`}

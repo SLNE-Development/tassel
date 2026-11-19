@@ -1,3 +1,4 @@
+import { isMinecraftFormat } from '../core/formats';
 import { memo } from 'react';
 import { selectDocState, useApp } from '../app/store';
 import { useT } from '../i18n';
@@ -53,7 +54,7 @@ function EmptyHint() {
 
 export function Centre() {
   const format = useDocFormat();
-  const minecraft = format === 'minecraft_java';
+  const minecraft = isMinecraftFormat(format);
   // Item definitions have no scene of their own: their tree sits left of the preview, in every workspace.
   const item = format === 'minecraft_item';
   const workspace = useApp((s) => (item ? 'modeling' : s.workspace));

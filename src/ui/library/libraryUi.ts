@@ -1,3 +1,4 @@
+import { isMinecraft } from '../../core/formats';
 import { isTauri } from '@tauri-apps/api/core';
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { create } from 'zustand';
@@ -207,7 +208,7 @@ export async function applyLibraryEntry(entry: LibraryEntry): Promise<void> {
     return;
   }
   const state = selectDocState(useApp.getState());
-  const elements = state.format === 'minecraft_java' ? state.selection.filter((id) => state.objects[id]?.cuboid) : [];
+  const elements = isMinecraft(state) ? state.selection.filter((id) => state.objects[id]?.cuboid) : [];
   await addLibraryTexture({ location: entry.location, source: entry.source }, elements.length > 0 ? { objects: elements } : {});
 }
 

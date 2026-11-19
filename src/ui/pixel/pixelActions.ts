@@ -1,7 +1,7 @@
 import { invoke, isTauri } from '@tauri-apps/api/core';
 import { save } from '@tauri-apps/plugin-dialog';
 import { execute, selectDocState, useApp } from '../../app/store';
-import { MINECRAFT_ONLY } from '../../core/formats';
+import { isMinecraft, MINECRAFT_ONLY } from '../../core/formats';
 import type { PixelRect } from '../../core/pixelOps';
 import type { BlendMode, Texture } from '../../core/types';
 import { getT, type Dictionary } from '../../i18n';
@@ -175,7 +175,7 @@ const define = ({ title, ...rest }: Define): Action => ({
 
 const inPixelPaint = () => {
   const app = useApp.getState();
-  return app.workspace === 'paint' && selectDocState(app).format === 'minecraft_java';
+  return app.workspace === 'paint' && isMinecraft(selectDocState(app));
 };
 
 const toolKeys: Record<PixelTool, string> = { brush: 'B', eraser: 'E', fill: 'G', shape: 'U', gradient: 'Shift+G', select: 'M', move: 'V', copy: 'C', picker: 'I' };

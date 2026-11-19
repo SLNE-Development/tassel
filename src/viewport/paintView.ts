@@ -1,3 +1,4 @@
+import { isMinecraft } from '../core/formats';
 import {
   DataTexture,
   LinearFilter,
@@ -215,7 +216,7 @@ export class PaintView {
   private active(): boolean {
     const app = useApp.getState();
     // Minecraft documents paint pixel art instead (pixelPaintView.ts).
-    return app.workspace === 'paint' && selectDocState(app).format !== 'minecraft_java';
+    return app.workspace === 'paint' && !isMinecraft(selectDocState(app));
   }
 
   /** The point of the paint target under the given client position; null if something else (or nothing) is there. */

@@ -4,6 +4,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { selectDocState, useApp } from '../app/store';
 import { getT, useT } from '../i18n';
 import { dispatch, shortcutLabel } from './actions';
+import { PortOutliner } from './factory/PortOutliner';
 import { DeleteGroupDialog, OutlinerContextMenu } from './OutlinerMenu';
 import { setCollapsed, useOutliner } from './outlinerState';
 import { buildRows, dragPayload, groupSummary, parseRowKey, resolveDrop, rowKey, type DropPosition, type RowKind, type RowRef } from './outlinerTree';
@@ -450,6 +451,8 @@ export function Outliner() {
           )}
         </div>
       </OutlinerContextMenu>
+      {/* Factory models: their ports, below the object tree (renders nothing for other documents). */}
+      <PortOutliner />
       <DeleteGroupDialog />
     </section>
   );

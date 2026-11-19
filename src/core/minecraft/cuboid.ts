@@ -1,4 +1,5 @@
 // Cuboid elements (see `Cuboid` in types.ts): their derived polygon mesh and pure editing helpers.
+import { isMinecraft } from '../formats';
 import { cuboidFaces } from '../types';
 import type { Cuboid, CuboidFace, CuboidFaceName, DocState, PolyMesh, SceneObject, Vec3 } from '../types';
 import { PX, addVec, tidy, worldToModel } from './space';
@@ -194,7 +195,7 @@ export function syncCuboids(before: DocState, after: DocState): DocState {
     if (synced !== obj) (objects ??= { ...after.objects })[id] = synced;
   }
   const java = after.java && after.java.particle !== null && !Object.hasOwn(after.textures, after.java.particle) ? { ...after.java, particle: null } : after.java;
-  const textures = texturesChanged && after.format === 'minecraft_java' ? withJavaRefs(after.textures) : after.textures;
+  const textures = texturesChanged && isMinecraft(after) ? withJavaRefs(after.textures) : after.textures;
   return objects || java !== after.java || textures !== after.textures
     ? { ...after, ...(objects ? { objects } : {}), ...(java ? { java } : {}), textures }
     : after;

@@ -1,3 +1,4 @@
+import { MINECRAFT_ONLY } from '../formats';
 import { z } from 'zod';
 import {
   allPresets,
@@ -26,7 +27,8 @@ import { defineCommand, docState, updateDocState, type CommandContext } from './
 // view options. Values are stored in `JavaModelSettings.display` (undoable, part of the document); view
 // options and user presets are preferences (app-wide, not undoable).
 
-const MC = ['minecraft_java'] as const;
+// Factory models are Minecraft Java models too.
+const MC = MINECRAFT_ONLY;
 const slotEnum = z.enum(displaySlots);
 const finite = z.number().finite();
 const partial3 = z.tuple([finite.nullable(), finite.nullable(), finite.nullable()]);

@@ -1,3 +1,4 @@
+import { isMinecraft } from '../../core/formats';
 import { selectDocState, useApp } from '../../app/store';
 import { pixelMirror } from '../../core/commands/pixelPaint';
 import { frameHeight } from '../../core/minecraft/paintRegions';
@@ -47,7 +48,7 @@ export function selectionParam(ui: Pick<PixelUiState, 'selection'> = usePixel.ge
 /** The mirror parameter of the commands, from the store (undefined when off). */
 function mirrorParam(ui: PixelUiState): { axes: ('x' | 'z')[]; mode: 'global' | 'local'; image: boolean } | undefined {
   if (!ui.mirror.enabled) return undefined;
-  const minecraft = selectDocState(useApp.getState()).format === 'minecraft_java';
+  const minecraft = isMinecraft(selectDocState(useApp.getState()));
   const axes = minecraft ? [...ui.mirror.axes] : [];
   if (axes.length === 0 && !ui.mirror.image) return undefined;
   return { axes, mode: ui.mirror.mode, image: ui.mirror.image };

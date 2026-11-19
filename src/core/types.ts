@@ -313,18 +313,76 @@ export interface DocState {
   readonly render?: RenderSettings;
   /** What kind of document this is (core/formats.ts). Absent = 'free'. Never changes after creation. */
   readonly format?: DocFormat;
-  /** Model settings of a Minecraft Java document; present exactly when `format` is 'minecraft_java'. */
+  /** Model settings of a Minecraft document; present exactly when `format` is 'minecraft_java' or 'minecraft_factory'. */
   readonly java?: JavaModelSettings;
+  /** Machine definition of a factory model (core/minecraft/factory); present exactly when `format` is 'minecraft_factory'. */
+  readonly factory?: FactoryMachine;
   /** The item definition of a Minecraft item definition document; present exactly when `format` is 'minecraft_item'. */
   readonly item?: ItemDocSettings;
 }
 
-export const docFormats = ['free', 'minecraft_java', 'minecraft_item'] as const;
+export const docFormats = ['free', 'minecraft_java', 'minecraft_item', 'minecraft_factory'] as const;
 /**
  * 'free': a general 3D model (polygon meshes). 'minecraft_java': a Minecraft Java block/item model (cuboids).
  * 'minecraft_item': a Minecraft Java item model definition (assets/<ns>/items/<id>.json; no scene objects).
+ * 'minecraft_factory': a Minecraft Java model plus a machine definition (ports, footprint, facings) for a server plugin.
  */
 export type DocFormat = (typeof docFormats)[number];
+
+/** Which way resources flow through a factory port, seen from the machine. */
+export const portKinds = ['input', 'output', 'bidirectional'] as const;
+export type PortKind = (typeof portKinds)[number];
+
+/** A JSON value of a free-form factory property. */
+export type FactoryValue = string | number | boolean;
+
+/**
+ * A connection point of a factory machine: where a conveyor, pipe, cable... attaches and what flows there.
+ * Coordinates are model-space pixels of the model's own block (the anchor block spans 0..16).
+ */
+export interface FactoryPort {
+  /** Internal identity, stable while the port is edited (the user-facing `id` can change). */
+  readonly uid: string;
+  /** The id the plugin sees, e.g. 'input' or 'fuel_in'; unique per machine. */
+  readonly id: string;
+  /** Display label; '' = none. */
+  readonly name: string;
+  readonly kind: PortKind;
+  /** What flows: a built-in resource ('item', 'fluid', 'energy', ...) or a custom id such as 'mymod:steam'. */
+  readonly resource: string;
+  /** What attaches: a built-in connector ('conveyor', 'pipe', 'cable', ...) or a custom id. */
+  readonly connector: string;
+  /** The block face the port opens to (= its outward direction); null = not set yet (a validation error). */
+  readonly face: CuboidFaceName | null;
+  /** Centre of the port opening in model pixels, on the pixel grid. */
+  readonly position: Vec3;
+  /** Width and height of the opening in pixels, on the face plane. */
+  readonly size: readonly [number, number];
+  /** How much the port buffers (plugin-defined unit), or null. */
+  readonly capacity: number | null;
+  /** Throughput per tick (plugin-defined unit), or null. */
+  readonly rate: number | null;
+  readonly tags: readonly string[];
+  readonly properties: Readonly<Record<string, FactoryValue>>;
+}
+
+/** Machine-level settings of a factory model. */
+export interface FactoryMachine {
+  /** Namespaced machine id, e.g. 'factory:crusher'. */
+  readonly id: string;
+  readonly displayName: string;
+  /** Size in blocks [x, y, z] (multi-block machines are larger than 1). */
+  readonly footprint: Vec3;
+  /** The footprint cell the model's own block (model px 0..16) sits in. */
+  readonly anchor: Vec3;
+  /** Facings the machine may be placed with. The model is always authored facing north (core/minecraft/factory/rotation.ts). */
+  readonly facings: readonly CuboidFaceName[];
+  /** The facing the plugin uses when none is given; one of `facings`. */
+  readonly defaultFacing: CuboidFaceName;
+  readonly properties: Readonly<Record<string, FactoryValue>>;
+  /** In outliner order. */
+  readonly ports: readonly FactoryPort[];
+}
 
 export const guiLights = ['side', 'front'] as const;
 

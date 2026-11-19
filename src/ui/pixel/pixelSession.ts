@@ -1,3 +1,4 @@
+import { isMinecraft } from '../../core/formats';
 import { execute, selectDocState, useApp } from '../../app/store';
 import type { PixelOp } from '../../core/pixelOps';
 import type { Texture } from '../../core/types';
@@ -77,7 +78,7 @@ class PixelSession {
   sync(): void {
     if (this.committing > 0) return;
     const app = useApp.getState();
-    const minecraft = selectDocState(app).format === 'minecraft_java';
+    const minecraft = isMinecraft(selectDocState(app));
     const texture = app.workspace === 'paint' && minecraft ? currentPixelTexture() : undefined;
     if (!texture) {
       if (this.texture) {
