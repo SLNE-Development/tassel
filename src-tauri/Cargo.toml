@@ -30,7 +30,7 @@ getrandom = "0.4"
 fontdb = "0.24"
 ttf-parser = "0.25"
 tauri-plugin-opener = "2"
-git2 = { version = "0.20", default-features = false, features = ["https", "vendored-libgit2"] }
+git2 = { version = "0.21", default-features = false, features = ["https", "vendored-libgit2"] }
 reqwest = { version = "0.12", default-features = false, features = ["json", "native-tls"] }
 keyring = { version = "3", features = ["apple-native", "windows-native", "sync-secret-service", "crypto-rust"] }
 trash = "5"
