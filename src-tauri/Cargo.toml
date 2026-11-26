@@ -35,5 +35,5 @@ reqwest = { version = "0.12", default-features = false, features = ["json", "nat
 keyring = { version = "3", features = ["apple-native", "windows-native", "sync-secret-service", "crypto-rust"] }
 trash = "5"
 
-zip = { version = "4.6.1", default-features = false, features = ["deflate-flate2"] }
+zip = { version = "9.8.1", default-features = false, features = ["deflate-flate2"] }
 flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
